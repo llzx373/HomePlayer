@@ -42,8 +42,21 @@ public sealed class AppHost : IAsyncDisposable
         playback.SetVolume(settings.Volume);
         var host = new AppHost(settings, repository, libraries, playback, codecPlans);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
-        libraries.Start();
         return host;
+    }
+
+    public void StartLibraries()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Libraries.Start();
+            }
+            catch (Exception)
+            {
+            }
+        });
     }
 
     public void SaveSettings()

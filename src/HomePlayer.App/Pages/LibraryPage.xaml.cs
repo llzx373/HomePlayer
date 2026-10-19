@@ -21,6 +21,8 @@ public sealed partial class LibraryPage : Page
     private bool _loading;
     private bool _sorting;
     private bool _needsFullReload;
+    private int _reloadToken;
+    private int _bindToken;
 
     public LibraryPage()
     {
@@ -37,7 +39,7 @@ public sealed partial class LibraryPage : Page
         _filterTimer.Interval = TimeSpan.FromMilliseconds(200);
         _filterTimer.IsRepeating = false;
         _filterTimer.Tick += (_, _) => BindCards();
-        App.Host.Libraries.Changed += (_, _) => QueueReload();
+        App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(QueueReload);
         Loaded += (_, _) =>
         {
             _needsFullReload = true;
@@ -79,8 +81,28 @@ public sealed partial class LibraryPage : Page
     private void ReloadAll()
     {
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
-        var libraries = App.Host.Repository.ListLibraries();
+        var token = ++_reloadToken;
         _loading = true;
+        _ = Task.Run(() =>
+        {
+            IReadOnlyList<MediaLibrary> libraries;
+            try
+            {
+                libraries = App.Host.Repository.ListLibraries();
+            }
+            catch (Exception)
+            {
+                libraries = [];
+            }
+
+            DispatcherQueue.TryEnqueue(() => ApplyLibraries(selected, token, libraries));
+        });
+    }
+
+    private void ApplyLibraries(string? selected, int token, IReadOnlyList<MediaLibrary> libraries)
+    {
+        if (token != _reloadToken || App.Host.Exiting)
+            return;
         _libraries.Clear();
         foreach (var library in libraries)
             _libraries.Add(library);
@@ -94,19 +116,51 @@ public sealed partial class LibraryPage : Page
         if (_loading)
             return;
         var library = LibraryList.SelectedItem as MediaLibrary;
-        _cards.Clear();
+        ConfigureSort(library?.Kind);
+        var token = ++_bindToken;
         if (library == null)
         {
-            ConfigureSort(null);
+            _cards.Clear();
             UpdateEmptyText();
             return;
         }
 
-        ConfigureSort(library.Kind);
         var query = SearchBox.Text?.Trim() ?? "";
+        var sortIndex = SortBox.SelectedIndex;
+        var libraryId = library.Id;
+        var kind = library.Kind;
+        _ = Task.Run(() =>
+        {
+            IReadOnlyList<MediaItem> items;
+            try
+            {
+                items = App.Host.Repository.ListItems(libraryId);
+            }
+            catch (Exception)
+            {
+                items = [];
+            }
+
+            DispatcherQueue.TryEnqueue(() => ApplyCards(library, query, sortIndex, kind, token, items));
+        });
+    }
+
+    private void ApplyCards(
+        MediaLibrary library,
+        string query,
+        int sortIndex,
+        LibraryKind kind,
+        int token,
+        IReadOnlyList<MediaItem> items)
+    {
+        if (token != _bindToken || App.Host.Exiting || _loading)
+            return;
+        if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
+            return;
         var comparer = Comparer<MediaItem>.Create((left, right) =>
-            MediaItemComparer.Compare(left, right, library.Kind, SortBox.SelectedIndex == 1));
-        foreach (var item in App.Host.Repository.ListItems(library.Id).OrderBy(item => item, comparer))
+            MediaItemComparer.Compare(left, right, kind, sortIndex == 1));
+        _cards.Clear();
+        foreach (var item in items.OrderBy(item => item, comparer))
         {
             var card = CreateCard(item, library, query);
             if (card != null)

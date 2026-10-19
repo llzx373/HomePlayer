@@ -138,7 +138,6 @@
                         <Button Content="停止" Click="Stop_Click" />
                         <TextBlock x:Name="TimeText" VerticalAlignment="Center" />
                         <Button Content="管线信息" Click="Pipeline_Click" />
-                        <Button Content="用 FFmpeg 打开" Click="Ffmpeg_Click" />
                     </StackPanel>
                 </ScrollViewer>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">

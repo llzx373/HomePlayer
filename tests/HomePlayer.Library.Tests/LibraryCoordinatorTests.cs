@@ -46,6 +46,38 @@ public class LibraryCoordinatorTests
     }
 
     [Fact]
+    public async Task Start_can_run_more_than_once()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "HomePlayer.Tests." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var database = Path.Combine(directory, "library.db");
+        try
+        {
+            using var repository = new LibraryRepository(database);
+            await using var coordinator = new LibraryCoordinator(repository, () => null);
+            coordinator.Add("Test", directory, LibraryKind.Raw);
+
+            await Task.Run(coordinator.Start);
+            coordinator.Start();
+
+            Assert.NotEmpty(repository.ListLibraries());
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, true);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    [Fact]
     public async Task Empty_database_has_no_dirty_items()
     {
         var directory = Path.Combine(Path.GetTempPath(), "HomePlayer.Tests." + Guid.NewGuid().ToString("N"));

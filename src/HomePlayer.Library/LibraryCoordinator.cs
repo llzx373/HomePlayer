@@ -28,8 +28,10 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private readonly SemaphoreSlim _slotSignal = new(0);
     private bool _dirtyAll;
     private readonly object _slot = new();
+    private readonly object _watchersGate = new();
     private int _active;
     private int _maxParallel = 2;
+    private int _started;
 
     public LibraryCoordinator(LibraryRepository repository, Func<string?> apiKey)
     {
@@ -56,13 +58,41 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     public void Start()
     {
-        foreach (var library in _repository.ListLibraries())
-            Watch(library);
-        foreach (var id in _repository.ListQueued())
-            Submit(id);
+        if (Interlocked.Exchange(ref _started, 1) != 0)
+            return;
         for (var i = 0; i < 2; i++)
             _workers.Add(Task.Run(() => WorkerAsync(_shutdown.Token)));
-        foreach (var library in _repository.ListLibraries())
+        IReadOnlyList<MediaLibrary> libraries;
+        try
+        {
+            libraries = _repository.ListLibraries();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        foreach (var library in libraries)
+        {
+            try
+            {
+                Watch(library);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        try
+        {
+            foreach (var id in _repository.ListQueued())
+                Submit(id);
+        }
+        catch (Exception)
+        {
+        }
+
+        foreach (var library in libraries)
             ReconcileInBackground(library.Id);
     }
 
@@ -103,8 +133,10 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     public async Task RemoveAsync(string libraryId)
     {
-        if (_watchers.Remove(libraryId, out var watcher))
-            watcher.Dispose();
+        FileSystemWatcher? watcher;
+        lock (_watchersGate)
+            _watchers.Remove(libraryId, out watcher);
+        watcher?.Dispose();
         CancellationTokenSource? debounce = null;
         lock (_debounce)
             _debounce.Remove(libraryId, out debounce);
@@ -217,9 +249,12 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     {
         _shutdown.Cancel();
         _queue.Writer.TryComplete();
-        foreach (var watcher in _watchers.Values)
-            watcher.Dispose();
-        _watchers.Clear();
+        lock (_watchersGate)
+        {
+            foreach (var watcher in _watchers.Values)
+                watcher.Dispose();
+            _watchers.Clear();
+        }
         lock (_debounce)
         {
             foreach (var source in _debounce.Values)
@@ -257,14 +292,19 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     private void Watch(MediaLibrary library)
     {
-        if (!Directory.Exists(library.RootPath))
+        if (_shutdown.IsCancellationRequested || !Directory.Exists(library.RootPath))
             return;
+        lock (_watchersGate)
+        {
+            if (_shutdown.IsCancellationRequested || _watchers.ContainsKey(library.Id))
+                return;
+        }
+
         var watcher = new FileSystemWatcher(library.RootPath)
         {
             IncludeSubdirectories = true,
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            InternalBufferSize = 64 * 1024,
-            EnableRaisingEvents = true
+            InternalBufferSize = 64 * 1024
         };
         FileSystemEventHandler onChange = (_, _) => Debounce(library.Id);
         watcher.Created += onChange;
@@ -272,7 +312,24 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         watcher.Deleted += onChange;
         watcher.Renamed += (_, _) => Debounce(library.Id);
         watcher.Error += (_, _) => ReconcileInBackground(library.Id);
-        _watchers[library.Id] = watcher;
+        lock (_watchersGate)
+        {
+            if (_shutdown.IsCancellationRequested || _watchers.ContainsKey(library.Id))
+            {
+                watcher.Dispose();
+                return;
+            }
+
+            try
+            {
+                watcher.EnableRaisingEvents = true;
+                _watchers[library.Id] = watcher;
+            }
+            catch (Exception)
+            {
+                watcher.Dispose();
+            }
+        }
     }
 
     private void Debounce(string libraryId)

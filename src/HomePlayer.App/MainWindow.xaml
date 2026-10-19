@@ -42,55 +42,6 @@
             </NavigationView.FooterMenuItems>
             <Frame x:Name="RootFrame" />
         </NavigationView>
-        <Popup x:Name="NavPopup" Canvas.ZIndex="999" IsLightDismissEnabled="False">
-            <Grid
-                x:Name="OverlayNav"
-                Width="168"
-                RequestedTheme="Dark"
-                Background="#CC1A1A1A">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <StackPanel Padding="8,48,8,8" Spacing="4">
-                    <Button
-                        x:Name="NavLibraryButton"
-                        Tag="library"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Left"
-                        Click="OverlayNav_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE8B7;" FontSize="16" />
-                            <TextBlock Text="媒体库" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        x:Name="NavPlayerButton"
-                        Tag="player"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Left"
-                        Click="OverlayNav_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <FontIcon Glyph="&#xE768;" FontSize="16" />
-                            <TextBlock Text="正在播放" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-                <Button
-                    x:Name="NavSettingsButton"
-                    Grid.Row="1"
-                    Tag="settings"
-                    Margin="8,8,8,12"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left"
-                    Click="OverlayNav_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon Glyph="&#xE713;" FontSize="16" />
-                        <TextBlock Text="设置" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-            </Grid>
-        </Popup>
         <Popup x:Name="TitlePopup" Canvas.ZIndex="1000" IsLightDismissEnabled="False">
             <Grid
                 x:Name="OverlayTitleBar"
@@ -98,21 +49,48 @@
                 RequestedTheme="Dark"
                 Background="#CC1A1A1A">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+                <Button
+                    x:Name="TitleLibraryButton"
+                    MinWidth="0"
+                    Height="40"
+                    Padding="14,0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="0"
+                    Foreground="White"
+                    AutomationProperties.Name="媒体库"
+                    ToolTipService.ToolTip="媒体库"
+                    Click="TitleLibrary_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                        <TextBlock Text="媒体库" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 <Grid
                     x:Name="OverlayDrag"
+                    Grid.Column="1"
                     Background="Transparent"
                     PointerPressed="OverlayDrag_Pressed"
                     DoubleTapped="OverlayDrag_DoubleTapped">
                     <TextBlock
                         Text="HomePlayer"
-                        Margin="16,0,12,0"
+                        Margin="8,0,12,0"
                         VerticalAlignment="Center"
                         Foreground="White" />
                 </Grid>
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button
+                        x:Name="TitleSettingsButton"
+                        Style="{StaticResource CaptionButtonStyle}"
+                        AutomationProperties.Name="设置"
+                        ToolTipService.ToolTip="设置"
+                        Click="TitleSettings_Click">
+                        <FontIcon Glyph="&#xE713;" FontSize="14" />
+                    </Button>
                     <Button AutomationProperties.Name="最小化" ToolTipService.ToolTip="最小化" Style="{StaticResource CaptionButtonStyle}" Click="Minimize_Click">
                         <FontIcon Glyph="&#xE921;" FontSize="12" />
                     </Button>

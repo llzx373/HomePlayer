@@ -13,7 +13,7 @@
                 <ComboBoxItem Content="经典标题栏" />
                 <ComboBoxItem Content="无边框播放" />
             </ComboBox>
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="经典标题栏始终留在窗口最上方，画面不能盖住最小化、最大化和关闭，进度条和按钮也一直留在下方。无边框播放只作用于正在播放页：画面铺满窗口，标题栏、左侧导航、进度条和按钮栏平时隐藏，鼠标移到对应展示区域时才出现。媒体库和设置页仍使用普通标题栏。全屏时只保留进度条，同样是鼠标移到底部才出现。" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="经典标题栏始终留在窗口最上方，画面不能盖住最小化、最大化和关闭，进度条和按钮也一直留在下方。无边框播放只作用于正在播放页：画面铺满窗口，标题栏、进度条和按钮栏平时隐藏，鼠标移到对应展示区域时才出现。正在播放页不占用左侧边栏，标题栏左上角回媒体库，右上角齿轮进设置。媒体库和设置页仍使用普通标题栏和左侧导航。全屏时只保留进度条，同样是鼠标移到底部才出现。" />
 
             <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="点一项后面的按钮，再按下要使用的键。可以加 Ctrl、Alt、Shift。点清除表示没有快捷键。同一组键只能给一个功能。" />

@@ -41,6 +41,7 @@ public partial class App : Application
         _window = new MainWindow();
         Window = _window;
         _window.Activate();
+        Host.StartLibraries();
     }
 
     private bool ClaimInstance()
