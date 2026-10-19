@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="HomePlayer.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Padding="24" Spacing="16" MaxWidth="720">
+        <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
+        <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机" />
+        <ToggleSwitch x:Name="TraySwitch" Header="关闭窗口时留在系统托盘" />
+        <TextBlock x:Name="LavText" TextWrapping="Wrap" />
+        <TextBlock x:Name="CacheText" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="保存" Click="Save_Click" />
+            <Button Content="清除缩略图缓存" Click="Clear_Click" />
+        </StackPanel>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="播放优先使用本机已安装的 64 位 LAV Splitter、LAV Video、LAV Audio。没有安装，或者 LAV 打不开文件时，会改用程序自带的 FFmpeg。缩略图始终用 FFmpeg 抽取。" />
+    </StackPanel>
+</Page>

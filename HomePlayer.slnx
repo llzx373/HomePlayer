@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HomePlayer.App/HomePlayer.App.csproj" />
+    <Project Path="src/HomePlayer.Core/HomePlayer.Core.csproj" />
+    <Project Path="src/HomePlayer.Data/HomePlayer.Data.csproj" />
+    <Project Path="src/HomePlayer.Ffmpeg/HomePlayer.Ffmpeg.csproj" />
+    <Project Path="src/HomePlayer.Library/HomePlayer.Library.csproj" />
+    <Project Path="src/HomePlayer.Playback/HomePlayer.Playback.csproj" />
+  </Folder>
+</Solution>

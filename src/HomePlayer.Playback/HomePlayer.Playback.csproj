@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HomePlayer.Playback</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <ProjectReference Include="..\HomePlayer.Core\HomePlayer.Core.csproj" />
+    <ProjectReference Include="..\HomePlayer.Ffmpeg\HomePlayer.Ffmpeg.csproj" />
+  </ItemGroup>
+</Project>
