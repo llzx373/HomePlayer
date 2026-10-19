@@ -12,13 +12,11 @@ public sealed partial class PlayerPage : Page
 {
     private readonly VideoPresenter _presenter;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
-    private readonly DispatcherTimer _scrubIdle = new() { Interval = TimeSpan.FromMilliseconds(220) };
     private bool _scrubbing;
     private bool _pointerDown;
     private bool _syncSlider;
     private bool _updatingVolume;
     private bool _playlistSync;
-    private long _lastSeekMs;
 
     public PlayerPage()
     {
@@ -40,12 +38,6 @@ public sealed partial class PlayerPage : Page
         PositionSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(Slider_Released), true);
         PositionSlider.AddHandler(PointerCanceledEvent, new PointerEventHandler(Slider_Released), true);
         PositionSlider.ValueChanged += Position_Changed;
-        _scrubIdle.Tick += (_, _) =>
-        {
-            if (_pointerDown)
-                return;
-            FinishScrub();
-        };
         _timer.Tick += (_, _) =>
         {
             if (_scrubbing || _pointerDown)
@@ -86,7 +78,11 @@ public sealed partial class PlayerPage : Page
             ? $"{Playback.EngineLabel} · {Playback.Status}"
             : $"{name} · {Playback.EngineLabel} · {Playback.Status}";
         if (PlaylistView.SelectedIndex != Playback.Playlist.CurrentIndex)
+        {
             PlaylistView.SelectedIndex = Playback.Playlist.CurrentIndex;
+            if (PlaylistView.SelectedItem != null)
+                PlaylistView.ScrollIntoView(PlaylistView.SelectedItem);
+        }
         MuteButton.IsChecked = Playback.Muted;
     }
 
@@ -110,19 +106,10 @@ public sealed partial class PlayerPage : Page
 
     private void Position_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (_syncSlider)
+        if (_syncSlider || !_pointerDown)
             return;
         _scrubbing = true;
         ShowScrubTime();
-        var now = Environment.TickCount64;
-        if (now - _lastSeekMs >= 180)
-        {
-            _lastSeekMs = now;
-            SeekToSlider();
-        }
-
-        _scrubIdle.Stop();
-        _scrubIdle.Start();
     }
 
     private void FinishScrub()
@@ -131,8 +118,6 @@ public sealed partial class PlayerPage : Page
             return;
         _scrubbing = false;
         _pointerDown = false;
-        _scrubIdle.Stop();
-        _lastSeekMs = Environment.TickCount64;
         SeekToSlider();
     }
 
@@ -192,6 +177,8 @@ public sealed partial class PlayerPage : Page
         PlaylistPane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PlaylistButton.IsChecked = open;
         _playlistSync = false;
+        Stage.UpdateLayout();
+        _presenter.Refresh();
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)

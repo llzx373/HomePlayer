@@ -12,6 +12,9 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     private IntPtr _graph;
     private string _name = "HomePlayer Video Sink";
     private readonly System.Diagnostics.Stopwatch _playClock = new();
+    private IntPtr _clock;
+    private long _runStart;
+    private long _lastPresentMs;
     private bool _completed;
 
     public BgraSinkFilter() => _pin = new BgraSinkPin(this);
@@ -34,6 +37,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         _state = 0;
         _completed = false;
         _playClock.Reset();
+        ReplaceClock(0);
         return Hr.Ok;
     }
 
@@ -47,6 +51,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     {
         _state = 2;
         _completed = false;
+        _runStart = start;
         _playClock.Restart();
         return Hr.Ok;
     }
@@ -57,11 +62,15 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         return Hr.Ok;
     }
 
-    public int SetSyncSource(IntPtr clock) => Hr.Ok;
+    public int SetSyncSource(IntPtr clock)
+    {
+        ReplaceClock(clock);
+        return Hr.Ok;
+    }
 
     public int GetSyncSource(out IntPtr clock)
     {
-        clock = 0;
+        clock = _clock == 0 ? 0 : AddRef(_clock);
         return Hr.Ok;
     }
 
@@ -113,14 +122,61 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
     internal void Deliver(VideoFrame frame) => FrameArrived?.Invoke(frame);
 
-    internal void WaitUntil(long streamTime)
+    internal bool WaitUntil(long streamTime)
     {
         if (_state != 2 || streamTime <= 0)
-            return;
-        var delay = TimeSpan.FromTicks(streamTime) - _playClock.Elapsed;
-        if (delay > TimeSpan.FromMilliseconds(2) && delay < TimeSpan.FromSeconds(2))
-            Thread.Sleep(delay);
+            return true;
+        while (_state == 2 && !_pin.Flushing)
+        {
+            var delay = TimeSpan.FromTicks(streamTime) - CurrentStreamTime();
+            if (delay <= TimeSpan.FromMilliseconds(2))
+            {
+                var now = Environment.TickCount64;
+                if (delay < TimeSpan.FromMilliseconds(-80) && now - _lastPresentMs < 40)
+                    return false;
+                _lastPresentMs = now;
+                return true;
+            }
+
+            if (delay > TimeSpan.FromSeconds(5))
+                return true;
+            var slice = delay > TimeSpan.FromMilliseconds(20) ? 20 : Math.Max(1, (int)delay.TotalMilliseconds);
+            if (_pin.FlushGate.Wait(slice))
+                return false;
+        }
+
+        return _state == 2 && !_pin.Flushing;
     }
+
+    private TimeSpan CurrentStreamTime()
+    {
+        var clock = _clock;
+        if (clock != 0)
+        {
+            var getTime = VtableGetTime(clock);
+            if (getTime(clock, out var time) >= 0)
+                return TimeSpan.FromTicks(Math.Max(0, time - _runStart));
+        }
+
+        return _playClock.Elapsed;
+    }
+
+    private void ReplaceClock(IntPtr clock)
+    {
+        var previous = _clock;
+        _clock = clock == 0 ? 0 : AddRef(clock);
+        if (previous != 0)
+            Marshal.Release(previous);
+    }
+
+    private static GetTimeDelegate VtableGetTime(IntPtr instance)
+    {
+        var table = Marshal.ReadIntPtr(instance);
+        return Marshal.GetDelegateForFunctionPointer<GetTimeDelegate>(Marshal.ReadIntPtr(table, 3 * IntPtr.Size));
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetTimeDelegate(IntPtr self, out long time);
 
     internal void NotifyEnd()
     {
@@ -353,8 +409,10 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         var length = SampleLength(samplePointer);
         if (length <= 0 || Width <= 0 || Height <= 0)
             return Hr.Ok;
-        if (SampleTime(samplePointer, out var start) >= 0)
-            _filter.WaitUntil(start);
+        if (SampleTime(samplePointer, out var start) >= 0 && !_filter.WaitUntil(start))
+            return Hr.Ok;
+        if (Flushing)
+            return Hr.Ok;
         var stride = Width * 4;
         var needed = stride * Height;
         var copyLength = Math.Min(length, needed);

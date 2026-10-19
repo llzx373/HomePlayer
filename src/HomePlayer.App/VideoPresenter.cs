@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using Vortice.Mathematics;
 using HomePlayer.Core;
 using WinRT;
 
@@ -11,21 +12,56 @@ namespace HomePlayer;
 
 public sealed class VideoPresenter : IDisposable
 {
+    private const string VertexShaderCode = """
+        struct Input {
+            float2 pos : POSITION;
+            float2 uv : TEXCOORD;
+        };
+        struct Output {
+            float4 pos : SV_Position;
+            float2 uv : TEXCOORD;
+        };
+        Output main(Input input) {
+            Output output;
+            output.pos = float4(input.pos, 0, 1);
+            output.uv = input.uv;
+            return output;
+        }
+        """;
+
+    private const string PixelShaderCode = """
+        Texture2D frameTexture : register(t0);
+        SamplerState frameSampler : register(s0);
+        float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+            return float4(frameTexture.Sample(frameSampler, uv).rgb, 1);
+        }
+        """;
+
     private readonly SwapChainPanel _panel;
     private readonly object _gate = new();
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
     private IDXGISwapChain1? _swapChain;
-    private ID3D11Texture2D? _upload;
+    private ID3D11RenderTargetView? _target;
+    private ID3D11Texture2D? _frameTexture;
+    private ID3D11ShaderResourceView? _frameView;
+    private ID3D11Buffer? _vertices;
+    private ID3D11VertexShader? _vertexShader;
+    private ID3D11PixelShader? _pixelShader;
+    private ID3D11InputLayout? _layout;
+    private ID3D11SamplerState? _sampler;
+    private ID3D11RasterizerState? _rasterizer;
+    private byte[]? _vertexBytecode;
     private VideoFrame? _pending;
-    private int[] _mapX = [];
     private int _width;
     private int _height;
+    private int _frameWidth;
+    private int _frameHeight;
     private float _scaleX = 1;
     private float _scaleY = 1;
+    private int _posted;
     private bool _drawing;
-    private bool _again;
-    private bool _resizePending;
+    private bool _resizing;
 
     public VideoPresenter(SwapChainPanel panel)
     {
@@ -38,100 +74,116 @@ public sealed class VideoPresenter : IDisposable
     public void Refresh()
     {
         Resize();
-        Draw();
+        PostDraw();
     }
 
     public void Submit(VideoFrame frame)
     {
-        var copy = new byte[frame.Data.Length];
-        Buffer.BlockCopy(frame.Data, 0, copy, 0, copy.Length);
         lock (_gate)
-        {
-            _pending = new VideoFrame
-            {
-                Width = frame.Width,
-                Height = frame.Height,
-                Stride = frame.Stride,
-                Data = copy,
-                BottomUp = frame.BottomUp
-            };
-        }
-
-        _panel.DispatcherQueue.TryEnqueue(Draw);
+            _pending = frame;
+        PostDraw();
     }
 
     public void Dispose()
     {
-        _upload?.Dispose();
+        _target?.Dispose();
+        _frameView?.Dispose();
+        _frameTexture?.Dispose();
+        _vertices?.Dispose();
+        _layout?.Dispose();
+        _vertexShader?.Dispose();
+        _pixelShader?.Dispose();
+        _sampler?.Dispose();
+        _rasterizer?.Dispose();
         _swapChain?.Dispose();
         _context?.Dispose();
         _device?.Dispose();
     }
 
+    private void PostDraw()
+    {
+        if (Interlocked.Exchange(ref _posted, 1) == 0)
+            _panel.DispatcherQueue.TryEnqueue(Draw);
+    }
+
     private void Resize()
     {
-        if (_drawing)
-        {
-            _resizePending = true;
+        if (_resizing)
             return;
-        }
-
         var scaleX = ScaleOf(_panel.CompositionScaleX);
         var scaleY = ScaleOf(_panel.CompositionScaleY);
-        var width = PixelWidth(scaleX);
-        var height = PixelHeight(scaleY);
+        var width = PixelSize(_panel.ActualWidth, scaleX);
+        var height = PixelSize(_panel.ActualHeight, scaleY);
         if (width < 2 || height < 2)
             return;
-        if (_swapChain != null && width == _width && height == _height && scaleX == _scaleX && scaleY == _scaleY)
+        if (_swapChain != null
+            && Math.Abs(width - _width) < 2
+            && Math.Abs(height - _height) < 2
+            && Math.Abs(scaleX - _scaleX) < 0.01f
+            && Math.Abs(scaleY - _scaleY) < 0.01f)
             return;
-        EnsureDevice();
-        if (_device == null)
-            return;
-        _upload?.Dispose();
-        _upload = null;
-        if (_swapChain == null)
-        {
-            using var dxgi = _device.QueryInterface<IDXGIDevice>();
-            using var adapter = dxgi.GetAdapter();
-            using var factory = adapter.GetParent<IDXGIFactory2>();
-            var description = new SwapChainDescription1
-            {
-                Width = (uint)width,
-                Height = (uint)height,
-                Format = Format.B8G8R8A8_UNorm,
-                SampleDescription = new SampleDescription(1, 0),
-                BufferUsage = Usage.RenderTargetOutput,
-                BufferCount = 2,
-                SwapEffect = SwapEffect.FlipDiscard,
-                AlphaMode = AlphaMode.Ignore,
-                Scaling = Scaling.Stretch
-            };
-            _swapChain = factory.CreateSwapChainForComposition(_device, description);
-            var native = _panel.As<ISwapChainPanelNative>();
-            native.SetSwapChain(_swapChain.NativePointer);
-        }
-        else
-        {
-            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
-        }
 
-        _width = width;
-        _height = height;
-        _scaleX = scaleX;
-        _scaleY = scaleY;
-        ApplyPanelTransform();
-        _upload = _device.CreateTexture2D(new Texture2DDescription
+        _resizing = true;
+        try
         {
-            Width = (uint)width,
-            Height = (uint)height,
-            MipLevels = 1,
-            ArraySize = 1,
-            Format = Format.B8G8R8A8_UNorm,
-            SampleDescription = new SampleDescription(1, 0),
-            Usage = ResourceUsage.Dynamic,
-            BindFlags = BindFlags.ShaderResource,
-            CPUAccessFlags = CpuAccessFlags.Write
-        });
+            EnsureDevice();
+            if (_device == null || _context == null)
+                return;
+            UnbindTarget();
+            if (_swapChain == null)
+            {
+                using var dxgi = _device.QueryInterface<IDXGIDevice>();
+                using var adapter = dxgi.GetAdapter();
+                using var factory = adapter.GetParent<IDXGIFactory2>();
+                var description = new SwapChainDescription1
+                {
+                    Width = (uint)width,
+                    Height = (uint)height,
+                    Format = Format.B8G8R8A8_UNorm,
+                    SampleDescription = new SampleDescription(1, 0),
+                    BufferUsage = Usage.RenderTargetOutput,
+                    BufferCount = 2,
+                    SwapEffect = SwapEffect.FlipDiscard,
+                    AlphaMode = AlphaMode.Ignore,
+                    Scaling = Scaling.Stretch
+                };
+                _swapChain = factory.CreateSwapChainForComposition(_device, description);
+                var native = _panel.As<ISwapChainPanelNative>();
+                native.SetSwapChain(_swapChain.NativePointer);
+            }
+            else
+            {
+                _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
+            }
+
+            _width = width;
+            _height = height;
+            _scaleX = scaleX;
+            _scaleY = scaleY;
+            ApplyPanelTransform();
+            using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            _target = _device.CreateRenderTargetView(back);
+            try
+            {
+                EnsurePipeline();
+            }
+            catch
+            {
+            }
+        }
+        finally
+        {
+            _resizing = false;
+        }
+    }
+
+    private void UnbindTarget()
+    {
+        _target?.Dispose();
+        _target = null;
+        if (_context == null)
+            return;
+        _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
     }
 
     private void ApplyPanelTransform()
@@ -150,34 +202,48 @@ public sealed class VideoPresenter : IDisposable
 
     private unsafe void Draw()
     {
+        Interlocked.Exchange(ref _posted, 0);
         if (_drawing)
         {
-            _again = true;
+            PostDraw();
             return;
         }
 
-        var scaleX = ScaleOf(_panel.CompositionScaleX);
-        var scaleY = ScaleOf(_panel.CompositionScaleY);
-        var width = PixelWidth(scaleX);
-        var height = PixelHeight(scaleY);
-        if (width >= 2 && height >= 2 && (_swapChain == null || width != _width || height != _height || scaleX != _scaleX || scaleY != _scaleY))
-            Resize();
-        if (_context == null || _swapChain == null || _upload == null || _width < 2 || _height < 2)
+        Resize();
+        if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _vertices == null)
             return;
         VideoFrame? frame;
         lock (_gate)
             frame = _pending;
-        if (frame == null)
+        if (frame == null || frame.Width < 1 || frame.Height < 1)
             return;
+
         _drawing = true;
         try
         {
-            var mapped = _context.Map(_upload, 0, MapMode.WriteDiscard);
-            Blit(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch, _width, _height);
-            _context.Unmap(_upload, 0);
-            using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-            _context.CopyResource(back, _upload);
-            _swapChain.Present(1, PresentFlags.None);
+            EnsureFrameTexture(frame.Width, frame.Height);
+            if (_frameTexture == null || _frameView == null)
+                return;
+            var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
+            CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
+            _context.Unmap(_frameTexture, 0);
+            WriteQuad(frame);
+            _context.OMSetRenderTargets(_target, null);
+            _context.RSSetViewport(0, 0, _width, _height);
+            _context.RSSetState(_rasterizer);
+            _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
+            _context.IASetInputLayout(_layout);
+            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+            uint[] stride = [16];
+            uint[] offset = [0];
+            _context.IASetVertexBuffers(0, 1, [_vertices], stride, offset);
+            _context.VSSetShader(_vertexShader, null!, 0);
+            _context.PSSetShader(_pixelShader, null!, 0);
+            _context.PSSetShaderResources(0, 1, [_frameView]);
+            _context.PSSetSamplers(0, 1, [_sampler!]);
+            _context.Draw(4, 0);
+            _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
+            _swapChain.Present(0, PresentFlags.None);
         }
         catch
         {
@@ -185,18 +251,79 @@ public sealed class VideoPresenter : IDisposable
         finally
         {
             _drawing = false;
-            if (_resizePending)
-            {
-                _resizePending = false;
-                Resize();
-                _again = true;
-            }
+            var newer = false;
+            lock (_gate)
+                newer = !ReferenceEquals(_pending, frame);
+            if (newer)
+                PostDraw();
+        }
+    }
 
-            if (_again)
-            {
-                _again = false;
-                _panel.DispatcherQueue.TryEnqueue(Draw);
-            }
+    private void EnsureFrameTexture(int width, int height)
+    {
+        if (_device == null || (_frameTexture != null && width == _frameWidth && height == _frameHeight))
+            return;
+        _context?.PSSetShaderResources(0, 1, new ID3D11ShaderResourceView[1]);
+
+        _frameView?.Dispose();
+        _frameTexture?.Dispose();
+        _frameTexture = _device.CreateTexture2D(new Texture2DDescription
+        {
+            Width = (uint)width,
+            Height = (uint)height,
+            MipLevels = 1,
+            ArraySize = 1,
+            Format = Format.B8G8R8A8_UNorm,
+            SampleDescription = new SampleDescription(1, 0),
+            Usage = ResourceUsage.Dynamic,
+            BindFlags = BindFlags.ShaderResource,
+            CPUAccessFlags = CpuAccessFlags.Write
+        });
+        _frameView = _device.CreateShaderResourceView(_frameTexture);
+        _frameWidth = width;
+        _frameHeight = height;
+    }
+
+    private unsafe void WriteQuad(VideoFrame frame)
+    {
+        if (_context == null || _vertices == null || _width < 2 || _height < 2)
+            return;
+        var scale = Math.Min(_width / (double)frame.Width, _height / (double)frame.Height);
+        if (scale <= 0)
+            return;
+        var drawWidth = Math.Clamp(frame.Width * scale, 1, _width);
+        var drawHeight = Math.Clamp(frame.Height * scale, 1, _height);
+        var originX = (_width - drawWidth) / 2;
+        var originY = (_height - drawHeight) / 2;
+        var left = (float)(originX / _width * 2 - 1);
+        var right = (float)((originX + drawWidth) / _width * 2 - 1);
+        var top = (float)(1 - originY / _height * 2);
+        var bottom = (float)(1 - (originY + drawHeight) / _height * 2);
+        var vTop = frame.BottomUp ? 1f : 0f;
+        var vBottom = frame.BottomUp ? 0f : 1f;
+        var quad = stackalloc float[16]
+        {
+            left, top, 0, vTop,
+            right, top, 1, vTop,
+            left, bottom, 0, vBottom,
+            right, bottom, 1, vBottom
+        };
+        var mapped = _context.Map(_vertices, 0, MapMode.WriteDiscard);
+        Buffer.MemoryCopy(quad, (void*)mapped.DataPointer, 64, 64);
+        _context.Unmap(_vertices, 0);
+    }
+
+    private static unsafe void CopyFrame(VideoFrame frame, byte* destination, int destinationPitch)
+    {
+        var rowBytes = frame.Width * 4;
+        if (rowBytes <= 0 || frame.Stride < rowBytes)
+            return;
+        for (var y = 0; y < frame.Height; y++)
+        {
+            var source = y * frame.Stride;
+            if (source + rowBytes > frame.Data.Length)
+                return;
+            Marshal.Copy(frame.Data, source, (IntPtr)(destination + y * destinationPitch), rowBytes);
         }
     }
 
@@ -217,81 +344,116 @@ public sealed class VideoPresenter : IDisposable
         _context = context;
     }
 
-    private int PixelWidth(float scale) => Math.Max(0, (int)Math.Round(_panel.ActualWidth * scale));
-    private int PixelHeight(float scale) => Math.Max(0, (int)Math.Round(_panel.ActualHeight * scale));
+    private unsafe void EnsurePipeline()
+    {
+        if (_device == null || _vertexShader != null)
+            return;
+        _vertexBytecode = CompileShader(VertexShaderCode, "vs_4_0");
+        var pixelBytecode = CompileShader(PixelShaderCode, "ps_4_0");
+        if (_vertexBytecode == null || pixelBytecode == null)
+            return;
+        fixed (byte* vertex = _vertexBytecode)
+        fixed (byte* pixel = pixelBytecode)
+        {
+            _vertexShader = _device.CreateVertexShader(vertex, (nuint)_vertexBytecode.Length);
+            _pixelShader = _device.CreatePixelShader(pixel, (nuint)pixelBytecode.Length);
+        }
+
+        _layout = _device.CreateInputLayout(
+        [
+            new InputElementDescription("POSITION", 0, Format.R32G32_Float, 0, 0),
+            new InputElementDescription("TEXCOORD", 0, Format.R32G32_Float, 8, 0)
+        ],
+        _vertexBytecode);
+
+        _vertices = _device.CreateBuffer(new BufferDescription
+        {
+            ByteWidth = 64,
+            Usage = ResourceUsage.Dynamic,
+            BindFlags = BindFlags.VertexBuffer,
+            CPUAccessFlags = CpuAccessFlags.Write
+        });
+        _sampler = _device.CreateSamplerState(new SamplerDescription
+        {
+            Filter = Filter.MinMagMipLinear,
+            AddressU = TextureAddressMode.Clamp,
+            AddressV = TextureAddressMode.Clamp,
+            AddressW = TextureAddressMode.Clamp,
+            MaxAnisotropy = 1,
+            ComparisonFunc = ComparisonFunction.Never,
+            MinLOD = 0,
+            MaxLOD = float.MaxValue
+        });
+        _rasterizer = _device.CreateRasterizerState(new RasterizerDescription
+        {
+            FillMode = FillMode.Solid,
+            CullMode = CullMode.None,
+            DepthClipEnable = true
+        });
+    }
+
+    private static int PixelSize(double dips, float scale) => Math.Max(0, (int)Math.Round(dips * scale));
     private static float ScaleOf(double value) => value < 0.01 ? 1f : (float)value;
 
-    private unsafe void Blit(VideoFrame frame, byte* destination, int destinationPitch, int viewWidth, int viewHeight)
+    private static byte[]? CompileShader(string source, string target)
     {
-        if (frame.Width < 1 || frame.Height < 1 || frame.Stride < 4 || frame.Data.Length < 4)
-            return;
-        var scale = Math.Min(viewWidth / (double)frame.Width, viewHeight / (double)frame.Height);
-        if (scale <= 0)
-            return;
-        var drawWidth = Math.Clamp((int)Math.Round(frame.Width * scale), 1, viewWidth);
-        var drawHeight = Math.Clamp((int)Math.Round(frame.Height * scale), 1, viewHeight);
-        var originX = (viewWidth - drawWidth) / 2;
-        var originY = (viewHeight - drawHeight) / 2;
-        if (_mapX.Length < drawWidth)
-            _mapX = new int[drawWidth];
-        for (var i = 0; i < drawWidth; i++)
+        var bytes = System.Text.Encoding.UTF8.GetBytes(source);
+        var entry = Marshal.StringToHGlobalAnsi("main");
+        var profile = Marshal.StringToHGlobalAnsi(target);
+        try
         {
-            var sourceX = (int)((long)i * frame.Width / drawWidth);
-            if (sourceX >= frame.Width)
-                sourceX = frame.Width - 1;
-            _mapX[i] = sourceX * 4;
-        }
-
-        for (var y = 0; y < viewHeight; y++)
-        {
-            var row = destination + y * destinationPitch;
-            if (y < originY || y >= originY + drawHeight)
+            unsafe
             {
-                ClearRow(row, viewWidth);
-                continue;
-            }
-
-            var sourceY = (int)((long)(y - originY) * frame.Height / drawHeight);
-            if (sourceY >= frame.Height)
-                sourceY = frame.Height - 1;
-            if (frame.BottomUp)
-                sourceY = frame.Height - 1 - sourceY;
-            var sourceRow = sourceY * frame.Stride;
-            if (originX > 0)
-                ClearRow(row, originX);
-            var pixel = row + originX * 4;
-            for (var i = 0; i < drawWidth; i++)
-            {
-                var source = sourceRow + _mapX[i];
-                if ((uint)(source + 3) < (uint)frame.Data.Length)
+                fixed (byte* pointer = bytes)
                 {
-                    pixel[0] = frame.Data[source];
-                    pixel[1] = frame.Data[source + 1];
-                    pixel[2] = frame.Data[source + 2];
+                    var result = D3DCompile((IntPtr)pointer, (nuint)bytes.Length, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, entry, profile, 0, 0, out var code, out var errors);
+                    if (errors != IntPtr.Zero)
+                        Marshal.Release(errors);
+                    if (result < 0 || code == IntPtr.Zero)
+                        return null;
+                    return ReadBlob(code);
                 }
-
-                pixel[3] = 255;
-                pixel += 4;
             }
-
-            var tail = viewWidth - originX - drawWidth;
-            if (tail > 0)
-                ClearRow(row + (originX + drawWidth) * 4, tail);
         }
-    }
-
-    private static unsafe void ClearRow(byte* row, int pixels)
-    {
-        var count = pixels * 4;
-        var index = 0;
-        for (; index + 8 <= count; index += 8)
-            *(ulong*)(row + index) = 0xFF000000FF000000UL;
-        for (; index < count; index += 4)
+        finally
         {
-            row[index] = row[index + 1] = row[index + 2] = 0;
-            row[index + 3] = 255;
+            Marshal.FreeHGlobal(entry);
+            Marshal.FreeHGlobal(profile);
         }
     }
+
+    private static byte[] ReadBlob(IntPtr blob)
+    {
+        var table = Marshal.ReadIntPtr(blob);
+        var getPointer = Marshal.GetDelegateForFunctionPointer<GetBufferPointerDelegate>(Marshal.ReadIntPtr(table, 3 * IntPtr.Size));
+        var getSize = Marshal.GetDelegateForFunctionPointer<GetBufferSizeDelegate>(Marshal.ReadIntPtr(table, 4 * IntPtr.Size));
+        var pointer = getPointer(blob);
+        var size = (int)getSize(blob).ToUInt64();
+        var bytes = new byte[size];
+        Marshal.Copy(pointer, bytes, 0, size);
+        Marshal.Release(blob);
+        return bytes;
+    }
+
+    [DllImport("d3dcompiler_47.dll", CallingConvention = CallingConvention.StdCall)]
+    private static extern int D3DCompile(
+        IntPtr source,
+        nuint sourceSize,
+        IntPtr sourceName,
+        IntPtr defines,
+        IntPtr include,
+        IntPtr entryPoint,
+        IntPtr target,
+        uint flags1,
+        uint flags2,
+        out IntPtr code,
+        out IntPtr errors);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate IntPtr GetBufferPointerDelegate(IntPtr self);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate nuint GetBufferSizeDelegate(IntPtr self);
 }
 
 [ComImport, Guid("63aad0b8-7c24-40ff-85a8-640d944cc325"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

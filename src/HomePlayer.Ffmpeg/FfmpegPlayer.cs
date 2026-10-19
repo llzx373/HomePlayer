@@ -22,6 +22,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private readonly ManualResetEventSlim _resume = new(false);
     private double? _seekSeconds;
     private long _audioWritten;
+    private int _audioEpoch;
+    private long _lastPresentMs;
     private string _path = "";
     private string? _container;
     private string? _videoCodecName;
@@ -33,6 +35,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
     public event Action<byte[], int>? AudioPcm;
+    public Func<int>? UnplayedBytes { get; set; }
 
     public bool IsOpen { get; private set; }
     public bool IsPlaying { get; private set; }
@@ -123,6 +126,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     public void Seek(TimeSpan position)
     {
+        Interlocked.Increment(ref _audioEpoch);
+        Interlocked.Exchange(ref _audioWritten, 0);
         lock (_gate)
             _seekSeconds = Math.Max(0, position.TotalSeconds);
         if (!IsPlaying)
@@ -271,12 +276,13 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     while (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
                     {
                         var pts = Pts(videoFrame, _videoTimeBase);
-                        var now = clockOrigin + clock.Elapsed.TotalSeconds;
-                        var wait = pts - now;
-                        if (wait > 0.002)
-                            Thread.Sleep((int)Math.Min(40, wait * 1000));
-                        Position = TimeSpan.FromSeconds(Math.Max(0, pts));
-                        FrameArrived?.Invoke(ToBgra(videoFrame));
+                        if (WaitForPresentation(pts, clock, clockOrigin))
+                        {
+                            Position = TimeSpan.FromSeconds(Math.Max(0, MediaSeconds(clock, clockOrigin)));
+                            FrameArrived?.Invoke(ToBgra(videoFrame));
+                            _lastPresentMs = Environment.TickCount64;
+                        }
+
                         ffmpeg.av_frame_unref(videoFrame);
                     }
                 }
@@ -343,8 +349,47 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Position = TimeSpan.FromSeconds(seconds);
     }
 
+    private bool WaitForPresentation(double pts, System.Diagnostics.Stopwatch clock, double origin)
+    {
+        while (IsPlaying && _cancel is { IsCancellationRequested: false })
+        {
+            lock (_gate)
+            {
+                if (_seekSeconds != null)
+                    return false;
+            }
+
+            var wait = pts - MediaSeconds(clock, origin);
+            if (wait <= 0.02)
+            {
+                if (wait < -0.08 && Environment.TickCount64 - _lastPresentMs < 40)
+                    return false;
+                return true;
+            }
+
+            if (wait > 5)
+                return true;
+            Thread.Sleep(TimeSpan.FromMilliseconds(Math.Min(20, Math.Max(1, wait * 1000))));
+        }
+
+        return false;
+    }
+
+    private double MediaSeconds(System.Diagnostics.Stopwatch clock, double origin)
+    {
+        if (UnplayedBytes != null)
+        {
+            var queued = Math.Max(0, UnplayedBytes());
+            var played = Math.Max(0, Interlocked.Read(ref _audioWritten) - queued);
+            return origin + played / 192000d;
+        }
+
+        return origin + clock.Elapsed.TotalSeconds;
+    }
+
     private void EmitAudio(AVFrame* frame)
     {
+        var epoch = Volatile.Read(ref _audioEpoch);
         var outSamples = (int)ffmpeg.av_rescale_rnd(
             ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + frame->nb_samples,
             48000,
@@ -361,6 +406,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             if (converted <= 0)
                 return;
             var count = converted * 4;
+            if (epoch != Volatile.Read(ref _audioEpoch))
+                return;
             Interlocked.Add(ref _audioWritten, count);
             AudioPcm?.Invoke(buffer, count);
         }

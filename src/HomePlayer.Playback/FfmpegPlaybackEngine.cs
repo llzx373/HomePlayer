@@ -41,6 +41,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
             _output = new WasapiOut(AudioClientShareMode.Shared, 100);
             _output.Init(_buffer);
             _output.Volume = _muted ? 0 : (float)_volume;
+            player.UnplayedBytes = () => _buffer?.BufferedBytes ?? 0;
         }
 
         lock (_gate)
