@@ -39,6 +39,7 @@ public sealed partial class PlayerPage : Page
     private long _anchorStamp;
     private bool _updatingVolume;
     private bool _playlistSync;
+    private bool _alwaysOnTopSync;
     private bool _overlayChrome;
     private bool _fullscreenChrome;
     private bool _controlsVisible = true;
@@ -61,6 +62,7 @@ public sealed partial class PlayerPage : Page
         {
             ApplyChromeLayout();
             SyncFullscreenButton();
+            SyncAlwaysOnTopButton();
         });
         App.Window.OverlayTick += UpdateControlsOverlay;
         PlaylistView.ItemsSource = playback.Playlist.Items;
@@ -98,6 +100,7 @@ public sealed partial class PlayerPage : Page
             }
             UpdateChrome();
             SyncFullscreenButton();
+            SyncAlwaysOnTopButton();
             LayoutProgress(ShownSeconds());
             _presenter.Refresh();
             FitWindow(false);
@@ -246,6 +249,7 @@ public sealed partial class PlayerPage : Page
         MuteButton.IsChecked = Playback.Muted;
         UpdateVolumeIcon();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
+        SyncAlwaysOnTopButton();
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
     }
@@ -460,6 +464,31 @@ public sealed partial class PlayerPage : Page
             FitWindow(true);
     }
 
+    private void AlwaysOnTop_Click(object sender, RoutedEventArgs e) =>
+        ApplyAlwaysOnTop(AlwaysOnTopButton.IsChecked == true);
+
+    private void ApplyAlwaysOnTop(bool on)
+    {
+        if (_alwaysOnTopSync)
+            return;
+        App.Host.Settings.AlwaysOnTop = on;
+        App.Host.SaveSettings();
+        App.Window.SetAlwaysOnTop(on);
+        SyncAlwaysOnTopButton();
+    }
+
+    private void SyncAlwaysOnTopButton()
+    {
+        if (AlwaysOnTopButton == null)
+            return;
+        var on = App.Host.Settings.AlwaysOnTop;
+        _alwaysOnTopSync = true;
+        AlwaysOnTopButton.IsChecked = on;
+        _alwaysOnTopSync = false;
+        if (AlwaysOnTopIcon != null)
+            AlwaysOnTopIcon.Opacity = on ? 1 : 0.45;
+    }
+
     private void FitWindow(bool force)
     {
         if (!force && !App.Host.Settings.FitWindow)
@@ -644,6 +673,7 @@ public sealed partial class PlayerPage : Page
         UpdateRepeatButton();
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(FitWindowButton, "自适应窗口", HotkeyCatalog.FitWindow);
+        ApplyTip(AlwaysOnTopButton, "置顶", HotkeyCatalog.ToggleAlwaysOnTop);
         ApplyTip(PlaylistButton, "播放列表", HotkeyCatalog.TogglePlaylist);
         ApplyTip(PipelineButton, "管线信息", HotkeyCatalog.TogglePipeline);
         SyncFullscreenButton();
@@ -723,6 +753,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);
+                break;
+            case HotkeyCatalog.ToggleAlwaysOnTop:
+                ApplyAlwaysOnTop(!App.Host.Settings.AlwaysOnTop);
                 break;
         }
     }

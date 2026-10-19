@@ -32,8 +32,10 @@ public sealed partial class SettingsPage : Page
         TraySwitch.IsOn = settings.CloseToTray;
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
         FitWindowSwitch.IsOn = settings.FitWindow;
+        AlwaysOnTopSwitch.IsOn = settings.AlwaysOnTop;
         TitleBarBox.SelectionChanged += TitleBar_Changed;
         FitWindowSwitch.Toggled += FitWindow_Toggled;
+        AlwaysOnTopSwitch.Toggled += AlwaysOnTop_Toggled;
         SplitterList.ItemsSource = _splitters;
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
@@ -47,6 +49,7 @@ public sealed partial class SettingsPage : Page
         Loaded += (_, _) =>
         {
             _loading = true;
+            AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
             LoadAudioDevices(App.Host.Settings.AudioOutputId);
             _loading = false;
             _ = RefreshCacheTextAsync();
@@ -75,11 +78,13 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
         App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
+        App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
         WriteAudioDevice();
         WriteCodecs();
         WriteHotkeys();
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
+        App.Window.SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
     }
 
     private void TitleBar_Changed(object sender, SelectionChangedEventArgs e)
@@ -97,6 +102,15 @@ public sealed partial class SettingsPage : Page
             return;
         App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
         App.Host.SaveSettings();
+    }
+
+    private void AlwaysOnTop_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
+        App.Host.SaveSettings();
+        App.Window.SetAlwaysOnTop(AlwaysOnTopSwitch.IsOn);
     }
 
     private void AudioDevice_Changed(object sender, SelectionChangedEventArgs e)

@@ -283,6 +283,14 @@
                         Click="FitWindow_Click">
                         <FontIcon x:Name="FitWindowIcon" Glyph="&#xE7C4;" FontSize="16" />
                     </ToggleButton>
+                    <ToggleButton
+                        x:Name="AlwaysOnTopButton"
+                        Style="{StaticResource PlayerIconToggleButton}"
+                        AutomationProperties.Name="置顶"
+                        ToolTipService.ToolTip="置顶"
+                        Click="AlwaysOnTop_Click">
+                        <FontIcon x:Name="AlwaysOnTopIcon" Glyph="&#xE840;" FontSize="16" Opacity="0.45" />
+                    </ToggleButton>
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                         <ToggleButton
                             x:Name="PlaylistButton"

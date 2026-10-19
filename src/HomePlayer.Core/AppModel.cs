@@ -47,6 +47,7 @@ public sealed class AppSettings
     public double Volume { get; set; } = 0.8;
     public TitleBarMode TitleBar { get; set; } = TitleBarMode.Classic;
     public bool FitWindow { get; set; }
+    public bool AlwaysOnTop { get; set; }
     public string? AudioOutputId { get; set; }
     public List<CodecPreference> SplitterOrder { get; set; } = [];
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];

@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
     private readonly TaskbarIcon _tray;
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private bool _fullscreen;
+    private bool _alwaysOnTop;
     private int _fitRestoreTries;
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
@@ -49,6 +50,7 @@ public sealed partial class MainWindow : Window
             OverlayTick?.Invoke();
         };
         Root.Loaded += OnRootLoaded;
+        SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         Nav.SelectedItem = Nav.MenuItems[0];
         _tray = new TaskbarIcon
         {
@@ -80,6 +82,7 @@ public sealed partial class MainWindow : Window
     {
         Root.Loaded -= OnRootLoaded;
         ApplyTitleBar();
+        SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         UpdateOverlayTimer();
     }
 
@@ -128,16 +131,28 @@ public sealed partial class MainWindow : Window
     private bool WantsPlayerOverlay() =>
         App.Host.Settings.TitleBar == TitleBarMode.Overlay && _pageTag == "player";
 
+    public void SetAlwaysOnTop(bool enabled)
+    {
+        _alwaysOnTop = enabled;
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.IsAlwaysOnTop = enabled;
+    }
+
     public void SetFullscreen(bool enabled)
     {
         if (_fullscreen == enabled)
             return;
+        if (enabled && AppWindow.Presenter is OverlappedPresenter overlapped)
+            _alwaysOnTop = overlapped.IsAlwaysOnTop;
         _fullscreen = enabled;
         SetOverlayOpen(false);
         AppWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
         ApplyNavPane();
         if (!enabled)
+        {
             ApplyTitleBar();
+            SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
+        }
         UpdateOverlayTimer();
         FullscreenChanged?.Invoke();
     }

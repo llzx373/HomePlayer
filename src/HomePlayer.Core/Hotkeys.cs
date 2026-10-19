@@ -20,6 +20,7 @@ public static class HotkeyCatalog
     public const string ToggleShuffle = "ToggleShuffle";
     public const string CycleRepeat = "CycleRepeat";
     public const string FitWindow = "FitWindow";
+    public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
 
     public static readonly HotkeyAction[] Actions =
     [
@@ -40,7 +41,8 @@ public static class HotkeyCatalog
         new(PlayWithFfmpeg, "用 FFmpeg 打开", ""),
         new(ToggleShuffle, "随机", ""),
         new(CycleRepeat, "循环模式", ""),
-        new(FitWindow, "自适应窗口", "")
+        new(FitWindow, "自适应窗口", ""),
+        new(ToggleAlwaysOnTop, "置顶", "")
     ];
 
     public static Dictionary<string, string> Defaults()
