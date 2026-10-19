@@ -8,6 +8,11 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
+            <Thickness x:Key="NavigationViewMinimalContentGridBorderThickness">0</Thickness>
+            <Thickness x:Key="TopNavigationViewContentGridBorderThickness">0</Thickness>
+            <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+            <CornerRadius x:Key="NavigationViewMinimalContentGridCornerRadius">0</CornerRadius>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

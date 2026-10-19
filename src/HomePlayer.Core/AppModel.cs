@@ -50,6 +50,7 @@ public sealed class AppSettings
     public List<CodecPreference> SplitterOrder { get; set; } = [];
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];
     public List<CodecPreference> AudioDecoderOrder { get; set; } = [];
+    public Dictionary<string, string> Hotkeys { get; set; } = [];
 }
 
 public sealed class MediaLibrary

@@ -6,6 +6,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -20,10 +21,15 @@ public sealed partial class MainWindow : Window
     private bool _fullscreen;
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
+    private bool _navOverlayVisible;
+    private DateTime _navHoldUntil;
+    private string _pageTag = "library";
+    private const double NavOverlayWidth = 168;
 
     public bool IsFullscreen => _fullscreen;
 
     public event Action? FullscreenChanged;
+    public event Action? OverlayTick;
 
     public MainWindow()
     {
@@ -37,8 +43,18 @@ public sealed partial class MainWindow : Window
             width,
             height));
         AppWindow.Closing += OnClosing;
-        Root.SizeChanged += (_, _) => OverlayTitleBar.Width = Root.ActualWidth;
-        _overlayTimer.Tick += (_, _) => UpdateOverlay();
+        AppWindow.Changed += OnAppWindowChanged;
+        Root.SizeChanged += (_, _) =>
+        {
+            OverlayTitleBar.Width = Root.ActualWidth;
+            OverlayNav.Height = Root.ActualHeight;
+        };
+        _overlayTimer.Tick += (_, _) =>
+        {
+            UpdateOverlay();
+            UpdateNavOverlay();
+            OverlayTick?.Invoke();
+        };
         _overlayTimer.Start();
         ApplyTitleBar();
         Nav.SelectedItem = Nav.MenuItems[0];
@@ -51,7 +67,7 @@ public sealed partial class MainWindow : Window
         var menu = new MenuFlyout();
         menu.Items.Add(Item("打开主窗口", ShowFromTray));
         menu.Items.Add(Item("播放/暂停", () => App.Host.Playback.TogglePlay()));
-        menu.Items.Add(Item("下一首", () => _ = App.Host.Playback.NextAsync()));
+        menu.Items.Add(Item("下一个", () => _ = App.Host.Playback.NextAsync()));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("退出", () => _ = ExitAsync()));
         _tray.ContextFlyout = menu;
@@ -75,15 +91,18 @@ public sealed partial class MainWindow : Window
         if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
             && (!presenter.HasBorder || presenter.HasTitleBar == overlay))
             presenter.SetBorderAndTitleBar(true, !overlay);
+        ApplyNavPane();
         if (!overlay || _fullscreen)
         {
             _overlayHoldUntil = DateTime.MinValue;
             SetOverlayOpen(false);
+            OverlayTick?.Invoke();
             return;
         }
 
         _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
         SetOverlayOpen(true);
+        OverlayTick?.Invoke();
     }
 
     public void SetFullscreen(bool enabled)
@@ -91,9 +110,9 @@ public sealed partial class MainWindow : Window
         if (_fullscreen == enabled)
             return;
         _fullscreen = enabled;
-        Nav.IsPaneVisible = !enabled;
         SetOverlayOpen(false);
         AppWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
+        ApplyNavPane();
         if (!enabled)
             ApplyTitleBar();
         FullscreenChanged?.Invoke();
@@ -101,22 +120,69 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        App.Host.Playback.Pause();
         if (App.Host.Exiting || !App.Host.Settings.CloseToTray)
             return;
         args.Cancel = true;
         AppWindow.Hide();
     }
 
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (args.DidVisibilityChange && !sender.IsVisible)
+        {
+            App.Host.Playback.Pause();
+            return;
+        }
+
+        if (args.DidPresenterChange && sender.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Minimized)
+            App.Host.Playback.Pause();
+    }
+
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string;
-        var page = tag switch
+        _pageTag = tag ?? "library";
+        var page = _pageTag switch
         {
             "player" => typeof(PlayerPage),
             "settings" => typeof(SettingsPage),
             _ => typeof(LibraryPage)
         };
         RootFrame.Navigate(page);
+        ApplyNavPane();
+    }
+
+    private void ApplyNavPane()
+    {
+        if (_fullscreen)
+        {
+            Nav.IsPaneVisible = false;
+            Nav.IsPaneOpen = false;
+            _navHoldUntil = DateTime.MinValue;
+            SetNavOverlayOpen(false);
+            return;
+        }
+
+        var player = _pageTag == "player";
+        var overlay = App.Host.Settings.TitleBar == TitleBarMode.Overlay;
+        if (player && overlay)
+        {
+            Nav.IsPaneVisible = false;
+            Nav.IsPaneOpen = false;
+            _navHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+            SetNavOverlayOpen(true);
+            return;
+        }
+
+        _navHoldUntil = DateTime.MinValue;
+        SetNavOverlayOpen(false);
+        Nav.IsPaneVisible = true;
+        Nav.PaneDisplayMode = player
+            ? NavigationViewPaneDisplayMode.LeftCompact
+            : NavigationViewPaneDisplayMode.Left;
+        Nav.IsPaneOpen = !player;
     }
 
     private async void Root_Drop(object sender, DragEventArgs e)
@@ -164,6 +230,25 @@ public sealed partial class MainWindow : Window
         return item;
     }
 
+    public bool TryGetClientCursor(out double x, out double y, out double width, out double height, out bool inside)
+    {
+        x = y = width = height = 0;
+        inside = false;
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (!GetCursorPos(out var point) || !ScreenToClient(hwnd, ref point) || !GetClientRect(hwnd, out var rect))
+            return false;
+        var dpi = GetDpiForWindow(hwnd);
+        if (dpi == 0)
+            dpi = 96;
+        var scale = 96.0 / dpi;
+        x = point.X * scale;
+        y = point.Y * scale;
+        width = rect.Right * scale;
+        height = rect.Bottom * scale;
+        inside = point.X >= 0 && point.Y >= 0 && point.X < rect.Right && point.Y < rect.Bottom;
+        return true;
+    }
+
     private void UpdateOverlay()
     {
         if (_fullscreen || App.Host.Settings.TitleBar != TitleBarMode.Overlay || !AppWindow.IsVisible)
@@ -178,22 +263,97 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var hwnd = WindowNative.GetWindowHandle(this);
-        if (!GetCursorPos(out var point) || !ScreenToClient(hwnd, ref point) || !GetClientRect(hwnd, out var rect))
+        if (!TryGetClientCursor(out _, out var dipY, out _, out _, out var inside))
             return;
-        if (point.X < 0 || point.Y < 0 || point.X >= rect.Right || point.Y >= rect.Bottom)
+        if (!inside)
         {
             if (DateTime.UtcNow >= _overlayHoldUntil)
                 SetOverlayOpen(false);
             return;
         }
 
-        var dpi = GetDpiForWindow(hwnd);
-        if (dpi == 0)
-            dpi = 96;
-        var dipY = point.Y * 96.0 / dpi;
         var nearTop = _overlayVisible ? dipY <= 46 : dipY <= 12;
         SetOverlayOpen(nearTop || DateTime.UtcNow < _overlayHoldUntil);
+    }
+
+    private bool WantsNavOverlay() =>
+        !_fullscreen
+        && _pageTag == "player"
+        && App.Host.Settings.TitleBar == TitleBarMode.Overlay
+        && AppWindow.IsVisible;
+
+    private void UpdateNavOverlay()
+    {
+        if (!WantsNavOverlay())
+        {
+            SetNavOverlayOpen(false);
+            return;
+        }
+
+        if (AppWindow.Presenter is OverlappedPresenter presenter && presenter.State == OverlappedPresenterState.Minimized)
+        {
+            SetNavOverlayOpen(false);
+            return;
+        }
+
+        if (!TryGetClientCursor(out var dipX, out _, out _, out _, out var inside))
+            return;
+        if (!inside)
+        {
+            if (DateTime.UtcNow >= _navHoldUntil)
+                SetNavOverlayOpen(false);
+            return;
+        }
+
+        var nearLeft = _navOverlayVisible ? dipX <= NavOverlayWidth + 8 : dipX <= 12;
+        SetNavOverlayOpen(nearLeft || DateTime.UtcNow < _navHoldUntil);
+    }
+
+    private void SetNavOverlayOpen(bool open)
+    {
+        if (!open && !_navOverlayVisible && !NavPopup.IsOpen)
+            return;
+        if (open && !WantsNavOverlay())
+            open = false;
+        if (_navOverlayVisible == open && NavPopup.IsOpen == open)
+            return;
+        _navOverlayVisible = open;
+        if (open)
+        {
+            OverlayNav.Height = Root.ActualHeight;
+            SyncOverlayNavButtons();
+        }
+
+        NavPopup.IsOpen = open;
+    }
+
+    private void SyncOverlayNavButtons()
+    {
+        MarkNavButton(NavLibraryButton, _pageTag == "library");
+        MarkNavButton(NavPlayerButton, _pageTag == "player");
+        MarkNavButton(NavSettingsButton, _pageTag == "settings");
+    }
+
+    private static void MarkNavButton(Button button, bool selected)
+    {
+        button.Background = selected
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF))
+            : new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+    }
+
+    private void OverlayNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag })
+            return;
+        object? item = tag switch
+        {
+            "library" => Nav.MenuItems[0],
+            "player" => Nav.MenuItems[1],
+            "settings" => Nav.FooterMenuItems[0],
+            _ => null
+        };
+        if (item != null)
+            Nav.SelectedItem = item;
     }
 
     private void SetOverlayOpen(bool open)
@@ -236,6 +396,7 @@ public sealed partial class MainWindow : Window
 
     private void Minimize_Click(object sender, RoutedEventArgs e)
     {
+        App.Host.Playback.Pause();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Minimize();
     }

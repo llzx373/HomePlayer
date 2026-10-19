@@ -80,6 +80,14 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
+    public void Pause()
+    {
+        if (_engine?.IsPlaying != true)
+            return;
+        _engine.Pause();
+        Notify();
+    }
+
     public void Stop()
     {
         _token++;

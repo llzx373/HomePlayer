@@ -3,6 +3,7 @@ using HomePlayer.Playback;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -22,23 +23,36 @@ public sealed partial class PlayerPage : Page
     private long _anchorStamp;
     private bool _updatingVolume;
     private bool _playlistSync;
+    private bool _overlayChrome;
+    private bool _fullscreenChrome;
+    private bool _controlsVisible = true;
+    private DateTime _controlsHoldUntil;
+    private double _controlsHeight = 110;
+    private bool _playlistBeforeFullscreen;
 
     public PlayerPage()
     {
         InitializeComponent();
+        KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         _presenter = new VideoPresenter(VideoSurface);
         VideoHost.SizeChanged += (_, _) => _presenter.Refresh();
         var playback = App.Host.Playback;
         playback.FrameArrived += _presenter.Submit;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
-        App.Window.FullscreenChanged += () => DispatcherQueue.TryEnqueue(SyncFullscreenButton);
+        App.Window.FullscreenChanged += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyChromeLayout();
+            SyncFullscreenButton();
+        });
+        App.Window.OverlayTick += UpdateControlsOverlay;
         PlaylistView.ItemsSource = playback.Playlist.Items;
         RepeatBox.SelectedIndex = (int)playback.Playlist.Repeat;
         _updatingVolume = true;
         VolumeSlider.Value = playback.Volume * 100;
         _updatingVolume = false;
         PositionBar.SizeChanged += (_, _) => LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
+        ControlsBar.SizeChanged += (_, _) => RememberControlsHeight();
         _timer.Tick += (_, _) =>
         {
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
@@ -48,6 +62,14 @@ public sealed partial class PlayerPage : Page
         _timer.Start();
         Loaded += (_, _) =>
         {
+            ApplyHotkeys();
+            SetPlaylist(PlaylistButton.IsChecked == true);
+            ApplyChromeLayout();
+            if (_overlayChrome)
+            {
+                _controlsHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+                SetControlsOpen(true);
+            }
             UpdateChrome();
             SyncFullscreenButton();
             LayoutProgress(ShownSeconds());
@@ -56,6 +78,127 @@ public sealed partial class PlayerPage : Page
     }
 
     private PlaybackController Playback => App.Host.Playback;
+
+    private bool WantsOverlayChrome() =>
+        App.Window.IsFullscreen || App.Host.Settings.TitleBar == TitleBarMode.Overlay;
+
+    private void ApplyChromeLayout()
+    {
+        var overlay = WantsOverlayChrome();
+        var fullscreen = App.Window.IsFullscreen;
+        var overlayChanged = overlay != _overlayChrome;
+        var fullscreenChanged = fullscreen != _fullscreenChrome;
+        if (!overlayChanged && !fullscreenChanged)
+            return;
+
+        if (overlayChanged)
+        {
+            _overlayChrome = overlay;
+            if (overlay)
+            {
+                Grid.SetRowSpan(Stage, 2);
+                Grid.SetRow(ControlsBar, 0);
+                Grid.SetRowSpan(ControlsBar, 2);
+                ControlsBar.VerticalAlignment = VerticalAlignment.Bottom;
+                ControlsRow.Height = new GridLength(0);
+                ControlsBar.RequestedTheme = ElementTheme.Dark;
+                ControlsBar.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, 0x1A, 0x1A, 0x1A));
+                _controlsHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+                _controlsVisible = false;
+                SetControlsOpen(true);
+            }
+            else
+            {
+                Grid.SetRowSpan(Stage, 1);
+                Grid.SetRow(ControlsBar, 1);
+                Grid.SetRowSpan(ControlsBar, 1);
+                ControlsBar.VerticalAlignment = VerticalAlignment.Stretch;
+                ControlsRow.Height = GridLength.Auto;
+                ControlsBar.RequestedTheme = ElementTheme.Default;
+                ControlsBar.ClearValue(Panel.BackgroundProperty);
+                _controlsHoldUntil = DateTime.MinValue;
+                _controlsVisible = false;
+                SetControlsOpen(true);
+            }
+        }
+
+        if (fullscreen && !_fullscreenChrome)
+        {
+            _playlistBeforeFullscreen = PlaylistPane.Visibility == Visibility.Visible;
+            SetPlaylist(false);
+            PipelinePanel.Visibility = Visibility.Collapsed;
+        }
+        else if (!fullscreen && _fullscreenChrome)
+        {
+            SetPlaylist(_playlistBeforeFullscreen);
+        }
+
+        _fullscreenChrome = fullscreen;
+        ButtonsRow.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
+        StatusText.Visibility = fullscreen ? Visibility.Collapsed : Visibility.Visible;
+        ControlsBar.Padding = fullscreen ? new Thickness(16, 10, 16, 14) : new Thickness(12, 8, 12, 12);
+        ControlsBar.RowSpacing = fullscreen ? 0 : 4;
+        if (fullscreenChanged)
+        {
+            _controlsHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+            SetControlsOpen(true);
+        }
+
+        ControlsBar.UpdateLayout();
+        RememberControlsHeight();
+        Stage.UpdateLayout();
+        _presenter.Refresh();
+    }
+
+    private void UpdateControlsOverlay()
+    {
+        ApplyChromeLayout();
+        if (!_overlayChrome || !IsLoaded || Visibility != Visibility.Visible)
+            return;
+        if (_scrubbing || _pointerDown)
+        {
+            SetControlsOpen(true);
+            return;
+        }
+
+        if (!App.Window.TryGetClientCursor(out var x, out var y, out var width, out var height, out _))
+            return;
+
+        RememberControlsHeight();
+        var band = _controlsVisible
+            ? Math.Max(_controlsHeight + 12, 48)
+            : 40;
+        var alongBottom = x >= -16 && x <= width + 16
+            && y >= height - band
+            && y <= height + 24;
+        SetControlsOpen(alongBottom || DateTime.UtcNow < _controlsHoldUntil);
+    }
+
+    private void SetControlsOpen(bool open)
+    {
+        if (!_overlayChrome)
+            open = true;
+        if (open)
+            RememberControlsHeight();
+        if (_controlsVisible == open)
+            return;
+        if (_controlsVisible)
+            RememberControlsHeight();
+        _controlsVisible = open;
+        ControlsBar.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (open)
+        {
+            ControlsBar.UpdateLayout();
+            RememberControlsHeight();
+            LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
+        }
+    }
+
+    private void RememberControlsHeight()
+    {
+        if (ControlsBar.ActualHeight > 1)
+            _controlsHeight = ControlsBar.ActualHeight;
+    }
 
     private void UpdateChrome()
     {
@@ -303,62 +446,95 @@ public sealed partial class PlayerPage : Page
         await Playback.PlayPathsAsync(files.Select(file => file.Path).ToList(), 0);
     }
 
-    private void Accel_Play(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        Playback.TogglePlay();
-        args.Handled = true;
-    }
-
-    private void Accel_Back(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
-        args.Handled = true;
-    }
-
-    private void Accel_Forward(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
-        args.Handled = true;
-    }
-
-    private void Accel_VolumeUp(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        VolumeSlider.Value = Math.Min(100, VolumeSlider.Value + 5);
-        args.Handled = true;
-    }
-
-    private void Accel_VolumeDown(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
-    {
-        VolumeSlider.Value = Math.Max(0, VolumeSlider.Value - 5);
-        args.Handled = true;
-    }
-
-    private void Accel_Fullscreen(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void VideoHost_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         App.Window.SetFullscreen(!App.Window.IsFullscreen);
-        args.Handled = true;
+        e.Handled = true;
     }
 
-    private void Accel_Escape(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void ApplyHotkeys()
     {
-        if (App.Window.IsFullscreen)
+        KeyboardAccelerators.Clear();
+        KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        foreach (var (id, text) in App.Host.Settings.Hotkeys)
         {
-            App.Window.SetFullscreen(false);
-            args.Handled = true;
-            return;
-        }
-
-        if (PipelinePanel.Visibility == Visibility.Visible)
-        {
-            PipelinePanel.Visibility = Visibility.Collapsed;
-            args.Handled = true;
+            if (!HotkeyChord.TryParse(text, out var key, out var modifiers))
+                continue;
+            var action = id;
+            var accel = new KeyboardAccelerator
+            {
+                Key = key,
+                Modifiers = modifiers
+            };
+            accel.Invoked += (_, args) =>
+            {
+                RunHotkey(action);
+                args.Handled = true;
+            };
+            KeyboardAccelerators.Add(accel);
         }
     }
 
-    private void Accel_Pipeline(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void RunHotkey(string action)
     {
-        TogglePipeline();
-        args.Handled = true;
+        switch (action)
+        {
+            case HotkeyCatalog.PlayPause:
+                Playback.TogglePlay();
+                break;
+            case HotkeyCatalog.Stop:
+                Playback.Stop();
+                break;
+            case HotkeyCatalog.Previous:
+                _ = Playback.PreviousAsync();
+                break;
+            case HotkeyCatalog.Next:
+                _ = Playback.NextAsync();
+                break;
+            case HotkeyCatalog.SeekBack:
+                Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
+                break;
+            case HotkeyCatalog.SeekForward:
+                Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
+                break;
+            case HotkeyCatalog.VolumeUp:
+                VolumeSlider.Value = Math.Min(100, VolumeSlider.Value + 5);
+                break;
+            case HotkeyCatalog.VolumeDown:
+                VolumeSlider.Value = Math.Max(0, VolumeSlider.Value - 5);
+                break;
+            case HotkeyCatalog.Mute:
+                Playback.SetMuted(!Playback.Muted);
+                MuteButton.IsChecked = Playback.Muted;
+                break;
+            case HotkeyCatalog.Fullscreen:
+                App.Window.SetFullscreen(!App.Window.IsFullscreen);
+                break;
+            case HotkeyCatalog.Escape:
+                if (App.Window.IsFullscreen)
+                    App.Window.SetFullscreen(false);
+                else if (PipelinePanel.Visibility == Visibility.Visible)
+                    PipelinePanel.Visibility = Visibility.Collapsed;
+                break;
+            case HotkeyCatalog.TogglePlaylist:
+                SetPlaylist(PlaylistPane.Visibility != Visibility.Visible);
+                break;
+            case HotkeyCatalog.TogglePipeline:
+                TogglePipeline();
+                break;
+            case HotkeyCatalog.OpenFiles:
+                Open_Click(this, new RoutedEventArgs());
+                break;
+            case HotkeyCatalog.PlayWithFfmpeg:
+                Ffmpeg_Click(this, new RoutedEventArgs());
+                break;
+            case HotkeyCatalog.ToggleShuffle:
+                ShuffleSwitch.IsOn = !ShuffleSwitch.IsOn;
+                break;
+            case HotkeyCatalog.CycleRepeat:
+                RepeatBox.SelectedIndex = (RepeatBox.SelectedIndex + 1) % RepeatBox.Items.Count;
+                break;
+        }
     }
 
     private void TogglePipeline()

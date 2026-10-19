@@ -3,8 +3,12 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using HomePlayer.Core;
 using HomePlayer.Playback;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace HomePlayer;
 
@@ -13,6 +17,8 @@ public sealed partial class SettingsPage : Page
     private readonly ObservableCollection<CodecRow> _splitters = [];
     private readonly ObservableCollection<CodecRow> _videos = [];
     private readonly ObservableCollection<CodecRow> _audios = [];
+    private readonly ObservableCollection<HotkeyRow> _hotkeys = [];
+    private HotkeyRow? _capturing;
     private bool _loading = true;
 
     public SettingsPage()
@@ -26,8 +32,12 @@ public sealed partial class SettingsPage : Page
         SplitterList.ItemsSource = _splitters;
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
+        HotkeyList.ItemsSource = _hotkeys;
+        LoadHotkeys(settings.Hotkeys);
         LoadAudioDevices(settings.AudioOutputId);
         ReloadCodecs(settings);
+        AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
+        Unloaded += (_, _) => EndCapture();
         _loading = false;
         CacheText.Text = $"缓存占用 {Format(App.Host.Libraries.CacheBytes())}";
     }
@@ -39,6 +49,7 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
         WriteAudioDevice();
         WriteCodecs();
+        WriteHotkeys();
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
     }
@@ -171,6 +182,98 @@ public sealed partial class SettingsPage : Page
     private static List<CodecPreference> ToPreferences(ObservableCollection<CodecRow> rows)
         => rows.Select(row => new CodecPreference { Id = row.Codec.Id, Enabled = row.Enabled && row.Usable }).ToList();
 
+    private void LoadHotkeys(Dictionary<string, string> saved)
+    {
+        var map = HotkeyCatalog.Merge(saved);
+        _hotkeys.Clear();
+        foreach (var action in HotkeyCatalog.Actions)
+            _hotkeys.Add(new HotkeyRow(action.Id, action.Title, map[action.Id]));
+    }
+
+    private void WriteHotkeys()
+    {
+        App.Host.Settings.Hotkeys = _hotkeys.ToDictionary(row => row.Id, row => row.Chord);
+    }
+
+    private void ResetHotkeys_Click(object sender, RoutedEventArgs e)
+    {
+        EndCapture();
+        LoadHotkeys(HotkeyCatalog.Defaults());
+        WriteHotkeys();
+        App.Host.SaveSettings();
+    }
+
+    private void Hotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not HotkeyRow row)
+            return;
+        if (_capturing == row)
+        {
+            EndCapture();
+            return;
+        }
+
+        EndCapture();
+        _capturing = row;
+        row.Capturing = true;
+        Focus(FocusState.Programmatic);
+    }
+
+    private void HotkeyClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not HotkeyRow row)
+            return;
+        if (_capturing == row)
+            EndCapture();
+        Assign(row, "");
+    }
+
+    private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_capturing == null || HotkeyChord.IsModifier(e.Key))
+            return;
+
+        var modifiers = VirtualKeyModifiers.None;
+        if (Down(VirtualKey.Control))
+            modifiers |= VirtualKeyModifiers.Control;
+        if (Down(VirtualKey.Menu))
+            modifiers |= VirtualKeyModifiers.Menu;
+        if (Down(VirtualKey.Shift))
+            modifiers |= VirtualKeyModifiers.Shift;
+        if (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows))
+            modifiers |= VirtualKeyModifiers.Windows;
+        Assign(_capturing, HotkeyChord.Format(e.Key, modifiers));
+        EndCapture();
+        e.Handled = true;
+    }
+
+    private void Assign(HotkeyRow row, string chord)
+    {
+        if (!string.IsNullOrEmpty(chord))
+        {
+            foreach (var other in _hotkeys)
+            {
+                if (other != row && string.Equals(other.Chord, chord, StringComparison.OrdinalIgnoreCase))
+                    other.Chord = "";
+            }
+        }
+
+        row.Chord = chord;
+        WriteHotkeys();
+        App.Host.SaveSettings();
+    }
+
+    private void EndCapture()
+    {
+        if (_capturing == null)
+            return;
+        _capturing.Capturing = false;
+        _capturing = null;
+    }
+
+    private static bool Down(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
     private async void Clear_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog
@@ -200,6 +303,55 @@ public sealed partial class SettingsPage : Page
 
         return $"{size:0.##} {units[unit]}";
     }
+}
+
+public sealed class HotkeyRow : INotifyPropertyChanged
+{
+    private string _chord;
+    private bool _capturing;
+
+    public HotkeyRow(string id, string title, string chord)
+    {
+        Id = id;
+        Title = title;
+        _chord = chord;
+    }
+
+    public string Id { get; }
+    public string Title { get; }
+
+    public string Chord
+    {
+        get => _chord;
+        set
+        {
+            if (_chord == value)
+                return;
+            _chord = value;
+            OnChanged();
+            OnChanged(nameof(Display));
+        }
+    }
+
+    public bool Capturing
+    {
+        get => _capturing;
+        set
+        {
+            if (_capturing == value)
+                return;
+            _capturing = value;
+            OnChanged();
+            OnChanged(nameof(Display));
+        }
+    }
+
+    public string Display => _capturing ? "按下快捷键…" : HotkeyChord.Display(_chord);
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 public sealed class CodecRow : INotifyPropertyChanged

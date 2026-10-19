@@ -55,12 +55,18 @@ public sealed class AppHost : IAsyncDisposable
         try
         {
             if (!File.Exists(AppPaths.SettingsFile))
-                return new AppSettings();
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(AppPaths.SettingsFile)) ?? new AppSettings();
+                return WithHotkeys(new AppSettings());
+            return WithHotkeys(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(AppPaths.SettingsFile)) ?? new AppSettings());
         }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
-            return new AppSettings();
+            return WithHotkeys(new AppSettings());
         }
+    }
+
+    private static AppSettings WithHotkeys(AppSettings settings)
+    {
+        settings.Hotkeys = HotkeyCatalog.Merge(settings.Hotkeys);
+        return settings;
     }
 }
