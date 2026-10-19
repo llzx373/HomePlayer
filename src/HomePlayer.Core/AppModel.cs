@@ -28,6 +28,15 @@ public enum RepeatMode
     All = 2
 }
 
+public enum AspectMode
+{
+    Fit = 0,
+    Fill = 1,
+    Stretch = 2,
+    Ratio16x9 = 3,
+    Ratio4x3 = 4
+}
+
 public enum TitleBarMode
 {
     Classic = 0,

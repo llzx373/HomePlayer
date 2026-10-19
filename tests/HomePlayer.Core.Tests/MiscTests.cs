@@ -104,6 +104,94 @@ public class WindowFitTests
     }
 }
 
+public class VideoAspectTests
+{
+    [Fact]
+    public void Fit_same_size_fills_ndc()
+    {
+        var q = VideoAspect.Quad(1920, 1080, 1920, 1080, AspectMode.Fit, false);
+
+        AssertQuad(q, -1, 1, 1, -1, 0, 1, 0, 1);
+    }
+
+    [Fact]
+    public void Fit_taller_stage_letterboxes()
+    {
+        var q = VideoAspect.Quad(1920, 1200, 1920, 1080, AspectMode.Fit, false);
+
+        Assert.Equal(-1f, q.Left, 5);
+        Assert.Equal(1f, q.Right, 5);
+        Assert.True(q.Top < 1f);
+        Assert.True(q.Bottom > -1f);
+        Assert.Equal(0.9f, q.Top, 5);
+        Assert.Equal(-0.9f, q.Bottom, 5);
+        Assert.Equal(0f, q.UvLeft, 5);
+        Assert.Equal(1f, q.UvRight, 5);
+        Assert.Equal(0f, q.UvTop, 5);
+        Assert.Equal(1f, q.UvBottom, 5);
+    }
+
+    [Fact]
+    public void Fill_taller_stage_covers_and_crops_uv()
+    {
+        var q = VideoAspect.Quad(1920, 1200, 1920, 1080, AspectMode.Fill, false);
+
+        AssertQuad(q, -1, 1, 1, -1, 0.05f, 0.95f, 0, 1);
+    }
+
+    [Fact]
+    public void Fill_wider_stage_crops_uv_vertically()
+    {
+        var q = VideoAspect.Quad(2560, 1080, 1920, 1080, AspectMode.Fill, false);
+
+        AssertQuad(q, -1, 1, 1, -1, 0, 1, 0.125f, 0.875f);
+    }
+
+    [Fact]
+    public void Stretch_fills_stage_and_uv()
+    {
+        var q = VideoAspect.Quad(1920, 1200, 1920, 1080, AspectMode.Stretch, false);
+
+        AssertQuad(q, -1, 1, 1, -1, 0, 1, 0, 1);
+    }
+
+    [Fact]
+    public void Ratio16x9_into_4x3_stage_letterboxes()
+    {
+        var q = VideoAspect.Quad(1920, 1440, 1440, 1080, AspectMode.Ratio16x9, false);
+
+        Assert.Equal(-1f, q.Left, 5);
+        Assert.Equal(1f, q.Right, 5);
+        Assert.Equal(0.75f, q.Top, 5);
+        Assert.Equal(-0.75f, q.Bottom, 5);
+        Assert.Equal(0f, q.UvLeft, 5);
+        Assert.Equal(1f, q.UvRight, 5);
+        Assert.Equal(0f, q.UvTop, 5);
+        Assert.Equal(1f, q.UvBottom, 5);
+    }
+
+    private static void AssertQuad(
+        VideoQuad q,
+        float left,
+        float right,
+        float top,
+        float bottom,
+        float uvLeft,
+        float uvRight,
+        float uvTop,
+        float uvBottom)
+    {
+        Assert.Equal(left, q.Left, 5);
+        Assert.Equal(right, q.Right, 5);
+        Assert.Equal(top, q.Top, 5);
+        Assert.Equal(bottom, q.Bottom, 5);
+        Assert.Equal(uvLeft, q.UvLeft, 5);
+        Assert.Equal(uvRight, q.UvRight, 5);
+        Assert.Equal(uvTop, q.UvTop, 5);
+        Assert.Equal(uvBottom, q.UvBottom, 5);
+    }
+}
+
 public class VideoFrameTests
 {
     [Fact]

@@ -101,6 +101,7 @@ public sealed partial class PlayerPage : Page
             UpdateChrome();
             SyncFullscreenButton();
             SyncAlwaysOnTopButton();
+            SyncAspectMenu();
             LayoutProgress(ShownSeconds());
             _presenter.Refresh();
             FitWindow(false);
@@ -467,6 +468,42 @@ public sealed partial class PlayerPage : Page
     private void AlwaysOnTop_Click(object sender, RoutedEventArgs e) =>
         ApplyAlwaysOnTop(AlwaysOnTopButton.IsChecked == true);
 
+    private void AspectFlyout_Opening(object sender, object e) => SyncAspectMenu();
+
+    private void AspectItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element)
+            return;
+        SetAspectMode(AspectFromTag(element.Tag));
+    }
+
+    private void SetAspectMode(AspectMode mode)
+    {
+        _presenter.AspectMode = mode;
+        SyncAspectMenu();
+    }
+
+    private void SyncAspectMenu()
+    {
+        if (AspectFitItem == null)
+            return;
+        var mode = _presenter.AspectMode;
+        AspectFitItem.IsChecked = mode == AspectMode.Fit;
+        AspectFillItem.IsChecked = mode == AspectMode.Fill;
+        AspectStretchItem.IsChecked = mode == AspectMode.Stretch;
+        Aspect16x9Item.IsChecked = mode == AspectMode.Ratio16x9;
+        Aspect4x3Item.IsChecked = mode == AspectMode.Ratio4x3;
+    }
+
+    private static AspectMode AspectFromTag(object? tag) => tag switch
+    {
+        "Fill" => AspectMode.Fill,
+        "Stretch" => AspectMode.Stretch,
+        "Ratio16x9" => AspectMode.Ratio16x9,
+        "Ratio4x3" => AspectMode.Ratio4x3,
+        _ => AspectMode.Fit
+    };
+
     private void ApplyAlwaysOnTop(bool on)
     {
         if (_alwaysOnTopSync)
@@ -674,6 +711,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(FitWindowButton, "自适应窗口", HotkeyCatalog.FitWindow);
         ApplyTip(AlwaysOnTopButton, "置顶", HotkeyCatalog.ToggleAlwaysOnTop);
+        ApplyTip(AspectButton, "画面比例", HotkeyCatalog.CycleAspect);
         ApplyTip(PlaylistButton, "播放列表", HotkeyCatalog.TogglePlaylist);
         ApplyTip(PipelineButton, "管线信息", HotkeyCatalog.TogglePipeline);
         SyncFullscreenButton();
@@ -753,6 +791,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);
+                break;
+            case HotkeyCatalog.CycleAspect:
+                SetAspectMode(VideoAspect.Next(_presenter.AspectMode));
                 break;
             case HotkeyCatalog.ToggleAlwaysOnTop:
                 ApplyAlwaysOnTop(!App.Host.Settings.AlwaysOnTop);

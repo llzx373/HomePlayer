@@ -57,6 +57,8 @@ public sealed class VideoPresenter : IDisposable
     private int _height;
     private int _frameWidth;
     private int _frameHeight;
+    private bool _frameBottomUp;
+    private AspectMode _aspectMode = AspectMode.Fit;
     private float _scaleX = 1;
     private float _scaleY = 1;
     private readonly uint[] _vertexStrides = [16];
@@ -75,6 +77,18 @@ public sealed class VideoPresenter : IDisposable
         panel.Loaded += (_, _) => Refresh();
         panel.SizeChanged += (_, _) => Refresh();
         panel.CompositionScaleChanged += (_, _) => Refresh();
+    }
+
+    public AspectMode AspectMode
+    {
+        get => _aspectMode;
+        set
+        {
+            if (_aspectMode == value)
+                return;
+            _aspectMode = value;
+            Refresh();
+        }
     }
 
     public void Refresh()
@@ -140,6 +154,7 @@ public sealed class VideoPresenter : IDisposable
         _height = 0;
         _frameWidth = 0;
         _frameHeight = 0;
+        _frameBottomUp = false;
     }
 
     private void PostDraw()
@@ -261,22 +276,35 @@ public sealed class VideoPresenter : IDisposable
             _pending = null;
         }
 
-        if (frame == null || frame.Width < 1 || frame.Height < 1)
+        var upload = frame != null && frame.Width >= 1 && frame.Height >= 1;
+        if (frame != null && !upload)
         {
-            frame?.ReturnBuffer();
-            return;
+            frame.ReturnBuffer();
+            frame = null;
         }
+
+        if (!upload && (_frameTexture == null || _frameView == null || _frameWidth < 1 || _frameHeight < 1))
+            return;
 
         _drawing = true;
         try
         {
-            EnsureFrameTexture(frame.Width, frame.Height);
-            if (_frameTexture == null || _frameView == null)
+            if (upload)
+            {
+                EnsureFrameTexture(frame!.Width, frame.Height);
+                if (_frameTexture == null || _frameView == null)
+                    return;
+                var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
+                CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
+                _context.Unmap(_frameTexture, 0);
+                _frameBottomUp = frame.BottomUp;
+            }
+
+            var frameView = _frameView;
+            if (frameView == null)
                 return;
-            var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
-            CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
-            _context.Unmap(_frameTexture, 0);
-            WriteQuad(frame);
+
+            WriteQuad();
             _context.OMSetRenderTargets(_target, null);
             _context.RSSetViewport(0, 0, _width, _height);
             _context.RSSetState(_rasterizer);
@@ -287,7 +315,7 @@ public sealed class VideoPresenter : IDisposable
             _context.IASetVertexBuffers(0, 1, _vertexBuffers, _vertexStrides, _vertexOffsets);
             _context.VSSetShader(_vertexShader, null!, 0);
             _context.PSSetShader(_pixelShader, null!, 0);
-            _frameViews[0] = _frameView;
+            _frameViews[0] = frameView;
             _context.PSSetShaderResources(0, 1, _frameViews);
             _samplers[0] = _sampler!;
             _context.PSSetSamplers(0, 1, _samplers);
@@ -302,7 +330,7 @@ public sealed class VideoPresenter : IDisposable
         }
         finally
         {
-            frame.ReturnBuffer();
+            frame?.ReturnBuffer();
             _drawing = false;
             var newer = false;
             lock (_gate)
@@ -385,29 +413,17 @@ public sealed class VideoPresenter : IDisposable
         _frameHeight = height;
     }
 
-    private unsafe void WriteQuad(VideoFrame frame)
+    private unsafe void WriteQuad()
     {
-        if (_context == null || _vertices == null || _width < 2 || _height < 2)
+        if (_context == null || _vertices == null || _width < 2 || _height < 2 || _frameWidth < 1 || _frameHeight < 1)
             return;
-        var scale = Math.Min(_width / (double)frame.Width, _height / (double)frame.Height);
-        if (scale <= 0)
-            return;
-        var drawWidth = Math.Clamp(frame.Width * scale, 1, _width);
-        var drawHeight = Math.Clamp(frame.Height * scale, 1, _height);
-        var originX = (_width - drawWidth) / 2;
-        var originY = (_height - drawHeight) / 2;
-        var left = (float)(originX / _width * 2 - 1);
-        var right = (float)((originX + drawWidth) / _width * 2 - 1);
-        var top = (float)(1 - originY / _height * 2);
-        var bottom = (float)(1 - (originY + drawHeight) / _height * 2);
-        var vTop = frame.BottomUp ? 1f : 0f;
-        var vBottom = frame.BottomUp ? 0f : 1f;
+        var q = VideoAspect.Quad(_width, _height, _frameWidth, _frameHeight, _aspectMode, _frameBottomUp);
         var quad = stackalloc float[16]
         {
-            left, top, 0, vTop,
-            right, top, 1, vTop,
-            left, bottom, 0, vBottom,
-            right, bottom, 1, vBottom
+            q.Left, q.Top, q.UvLeft, q.UvTop,
+            q.Right, q.Top, q.UvRight, q.UvTop,
+            q.Left, q.Bottom, q.UvLeft, q.UvBottom,
+            q.Right, q.Bottom, q.UvRight, q.UvBottom
         };
         var mapped = _context.Map(_vertices, 0, MapMode.WriteDiscard);
         Buffer.MemoryCopy(quad, (void*)mapped.DataPointer, 64, 64);
