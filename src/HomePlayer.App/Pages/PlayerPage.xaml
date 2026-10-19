@@ -82,7 +82,41 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Slider x:Name="PositionSlider" Minimum="0" Maximum="1" />
+            <Grid
+                x:Name="PositionBar"
+                Height="22"
+                Background="Transparent"
+                PointerPressed="Position_Pressed"
+                PointerMoved="Position_Moved"
+                PointerReleased="Position_Released"
+                PointerCanceled="Position_Released"
+                PointerCaptureLost="Position_Released">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="PlayedColumn" Width="0" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border
+                    Grid.ColumnSpan="2"
+                    Height="4"
+                    VerticalAlignment="Center"
+                    CornerRadius="2"
+                    Background="#667F7F7F" />
+                <Border
+                    Grid.Column="0"
+                    Height="4"
+                    VerticalAlignment="Center"
+                    CornerRadius="2"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Border
+                    x:Name="PositionThumb"
+                    Grid.ColumnSpan="2"
+                    Width="14"
+                    Height="14"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    CornerRadius="7"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}" />
+            </Grid>
             <Grid Grid.Row="1" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

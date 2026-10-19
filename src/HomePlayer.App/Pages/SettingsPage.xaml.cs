@@ -1,3 +1,4 @@
+using HomePlayer.Core;
 using HomePlayer.Playback;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,12 +7,17 @@ namespace HomePlayer;
 
 public sealed partial class SettingsPage : Page
 {
+    private bool _loading = true;
+
     public SettingsPage()
     {
         InitializeComponent();
         var settings = App.Host.Settings;
         ApiKeyBox.Text = settings.TmdbApiKey ?? "";
         TraySwitch.IsOn = settings.CloseToTray;
+        TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
+        TitleBarBox.SelectionChanged += TitleBar_Changed;
+        _loading = false;
         var lav = LavLocator.Detect();
         LavText.Text = lav == null
             ? "未检测到 64 位 LAV Filters。播放时会提示，并可以改用 FFmpeg。"
@@ -23,7 +29,18 @@ public sealed partial class SettingsPage : Page
     {
         App.Host.Settings.TmdbApiKey = string.IsNullOrWhiteSpace(ApiKeyBox.Text) ? null : ApiKeyBox.Text.Trim();
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
+        App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
         App.Host.SaveSettings();
+        App.Window.ApplyTitleBar();
+    }
+
+    private void TitleBar_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || TitleBarBox.SelectedIndex < 0)
+            return;
+        App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
+        App.Host.SaveSettings();
+        App.Window.ApplyTitleBar();
     }
 
     private async void Clear_Click(object sender, RoutedEventArgs e)

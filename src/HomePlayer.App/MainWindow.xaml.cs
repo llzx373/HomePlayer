@@ -1,19 +1,25 @@
+using System.Runtime.InteropServices;
 using System.Windows.Input;
 using HomePlayer.Core;
 using H.NotifyIcon;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using WinRT.Interop;
 
 namespace HomePlayer;
 
 public sealed partial class MainWindow : Window
 {
     private readonly TaskbarIcon _tray;
+    private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private bool _fullscreen;
+    private bool _overlayVisible;
+    private DateTime _overlayHoldUntil;
 
     public bool IsFullscreen => _fullscreen;
 
@@ -31,7 +37,10 @@ public sealed partial class MainWindow : Window
             width,
             height));
         AppWindow.Closing += OnClosing;
-        ExtendsContentIntoTitleBar = true;
+        Root.SizeChanged += (_, _) => OverlayTitleBar.Width = Root.ActualWidth;
+        _overlayTimer.Tick += (_, _) => UpdateOverlay();
+        _overlayTimer.Start();
+        ApplyTitleBar();
         Nav.SelectedItem = Nav.MenuItems[0];
         _tray = new TaskbarIcon
         {
@@ -59,13 +68,34 @@ public sealed partial class MainWindow : Window
         Activate();
     }
 
+    public void ApplyTitleBar()
+    {
+        var overlay = App.Host.Settings.TitleBar == TitleBarMode.Overlay;
+        ExtendsContentIntoTitleBar = false;
+        if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
+            && (!presenter.HasBorder || presenter.HasTitleBar == overlay))
+            presenter.SetBorderAndTitleBar(true, !overlay);
+        if (!overlay || _fullscreen)
+        {
+            _overlayHoldUntil = DateTime.MinValue;
+            SetOverlayOpen(false);
+            return;
+        }
+
+        _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+        SetOverlayOpen(true);
+    }
+
     public void SetFullscreen(bool enabled)
     {
         if (_fullscreen == enabled)
             return;
         _fullscreen = enabled;
         Nav.IsPaneVisible = !enabled;
+        SetOverlayOpen(false);
         AppWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
+        if (!enabled)
+            ApplyTitleBar();
         FullscreenChanged?.Invoke();
     }
 
@@ -132,6 +162,131 @@ public sealed partial class MainWindow : Window
         var item = new MenuFlyoutItem { Text = text };
         item.Click += (_, _) => action();
         return item;
+    }
+
+    private void UpdateOverlay()
+    {
+        if (_fullscreen || App.Host.Settings.TitleBar != TitleBarMode.Overlay || !AppWindow.IsVisible)
+        {
+            SetOverlayOpen(false);
+            return;
+        }
+
+        if (AppWindow.Presenter is OverlappedPresenter presenter && presenter.State == OverlappedPresenterState.Minimized)
+        {
+            SetOverlayOpen(false);
+            return;
+        }
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (!GetCursorPos(out var point) || !ScreenToClient(hwnd, ref point) || !GetClientRect(hwnd, out var rect))
+            return;
+        if (point.X < 0 || point.Y < 0 || point.X >= rect.Right || point.Y >= rect.Bottom)
+        {
+            if (DateTime.UtcNow >= _overlayHoldUntil)
+                SetOverlayOpen(false);
+            return;
+        }
+
+        var dpi = GetDpiForWindow(hwnd);
+        if (dpi == 0)
+            dpi = 96;
+        var dipY = point.Y * 96.0 / dpi;
+        var nearTop = _overlayVisible ? dipY <= 46 : dipY <= 12;
+        SetOverlayOpen(nearTop || DateTime.UtcNow < _overlayHoldUntil);
+    }
+
+    private void SetOverlayOpen(bool open)
+    {
+        if (_overlayVisible == open && TitlePopup.IsOpen == open)
+            return;
+        _overlayVisible = open;
+        if (open)
+        {
+            OverlayTitleBar.Width = Root.ActualWidth;
+            UpdateMaximizeIcon();
+        }
+
+        TitlePopup.IsOpen = open;
+    }
+
+    private void UpdateMaximizeIcon()
+    {
+        var maximized = AppWindow.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Maximized;
+        MaximizeIcon.Glyph = maximized ? "\uE923" : "\uE922";
+    }
+
+    private void OverlayDrag_Pressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(OverlayDrag);
+        if (!point.Properties.IsLeftButtonPressed)
+            return;
+        var hwnd = WindowNative.GetWindowHandle(this);
+        ReleaseCapture();
+        SendMessage(hwnd, 0xA1, (IntPtr)2, IntPtr.Zero);
+        e.Handled = true;
+    }
+
+    private void OverlayDrag_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        ToggleMaximize();
+        e.Handled = true;
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.Minimize();
+    }
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void ToggleMaximize()
+    {
+        if (AppWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+        if (presenter.State == OverlappedPresenterState.Maximized)
+            presenter.Restore();
+        else
+            presenter.Maximize();
+        UpdateMaximizeIcon();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out PointNative point);
+
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(IntPtr hwnd, ref PointNative point);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hwnd, out RectNative rect);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PointNative
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNative
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     private void TrySetTrayIcon()

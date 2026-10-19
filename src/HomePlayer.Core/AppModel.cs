@@ -28,11 +28,18 @@ public enum RepeatMode
     All = 2
 }
 
+public enum TitleBarMode
+{
+    Classic = 0,
+    Overlay = 1
+}
+
 public sealed class AppSettings
 {
     public string? TmdbApiKey { get; set; }
     public bool CloseToTray { get; set; } = true;
     public double Volume { get; set; } = 0.8;
+    public TitleBarMode TitleBar { get; set; } = TitleBarMode.Classic;
 }
 
 public sealed class MediaLibrary

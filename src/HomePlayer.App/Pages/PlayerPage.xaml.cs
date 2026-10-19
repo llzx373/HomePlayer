@@ -14,7 +14,12 @@ public sealed partial class PlayerPage : Page
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private bool _scrubbing;
     private bool _pointerDown;
-    private bool _syncSlider;
+    private bool _layingProgress;
+    private double _scrubSeconds;
+    private bool _haveAnchor;
+    private bool _anchorPlaying;
+    private TimeSpan _anchor;
+    private long _anchorStamp;
     private bool _updatingVolume;
     private bool _playlistSync;
 
@@ -33,29 +38,10 @@ public sealed partial class PlayerPage : Page
         _updatingVolume = true;
         VolumeSlider.Value = playback.Volume * 100;
         _updatingVolume = false;
-        PositionSlider.AddHandler(PointerPressedEvent, new PointerEventHandler(Slider_Pressed), true);
-        PositionSlider.AddHandler(PointerReleasedEvent, new PointerEventHandler(Slider_Released), true);
-        PositionSlider.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(Slider_Released), true);
-        PositionSlider.AddHandler(PointerCanceledEvent, new PointerEventHandler(Slider_Released), true);
-        PositionSlider.ValueChanged += Position_Changed;
+        PositionBar.SizeChanged += (_, _) => LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
         _timer.Tick += (_, _) =>
         {
-            if (_scrubbing || _pointerDown)
-            {
-                ShowScrubTime();
-                return;
-            }
-
-            var duration = playback.Duration.TotalSeconds;
-            var maximum = duration > 0 ? duration : 1;
-            var position = Math.Clamp(playback.Position.TotalSeconds, 0, maximum);
-            _syncSlider = true;
-            if (Math.Abs(PositionSlider.Maximum - maximum) > 0.05)
-                PositionSlider.Maximum = maximum;
-            if (Math.Abs(PositionSlider.Value - position) > 0.05)
-                PositionSlider.Value = position;
-            _syncSlider = false;
-            TimeText.Text = $"{ClockText.Format(playback.Position)} / {ClockText.Format(playback.Duration)}";
+            LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
             if (PipelinePanel.Visibility == Visibility.Visible)
                 PipelineText.Text = playback.Pipeline()?.Format() ?? "当前没有播放。";
         };
@@ -64,6 +50,7 @@ public sealed partial class PlayerPage : Page
         {
             UpdateChrome();
             SyncFullscreenButton();
+            LayoutProgress(ShownSeconds());
             _presenter.Refresh();
         };
     }
@@ -91,49 +78,141 @@ public sealed partial class PlayerPage : Page
     private async void Next_Click(object sender, RoutedEventArgs e) => await Playback.NextAsync();
     private async void Previous_Click(object sender, RoutedEventArgs e) => await Playback.PreviousAsync();
 
-    private void Slider_Pressed(object sender, PointerRoutedEventArgs e)
+    private void Position_Pressed(object sender, PointerRoutedEventArgs e)
     {
+        if (Playback.Duration <= TimeSpan.Zero)
+            return;
+        var point = e.GetCurrentPoint(PositionBar);
+        if (!point.Properties.IsLeftButtonPressed)
+            return;
         _pointerDown = true;
         _scrubbing = true;
+        PositionBar.CapturePointer(e.Pointer);
+        MoveScrub(point.Position.X);
+        e.Handled = true;
     }
 
-    private void Slider_Released(object sender, PointerRoutedEventArgs e)
+    private void Position_Moved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_pointerDown && !_scrubbing)
+        if (!_pointerDown)
             return;
+        MoveScrub(e.GetCurrentPoint(PositionBar).Position.X);
+        e.Handled = true;
+    }
+
+    private void Position_Released(object sender, PointerRoutedEventArgs e)
+    {
         FinishScrub();
+        e.Handled = true;
     }
 
-    private void Position_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    private void MoveScrub(double x)
     {
-        if (_syncSlider || !_pointerDown)
+        var width = PositionBar.ActualWidth;
+        if (width <= 0 || Playback.Duration <= TimeSpan.Zero)
             return;
-        _scrubbing = true;
-        ShowScrubTime();
+        var ratio = Math.Clamp(x / width, 0, 1);
+        _scrubSeconds = ratio * Playback.Duration.TotalSeconds;
+        LayoutProgress(_scrubSeconds);
     }
 
     private void FinishScrub()
     {
         if (!_scrubbing && !_pointerDown)
             return;
+        var seconds = _scrubSeconds;
         _scrubbing = false;
         _pointerDown = false;
-        SeekToSlider();
-    }
-
-    private void SeekToSlider()
-    {
+        PositionBar.ReleasePointerCaptures();
+        Anchor(TimeSpan.FromSeconds(Math.Max(0, seconds)), Playback.IsPlaying);
         if (Playback.Duration <= TimeSpan.Zero)
             return;
-        Playback.Seek(TimeSpan.FromSeconds(PositionSlider.Value));
+        Playback.Seek(TimeSpan.FromSeconds(seconds));
+        LayoutProgress(seconds);
     }
 
-    private void ShowScrubTime()
+    private double ShownSeconds()
     {
-        var duration = Playback.Duration > TimeSpan.Zero
-            ? Playback.Duration
-            : TimeSpan.FromSeconds(PositionSlider.Maximum);
-        TimeText.Text = $"{ClockText.Format(TimeSpan.FromSeconds(PositionSlider.Value))} / {ClockText.Format(duration)}";
+        var duration = Playback.Duration;
+        var engine = Playback.Position;
+        var playing = Playback.IsPlaying;
+        if (!_haveAnchor)
+        {
+            var initial = engine;
+            if (duration > TimeSpan.FromSeconds(10) && engine >= duration - TimeSpan.FromSeconds(0.75))
+                initial = TimeSpan.Zero;
+            Anchor(initial, playing);
+        }
+        else if (playing != _anchorPlaying)
+        {
+            Anchor(Predicted(), playing);
+        }
+        else
+        {
+            var predicted = Predicted();
+            var stuckAtEnd = duration > TimeSpan.FromSeconds(10)
+                && engine >= duration - TimeSpan.FromSeconds(0.75)
+                && predicted < duration - TimeSpan.FromSeconds(3);
+            if (!stuckAtEnd && (engine - predicted).Duration() < TimeSpan.FromSeconds(1.5))
+                Anchor(engine, playing);
+        }
+
+        return Predicted().TotalSeconds;
+    }
+
+    private void Anchor(TimeSpan position, bool playing)
+    {
+        var duration = Playback.Duration;
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        if (duration > TimeSpan.Zero && position > duration)
+            position = duration;
+        _anchor = position;
+        _anchorPlaying = playing;
+        _anchorStamp = System.Diagnostics.Stopwatch.GetTimestamp();
+        _haveAnchor = true;
+    }
+
+    private TimeSpan Predicted()
+    {
+        var position = _anchor;
+        if (_anchorPlaying)
+        {
+            var elapsed = (System.Diagnostics.Stopwatch.GetTimestamp() - _anchorStamp) / (double)System.Diagnostics.Stopwatch.Frequency;
+            position += TimeSpan.FromSeconds(Math.Max(0, elapsed));
+        }
+
+        var duration = Playback.Duration;
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        if (duration > TimeSpan.Zero && position > duration)
+            position = duration;
+        return position;
+    }
+
+    private void LayoutProgress(double seconds)
+    {
+        if (_layingProgress)
+            return;
+        _layingProgress = true;
+        try
+        {
+            var duration = Playback.Duration;
+            var maximum = duration.TotalSeconds;
+            var ratio = maximum > 0 ? Math.Clamp(seconds / maximum, 0, 1) : 0;
+            var width = PositionBar.ActualWidth;
+            var fill = width > 0 ? ratio * width : 0;
+            PlayedColumn.Width = new GridLength(Math.Max(0, fill));
+            var thumb = PositionThumb.Width > 0 ? PositionThumb.Width : 14;
+            var left = width > 0 ? Math.Clamp(fill - thumb / 2, 0, Math.Max(0, width - thumb)) : 0;
+            PositionThumb.Margin = new Thickness(left, 0, 0, 0);
+            var shown = TimeSpan.FromSeconds(Math.Max(0, maximum > 0 ? seconds : 0));
+            TimeText.Text = $"{ClockText.Format(shown)} / {ClockText.Format(duration)}";
+        }
+        finally
+        {
+            _layingProgress = false;
+        }
     }
 
     private void Volume_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)

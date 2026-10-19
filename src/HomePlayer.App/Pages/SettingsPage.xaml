@@ -7,6 +7,11 @@
         <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
         <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机" />
         <ToggleSwitch x:Name="TraySwitch" Header="关闭窗口时留在系统托盘" />
+        <ComboBox x:Name="TitleBarBox" Header="标题栏" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="经典标题栏" />
+            <ComboBoxItem Content="悬停出现的透明标题栏" />
+        </ComboBox>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="经典标题栏始终留在窗口最上方，画面不能盖住最小化、最大化和关闭。透明标题栏平时让画面铺到窗口上沿，鼠标移到顶部时出现，可以拖动窗口并点击这些按钮。" />
         <TextBlock x:Name="LavText" TextWrapping="Wrap" />
         <TextBlock x:Name="CacheText" />
         <StackPanel Orientation="Horizontal" Spacing="8">

@@ -5,6 +5,21 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="HomePlayer">
     <Grid x:Name="Root" AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop">
+        <Grid.Resources>
+            <Style x:Key="CaptionButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="46" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Foreground" Value="White" />
+            </Style>
+            <Style x:Key="CaptionCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
+                <Setter Property="Background" Value="Transparent" />
+            </Style>
+        </Grid.Resources>
         <NavigationView
             x:Name="Nav"
             IsBackButtonVisible="Collapsed"
@@ -20,5 +35,39 @@
             </NavigationView.FooterMenuItems>
             <Frame x:Name="RootFrame" />
         </NavigationView>
+        <Popup x:Name="TitlePopup" Canvas.ZIndex="1000" IsLightDismissEnabled="False">
+            <Grid
+                x:Name="OverlayTitleBar"
+                Height="40"
+                RequestedTheme="Dark"
+                Background="#CC1A1A1A">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid
+                    x:Name="OverlayDrag"
+                    Background="Transparent"
+                    PointerPressed="OverlayDrag_Pressed"
+                    DoubleTapped="OverlayDrag_DoubleTapped">
+                    <TextBlock
+                        Text="HomePlayer"
+                        Margin="16,0,12,0"
+                        VerticalAlignment="Center"
+                        Foreground="White" />
+                </Grid>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button AutomationProperties.Name="最小化" ToolTipService.ToolTip="最小化" Style="{StaticResource CaptionButtonStyle}" Click="Minimize_Click">
+                        <FontIcon Glyph="&#xE921;" FontSize="12" />
+                    </Button>
+                    <Button AutomationProperties.Name="最大化" ToolTipService.ToolTip="最大化" Style="{StaticResource CaptionButtonStyle}" Click="Maximize_Click">
+                        <FontIcon x:Name="MaximizeIcon" Glyph="&#xE922;" FontSize="12" />
+                    </Button>
+                    <Button AutomationProperties.Name="关闭" ToolTipService.ToolTip="关闭" Style="{StaticResource CaptionCloseButtonStyle}" Click="Close_Click">
+                        <FontIcon Glyph="&#xE8BB;" FontSize="12" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Popup>
     </Grid>
 </Window>

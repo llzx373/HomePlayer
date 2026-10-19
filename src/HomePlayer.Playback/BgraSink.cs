@@ -16,11 +16,20 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     private long _runStart;
     private long _lastPresentMs;
     private bool _completed;
+    private long _segmentMediaStart;
+    private long _segmentStreamStart;
+    private bool _segmentTimed;
+    private bool _useSampleAsMedia;
+    private long _presentedTicks = -1;
 
     public BgraSinkFilter() => _pin = new BgraSinkPin(this);
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
+    public bool HasPresented => Interlocked.Read(ref _presentedTicks) >= 0;
+
+    public TimeSpan PresentedPosition => TimeSpan.FromTicks(Math.Max(0, Interlocked.Read(ref _presentedTicks)));
+
     public int Width => _pin.Width;
     public int Height => _pin.Height;
     public bool BottomUp => _pin.BottomUp;
@@ -121,6 +130,40 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     internal bool IsRunning => _state == 2;
 
     internal void Deliver(VideoFrame frame) => FrameArrived?.Invoke(frame);
+
+    internal void NoteSegment(long start)
+    {
+        _segmentMediaStart = Math.Max(0, start);
+        _segmentTimed = false;
+    }
+
+    internal void NotePresented(long sampleStream, long mediaTime)
+    {
+        long media;
+        if (mediaTime >= 0)
+        {
+            media = mediaTime;
+        }
+        else
+        {
+            if (!_segmentTimed)
+            {
+                _segmentStreamStart = sampleStream;
+                _useSampleAsMedia = Math.Abs(sampleStream - _segmentMediaStart) < 20_000_000;
+                _segmentTimed = true;
+            }
+
+            media = _useSampleAsMedia
+                ? sampleStream
+                : _segmentMediaStart + (sampleStream - _segmentStreamStart);
+        }
+
+        if (media < 0)
+            media = 0;
+        Interlocked.Exchange(ref _presentedTicks, media);
+    }
+
+    internal void ClearPresented() => Interlocked.Exchange(ref _presentedTicks, -1);
 
     internal bool WaitUntil(long streamTime)
     {
@@ -388,7 +431,11 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         return Hr.Ok;
     }
 
-    public int NewSegment(long start, long stop, double rate) => Hr.Ok;
+    public int NewSegment(long start, long stop, double rate)
+    {
+        _filter.NoteSegment(start);
+        return Hr.Ok;
+    }
 
     public int GetAllocator(out IntPtr allocator)
     {
@@ -409,10 +456,16 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         var length = SampleLength(samplePointer);
         if (length <= 0 || Width <= 0 || Height <= 0)
             return Hr.Ok;
-        if (SampleTime(samplePointer, out var start) >= 0 && !_filter.WaitUntil(start))
+        var hasTime = SampleTime(samplePointer, out var start) >= 0;
+        if (hasTime && !_filter.WaitUntil(start))
             return Hr.Ok;
         if (Flushing)
             return Hr.Ok;
+        if (hasTime)
+        {
+            var media = SampleMediaTime(samplePointer, out var mediaStart) >= 0 ? mediaStart : -1;
+            _filter.NotePresented(start, media);
+        }
         var stride = Width * 4;
         var needed = stride * Height;
         var copyLength = Math.Min(length, needed);
@@ -437,6 +490,12 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
     private static int SampleTime(IntPtr sample, out long start)
     {
         var result = Vtable<SampleTimeDelegate>(sample, 5)(sample, out start, out _);
+        return result;
+    }
+
+    private static int SampleMediaTime(IntPtr sample, out long start)
+    {
+        var result = Vtable<SampleTimeDelegate>(sample, 16)(sample, out start, out _);
         return result;
     }
 

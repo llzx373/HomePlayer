@@ -18,6 +18,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private bool _muted;
     private double _volume = 0.8;
     private TimeSpan _duration;
+    private TimeSpan _seeked;
     private int _open;
 
     public string Name => "LAV";
@@ -51,6 +52,10 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
 
     public void Seek(TimeSpan position) => _sta.Invoke(() =>
     {
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        _seeked = position;
+        _sink?.ClearPresented();
         if (_seeking == null)
             return;
         var current = position.Ticks;
@@ -186,9 +191,14 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
 
     private TimeSpan ReadPosition()
     {
-        if (_seeking == null || _seeking.GetCurrentPosition(out var position) < 0)
-            return TimeSpan.Zero;
-        return TimeSpan.FromTicks(Math.Max(0, position));
+        if (_sink is { HasPresented: true } sink)
+        {
+            var presented = sink.PresentedPosition;
+            if (presented >= TimeSpan.Zero && (_duration <= TimeSpan.Zero || presented <= _duration))
+                return presented;
+        }
+
+        return _seeked;
     }
 
     private PipelineInfo ReadPipeline()

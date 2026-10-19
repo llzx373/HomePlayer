@@ -278,7 +278,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                         var pts = Pts(videoFrame, _videoTimeBase);
                         if (WaitForPresentation(pts, clock, clockOrigin))
                         {
-                            Position = TimeSpan.FromSeconds(Math.Max(0, MediaSeconds(clock, clockOrigin)));
+                            var shown = double.IsFinite(pts) && pts >= 0 ? pts : MediaSeconds(clock, clockOrigin);
+                            Position = TimeSpan.FromSeconds(Math.Max(0, shown));
                             FrameArrived?.Invoke(ToBgra(videoFrame));
                             _lastPresentMs = Environment.TickCount64;
                         }
