@@ -34,12 +34,21 @@ public enum TitleBarMode
     Overlay = 1
 }
 
+public sealed class CodecPreference
+{
+    public string Id { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+}
+
 public sealed class AppSettings
 {
     public string? TmdbApiKey { get; set; }
     public bool CloseToTray { get; set; } = true;
     public double Volume { get; set; } = 0.8;
     public TitleBarMode TitleBar { get; set; } = TitleBarMode.Classic;
+    public List<CodecPreference> SplitterOrder { get; set; } = [];
+    public List<CodecPreference> VideoDecoderOrder { get; set; } = [];
+    public List<CodecPreference> AudioDecoderOrder { get; set; } = [];
 }
 
 public sealed class MediaLibrary

@@ -27,6 +27,7 @@ public sealed class PipelineInfo
     public IReadOnlyList<string> SubtitleTracks { get; init; } = [];
     public IReadOnlyList<string> Filters { get; init; } = [];
     public IReadOnlyList<string> Connections { get; init; } = [];
+    public IReadOnlyList<string> Usage { get; init; } = [];
 
     public string Format()
     {
@@ -36,6 +37,13 @@ public sealed class PipelineInfo
         text.AppendLine($"引擎：{Engine}");
         if (!string.IsNullOrWhiteSpace(EngineReason))
             text.AppendLine($"说明：{EngineReason}");
+        if (Usage.Count > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("实际使用");
+            foreach (var line in Usage)
+                text.AppendLine(line);
+        }
 
         text.AppendLine();
         text.AppendLine("容器");

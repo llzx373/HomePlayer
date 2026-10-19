@@ -6,11 +6,14 @@ internal static class DsGuid
 {
     public static readonly Guid FilterGraph = new("E436EBB3-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid LavSplitterSource = new("B98D13E7-55DB-4385-A33D-09FD1BA26338");
+    public static readonly Guid LavSplitter = new("171252A0-8820-4AFE-9DF8-5C92B2D66B04");
     public static readonly Guid LavVideo = new("EE30215D-164F-4A92-A4EB-9D4C13390F9F");
     public static readonly Guid LavAudio = new("E8E73B6B-4CB3-44A4-BE99-4F7BCB96E491");
+    public static readonly Guid AsyncReader = new("E436EBB5-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid DirectSound = new("79376820-07D0-11CF-A24D-0020AFD79767");
     public static readonly Guid Video = new("73646976-0000-0010-8000-00AA00389B71");
     public static readonly Guid Audio = new("73647561-0000-0010-8000-00AA00389B71");
+    public static readonly Guid Stream = new("E436EB83-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid Rgb32 = new("E436EB7E-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid FormatVideoInfo = new("05589F80-C356-11CE-BF01-00AA0055595A");
     public static readonly Guid FormatVideoInfo2 = new("F72A76A0-EB0A-11D0-ACE4-0000C0CC16BA");
@@ -219,6 +222,7 @@ internal interface IFilterGraph2
     [PreserveSig] int Disconnect(IPin pin);
     [PreserveSig] int SetDefaultSyncSource();
     [PreserveSig] int Connect(IPin pinOut, IPin pinIn);
+    [PreserveSig] int Render(IPin pinOut);
 }
 
 [ComImport, Guid("FA40D6E9-4D38-4761-ADD2-71A9EC5FD32F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -252,6 +256,28 @@ internal interface ILavAudioSettings
     [PreserveSig] int SetFormatConfiguration(int codec, int enabled);
     [PreserveSig] int GetBitstreamConfig(int codec);
     [PreserveSig] int SetBitstreamConfig(int codec, int enabled);
+    [PreserveSig] int GetDTSHDFraming();
+    [PreserveSig] int SetDTSHDFraming(int enabled);
+    [PreserveSig] int GetAutoAVSync();
+    [PreserveSig] int SetAutoAVSync(int enabled);
+    [PreserveSig] int GetOutputStandardLayout();
+    [PreserveSig] int SetOutputStandardLayout(int enabled);
+    [PreserveSig] int GetExpandMono();
+    [PreserveSig] int SetExpandMono(int enabled);
+    [PreserveSig] int GetExpand61();
+    [PreserveSig] int SetExpand61(int enabled);
+    [PreserveSig] int GetAllowRawSPDIFInput();
+    [PreserveSig] int SetAllowRawSPDIFInput(int enabled);
+    [PreserveSig] int GetSampleFormat(int format);
+    [PreserveSig] int SetSampleFormat(int format, int enabled);
+    [PreserveSig] int GetAudioDelay(out int enabled, out int delay);
+    [PreserveSig] int SetAudioDelay(int enabled, int delay);
+    [PreserveSig] int SetMixingEnabled(int enabled);
+    [PreserveSig] int GetMixingEnabled();
+    [PreserveSig] int SetMixingLayout(uint layout);
+    [PreserveSig] uint GetMixingLayout();
+    [PreserveSig] int SetMixingFlags(uint flags);
+    [PreserveSig] uint GetMixingFlags();
 }
 
 [ComImport, Guid("A668B8F2-BA87-4F63-9D41-768F7DE9C50E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

@@ -5,13 +5,18 @@ namespace HomePlayer.Playback;
 public sealed class PlaybackController : IDisposable
 {
     private readonly Action<Action> _post;
+    private readonly Func<CodecPlan> _codecs;
     private IPlaybackEngine? _engine;
     private string? _reason;
     private int _token;
     private double _volume = 0.8;
     private bool _muted;
 
-    public PlaybackController(Action<Action> post) => _post = post;
+    public PlaybackController(Action<Action> post, Func<CodecPlan> codecs)
+    {
+        _post = post;
+        _codecs = codecs;
+    }
 
     public Playlist Playlist { get; } = new();
     public string Status { get; private set; } = "就绪";
@@ -153,10 +158,12 @@ public sealed class PlaybackController : IDisposable
                 _post(() =>
                 {
                     item.Error = null;
-                    _engine?.SetVolume(_volume);
-                    _engine?.SetMuted(_muted);
-                    _engine?.Play();
-                    Status = "正在播放";
+                _engine?.SetVolume(_volume);
+                _engine?.SetMuted(_muted);
+                _engine?.Play();
+                Status = (_engine as LavPlaybackEngine)?.AudioMissing == true
+                    ? "正在播放，音频没有接上"
+                    : "正在播放";
                     EngineLabel = _engine?.Name ?? "";
                     Notify();
                 });
@@ -193,15 +200,20 @@ public sealed class PlaybackController : IDisposable
     {
         DisposeEngine();
         Exception? lavError = null;
-        if (!forceFfmpeg && LavLocator.Detect() != null)
+        var plan = _codecs();
+        if (!forceFfmpeg && plan.Splitters.Count > 0 && plan.VideoDecoders.Count > 0)
         {
-            var lav = new LavPlaybackEngine();
+            var lav = new LavPlaybackEngine(plan);
             try
             {
                 Attach(lav);
                 lav.Open(path);
                 _engine = lav;
-                _reason = "LAV 滤镜图已建立。";
+                _reason = lav.AudioMissing
+                    ? "画面已打开，音频没有接上：" + lav.AudioWarning
+                    : string.IsNullOrWhiteSpace(lav.AudioWarning)
+                        ? "已按设置的顺序建立滤镜图。"
+                        : lav.AudioWarning;
                 return;
             }
             catch (Exception ex)
@@ -219,8 +231,8 @@ public sealed class PlaybackController : IDisposable
             ffmpeg.Open(path);
             _engine = ffmpeg;
             _reason = lavError == null
-                ? (forceFfmpeg ? "已按指定改用 FFmpeg。" : "未检测到本机 LAV Filters，已改用 FFmpeg。")
-                : "LAV 无法播放该文件，已改用 FFmpeg：" + lavError.Message;
+                ? (forceFfmpeg ? "已按指定改用 FFmpeg。" : "没有可用的 64 位分离器或视频解码器，已改用 FFmpeg。")
+                : "DirectShow 滤镜无法播放该文件，已改用 FFmpeg：" + lavError.Message;
         }
         catch (Exception ex)
         {
