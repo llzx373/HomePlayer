@@ -67,6 +67,7 @@ public sealed class VideoPresenter : IDisposable
     private int _posted;
     private bool _drawing;
     private bool _resizing;
+    private long _lastRecoveryMs;
 
     public VideoPresenter(SwapChainPanel panel)
     {
@@ -78,7 +79,7 @@ public sealed class VideoPresenter : IDisposable
 
     public void Refresh()
     {
-        Resize();
+        TryResize();
         PostDraw();
     }
 
@@ -105,18 +106,40 @@ public sealed class VideoPresenter : IDisposable
         }
 
         pending?.ReturnBuffer();
+        ReleaseDeviceResources();
+    }
+
+    private void ReleaseDeviceResources()
+    {
         _target?.Dispose();
+        _target = null;
         _frameView?.Dispose();
+        _frameView = null;
         _frameTexture?.Dispose();
+        _frameTexture = null;
         _vertices?.Dispose();
+        _vertices = null;
         _layout?.Dispose();
+        _layout = null;
         _vertexShader?.Dispose();
+        _vertexShader = null;
         _pixelShader?.Dispose();
+        _pixelShader = null;
         _sampler?.Dispose();
+        _sampler = null;
         _rasterizer?.Dispose();
+        _rasterizer = null;
         _swapChain?.Dispose();
+        _swapChain = null;
         _context?.Dispose();
+        _context = null;
         _device?.Dispose();
+        _device = null;
+        _vertexBytecode = null;
+        _width = 0;
+        _height = 0;
+        _frameWidth = 0;
+        _frameHeight = 0;
     }
 
     private void PostDraw()
@@ -228,7 +251,7 @@ public sealed class VideoPresenter : IDisposable
             return;
         }
 
-        Resize();
+        TryResize();
         if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _vertices == null)
             return;
         VideoFrame? frame;
@@ -272,8 +295,10 @@ public sealed class VideoPresenter : IDisposable
             _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
             _swapChain.Present(0, PresentFlags.None);
         }
-        catch
+        catch (Exception ex)
         {
+            if (IsDeviceLost(ex) || DeviceIsLost())
+                RecoverDevice();
         }
         finally
         {
@@ -284,6 +309,54 @@ public sealed class VideoPresenter : IDisposable
                 newer = _pending != null;
             if (newer)
                 PostDraw();
+        }
+    }
+
+    private void TryResize()
+    {
+        try
+        {
+            Resize();
+        }
+        catch (Exception ex)
+        {
+            if (IsDeviceLost(ex) || DeviceIsLost())
+                RecoverDevice();
+        }
+    }
+
+    private static bool IsDeviceLost(Exception ex)
+    {
+        var code = unchecked((uint)ex.HResult);
+        return code is 0x887A0005 or 0x887A0006 or 0x887A0007;
+    }
+
+    private bool DeviceIsLost()
+    {
+        try
+        {
+            return _device != null && _device.DeviceRemovedReason.Failure;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void RecoverDevice()
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastRecoveryMs < 2000)
+            return;
+        _lastRecoveryMs = now;
+        try
+        {
+            ReleaseDeviceResources();
+            Resize();
+            PostDraw();
+        }
+        catch
+        {
         }
     }
 
