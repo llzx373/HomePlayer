@@ -15,6 +15,18 @@ public partial class App : Application
 
     public App()
     {
+        UnhandledException += (_, e) =>
+        {
+            try
+            {
+                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "crash.log"), DateTime.Now.ToString("O") + Environment.NewLine + e.Exception + Environment.NewLine + Environment.NewLine);
+            }
+            catch
+            {
+            }
+        };
         InitializeComponent();
     }
 

@@ -1,36 +1,55 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using HomePlayer.Core;
 using HomePlayer.Library;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
 
 namespace HomePlayer;
 
 public sealed partial class LibraryPage : Page
 {
-    private readonly List<MediaCard> _cards = [];
+    private readonly ObservableCollection<MediaLibrary> _libraries = [];
+    private readonly ObservableCollection<MediaCard> _cards = [];
     private bool _loading;
+    private bool _sorting;
+    private bool _reloadQueued;
 
     public LibraryPage()
     {
         InitializeComponent();
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         LibraryList.DisplayMemberPath = nameof(MediaLibrary.Name);
-        App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(Reload);
-        Loaded += (_, _) => Reload();
+        LibraryList.ItemsSource = _libraries;
+        Cards.ItemsSource = _cards;
+        App.Host.Libraries.Changed += (_, _) => QueueReload();
+        Loaded += (_, _) => QueueReload();
+    }
+
+    private void QueueReload()
+    {
+        if (_reloadQueued)
+            return;
+        _reloadQueued = true;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            _reloadQueued = false;
+            Reload();
+        });
     }
 
     private void Reload()
     {
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
-        _loading = true;
         var libraries = App.Host.Repository.ListLibraries();
-        LibraryList.ItemsSource = libraries;
-        LibraryList.SelectedItem = libraries.FirstOrDefault(item => item.Id == selected) ?? libraries.FirstOrDefault();
+        _loading = true;
+        _libraries.Clear();
+        foreach (var library in libraries)
+            _libraries.Add(library);
+        LibraryList.SelectedItem = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
         _loading = false;
         BindCards();
         EmptyText.Visibility = libraries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -45,11 +64,9 @@ public sealed partial class LibraryPage : Page
         if (_loading)
             return;
         var library = LibraryList.SelectedItem as MediaLibrary;
-        Cards.ItemsSource = null;
         _cards.Clear();
         if (library == null)
         {
-            Cards.ItemsSource = _cards;
             ConfigureSort(null);
             return;
         }
@@ -85,31 +102,39 @@ public sealed partial class LibraryPage : Page
             });
         }
 
-        Cards.ItemsSource = _cards;
-        EmptyText.Visibility = _cards.Count == 0 && App.Host.Repository.ListLibraries().Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Visibility = _cards.Count == 0 && _libraries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (_cards.Count == 0 && library != null)
             EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
     }
 
     private void ConfigureSort(LibraryKind? kind)
     {
-        if (SortBox.Items.Count > 0 && SortBox.Tag as LibraryKind? == kind)
+        var catalog = kind == LibraryKind.Catalog;
+        if (SortBox.Items.Count > 0 && Equals(SortBox.Tag, catalog))
             return;
-        SortBox.Tag = kind;
-        var index = SortBox.SelectedIndex;
-        SortBox.Items.Clear();
-        if (kind == LibraryKind.Catalog)
+        _sorting = true;
+        try
         {
-            SortBox.Items.Add("标题");
-            SortBox.Items.Add("年份");
-        }
-        else
-        {
-            SortBox.Items.Add("文件名");
-            SortBox.Items.Add("修改时间");
-        }
+            SortBox.Tag = catalog;
+            var index = SortBox.SelectedIndex;
+            SortBox.Items.Clear();
+            if (catalog)
+            {
+                SortBox.Items.Add("标题");
+                SortBox.Items.Add("年份");
+            }
+            else
+            {
+                SortBox.Items.Add("文件名");
+                SortBox.Items.Add("修改时间");
+            }
 
-        SortBox.SelectedIndex = index >= 0 && index < SortBox.Items.Count ? index : 0;
+            SortBox.SelectedIndex = index >= 0 && index < SortBox.Items.Count ? index : 0;
+        }
+        finally
+        {
+            _sorting = false;
+        }
     }
 
     private async void Add_Click(object sender, RoutedEventArgs e)
@@ -120,35 +145,49 @@ public sealed partial class LibraryPage : Page
         kind.Items.Add("无媒体信息");
         kind.Items.Add("有媒体信息（TMDB）");
         kind.SelectedIndex = 0;
-        var browse = new Button { Content = "选择文件夹" };
-        browse.Click += async (_, _) =>
-        {
-            var picker = new FolderPicker();
-            picker.FileTypeFilter.Add("*");
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder != null)
-            {
-                path.Text = folder.Path;
-                if (string.IsNullOrWhiteSpace(name.Text))
-                    name.Text = folder.Name;
-            }
-        };
         var panel = new StackPanel { Spacing = 12, Width = 420 };
         panel.Children.Add(name);
         panel.Children.Add(path);
-        panel.Children.Add(browse);
         panel.Children.Add(kind);
-        var dialog = new ContentDialog
+        ContentDialog? dialog = null;
+        var browse = new Button { Content = "选择文件夹" };
+        var choosingFolder = false;
+        browse.Click += (_, _) =>
         {
-            Title = "添加媒体库",
-            Content = panel,
-            PrimaryButtonText = "添加",
-            CloseButtonText = "取消",
-            XamlRoot = XamlRoot
+            choosingFolder = true;
+            dialog?.Hide();
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(path.Text))
-            return;
+        panel.Children.Insert(2, browse);
+        while (true)
+        {
+            dialog?.Content = null;
+            choosingFolder = false;
+            dialog = new ContentDialog
+            {
+                Title = "添加媒体库",
+                Content = panel,
+                PrimaryButtonText = "添加",
+                CloseButtonText = "取消",
+                XamlRoot = XamlRoot
+            };
+            var result = await dialog.ShowAsync();
+            if (choosingFolder)
+            {
+                var folder = await FolderDialog.PickAsync();
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    path.Text = folder;
+                    if (string.IsNullOrWhiteSpace(name.Text))
+                        name.Text = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+
+                continue;
+            }
+
+            if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(path.Text))
+                return;
+            break;
+        }
         if (kind.SelectedIndex == 1 && string.IsNullOrWhiteSpace(App.Host.Settings.TmdbApiKey))
         {
             await Message("有信息库需要先在设置里填写 TMDB API Key。");
@@ -189,7 +228,12 @@ public sealed partial class LibraryPage : Page
 
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e) => BindCards();
 
-    private void Filter_Changed(object sender, object e) => BindCards();
+    private void Filter_Changed(object sender, object e)
+    {
+        if (_sorting || _loading)
+            return;
+        BindCards();
+    }
 
     private async void Card_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
