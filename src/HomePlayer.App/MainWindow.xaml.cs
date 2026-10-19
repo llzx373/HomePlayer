@@ -5,6 +5,7 @@ using H.NotifyIcon;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -55,8 +56,7 @@ public sealed partial class MainWindow : Window
             UpdateNavOverlay();
             OverlayTick?.Invoke();
         };
-        _overlayTimer.Start();
-        ApplyTitleBar();
+        Root.Loaded += OnRootLoaded;
         Nav.SelectedItem = Nav.MenuItems[0];
         _tray = new TaskbarIcon
         {
@@ -82,6 +82,13 @@ public sealed partial class MainWindow : Window
     {
         AppWindow.Show();
         Activate();
+    }
+
+    private void OnRootLoaded(object sender, RoutedEventArgs e)
+    {
+        Root.Loaded -= OnRootLoaded;
+        ApplyTitleBar();
+        _overlayTimer.Start();
     }
 
     public void ApplyTitleBar()
@@ -324,7 +331,7 @@ public sealed partial class MainWindow : Window
             SyncOverlayNavButtons();
         }
 
-        NavPopup.IsOpen = open;
+        OpenPopup(NavPopup, open);
     }
 
     private void SyncOverlayNavButtons()
@@ -367,7 +374,15 @@ public sealed partial class MainWindow : Window
             UpdateMaximizeIcon();
         }
 
-        TitlePopup.IsOpen = open;
+        OpenPopup(TitlePopup, open);
+    }
+
+    private void OpenPopup(Popup popup, bool open)
+    {
+        popup.XamlRoot ??= Root.XamlRoot ?? Content?.XamlRoot;
+        if (open && popup.XamlRoot == null)
+            return;
+        popup.IsOpen = open;
     }
 
     private void UpdateMaximizeIcon()
