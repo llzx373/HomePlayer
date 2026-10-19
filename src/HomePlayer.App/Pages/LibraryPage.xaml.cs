@@ -105,7 +105,7 @@ public sealed partial class LibraryPage : Page
         ConfigureSort(library.Kind);
         var query = SearchBox.Text?.Trim() ?? "";
         var comparer = Comparer<MediaItem>.Create((left, right) =>
-            CompareItems(left, right, library.Kind, SortBox.SelectedIndex));
+            MediaItemComparer.Compare(left, right, library.Kind, SortBox.SelectedIndex == 1));
         foreach (var item in App.Host.Repository.ListItems(library.Id).OrderBy(item => item, comparer))
         {
             var card = CreateCard(item, library, query);
@@ -185,31 +185,11 @@ public sealed partial class LibraryPage : Page
     {
         for (var i = 0; i < _cards.Count; i++)
         {
-            if (CompareItems(item, _cards[i].Item, kind, sortIndex) < 0)
+            if (MediaItemComparer.Compare(item, _cards[i].Item, kind, sortIndex == 1) < 0)
                 return i;
         }
 
         return _cards.Count;
-    }
-
-    private static int CompareItems(MediaItem left, MediaItem right, LibraryKind kind, int sortIndex)
-    {
-        if (kind == LibraryKind.Raw)
-        {
-            return sortIndex == 1
-                ? right.MtimeUtcTicks.CompareTo(left.MtimeUtcTicks)
-                : string.Compare(left.FileName, right.FileName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (sortIndex == 1)
-        {
-            var year = (right.Year ?? 0).CompareTo(left.Year ?? 0);
-            return year != 0
-                ? year
-                : string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.CurrentCulture);
-        }
-
-        return string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateEmptyText()
