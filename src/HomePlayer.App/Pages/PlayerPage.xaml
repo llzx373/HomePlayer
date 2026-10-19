@@ -158,14 +158,38 @@
                     VerticalScrollMode="Disabled"
                     VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                        <Button
-                            x:Name="OpenButton"
-                            Style="{StaticResource PlayerIconButton}"
-                            AutomationProperties.Name="打开"
-                            ToolTipService.ToolTip="打开"
-                            Click="Open_Click">
-                            <FontIcon x:Name="OpenIcon" Glyph="&#xE8E5;" FontSize="16" />
-                        </Button>
+                        <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                            <Button
+                                x:Name="OpenButton"
+                                Style="{StaticResource PlayerIconButton}"
+                                AutomationProperties.Name="打开"
+                                ToolTipService.ToolTip="打开"
+                                Click="Open_Click">
+                                <FontIcon x:Name="OpenIcon" Glyph="&#xE8E5;" FontSize="16" />
+                            </Button>
+                            <Button
+                                x:Name="OpenMenuButton"
+                                Width="20"
+                                Height="36"
+                                MinWidth="0"
+                                Padding="0"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="打开选项">
+                                <FontIcon Glyph="&#xE70D;" FontSize="10" />
+                                <Button.Flyout>
+                                    <MenuFlyout x:Name="OpenFlyout" Placement="Bottom" Opening="OpenFlyout_Opening">
+                                        <MenuFlyoutItem
+                                            x:Name="OpenFilesItem"
+                                            Text="打开文件"
+                                            Click="Open_Click" />
+                                        <MenuFlyoutItem
+                                            x:Name="FfmpegItem"
+                                            Text="用 FFmpeg 打开当前项"
+                                            Click="Ffmpeg_Click" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
                         <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <Button
@@ -185,12 +209,28 @@
                                 <FontIcon x:Name="PreviousIcon" Glyph="&#xE892;" FontSize="16" />
                             </Button>
                             <Button
+                                x:Name="SeekBackButton"
+                                Style="{StaticResource PlayerIconButton}"
+                                AutomationProperties.Name="后退 5 秒"
+                                ToolTipService.ToolTip="后退 5 秒"
+                                Click="SeekBack_Click">
+                                <FontIcon x:Name="SeekBackIcon" Glyph="&#xED3C;" FontSize="16" />
+                            </Button>
+                            <Button
                                 x:Name="PlayButton"
                                 Style="{StaticResource PlayerPlayButton}"
                                 AutomationProperties.Name="播放/暂停"
                                 ToolTipService.ToolTip="播放/暂停"
                                 Click="Play_Click">
                                 <FontIcon x:Name="PlayIcon" Glyph="&#xE768;" FontSize="18" />
+                            </Button>
+                            <Button
+                                x:Name="SeekForwardButton"
+                                Style="{StaticResource PlayerIconButton}"
+                                AutomationProperties.Name="前进 5 秒"
+                                ToolTipService.ToolTip="前进 5 秒"
+                                Click="SeekForward_Click">
+                                <FontIcon x:Name="SeekForwardIcon" Glyph="&#xED3D;" FontSize="16" />
                             </Button>
                             <Button
                                 x:Name="NextButton"
@@ -214,6 +254,25 @@
                             <FontIcon x:Name="MuteIcon" Glyph="&#xE995;" FontSize="16" />
                         </ToggleButton>
                         <Slider x:Name="VolumeSlider" Width="120" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="Volume_Changed" />
+                    </StackPanel>
+                    <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Button
+                            x:Name="RepeatButton"
+                            Style="{StaticResource PlayerIconButton}"
+                            AutomationProperties.Name="循环"
+                            ToolTipService.ToolTip="循环"
+                            Click="Repeat_Click">
+                            <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="16" Opacity="0.45" />
+                        </Button>
+                        <ToggleButton
+                            x:Name="ShuffleButton"
+                            Style="{StaticResource PlayerIconToggleButton}"
+                            AutomationProperties.Name="随机"
+                            ToolTipService.ToolTip="随机"
+                            Click="Shuffle_Click">
+                            <FontIcon x:Name="ShuffleIcon" Glyph="&#xE8B1;" FontSize="16" Opacity="0.45" />
+                        </ToggleButton>
                     </StackPanel>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
                     <ToggleButton

@@ -22,6 +22,8 @@ public sealed partial class PlayerPage : Page
     private const string GlyphVolume3 = "\uE995";
     private const string GlyphFullscreen = "\uE740";
     private const string GlyphExitFullscreen = "\uE73F";
+    private const string GlyphRepeat = "\uE8EE";
+    private const string GlyphRepeatOne = "\uE8ED";
 
     private readonly VideoPresenter _presenter;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -63,6 +65,8 @@ public sealed partial class PlayerPage : Page
         App.Window.OverlayTick += UpdateControlsOverlay;
         PlaylistView.ItemsSource = playback.Playlist.Items;
         RepeatBox.SelectedIndex = (int)playback.Playlist.Repeat;
+        UpdateRepeatButton();
+        SetShuffle(playback.Playlist.Shuffle);
         _updatingVolume = true;
         VolumeSlider.Value = playback.Volume * 100;
         _updatingVolume = false;
@@ -243,12 +247,17 @@ public sealed partial class PlayerPage : Page
         UpdateVolumeIcon();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
+        FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
     }
 
     private void Play_Click(object sender, RoutedEventArgs e) => Playback.TogglePlay();
     private void Stop_Click(object sender, RoutedEventArgs e) => Playback.Stop();
     private async void Next_Click(object sender, RoutedEventArgs e) => await Playback.NextAsync();
     private async void Previous_Click(object sender, RoutedEventArgs e) => await Playback.PreviousAsync();
+    private void SeekBack_Click(object sender, RoutedEventArgs e) =>
+        Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
+    private void SeekForward_Click(object sender, RoutedEventArgs e) =>
+        Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
 
     private void Position_Pressed(object sender, PointerRoutedEventArgs e)
     {
@@ -430,6 +439,9 @@ public sealed partial class PlayerPage : Page
         await Playback.PlayPathsAsync(Playback.Playlist.Items.Select(item => item.Path).ToList(), Playback.Playlist.CurrentIndex, true);
     }
 
+    private void OpenFlyout_Opening(object sender, object e) =>
+        FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+
     private void Fullscreen_Click(object sender, RoutedEventArgs e) =>
         App.Window.SetFullscreen(!App.Window.IsFullscreen);
 
@@ -482,12 +494,74 @@ public sealed partial class PlayerPage : Page
 
     private void Repeat_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (RepeatBox.SelectedIndex >= 0)
-            Playback.Playlist.Repeat = (RepeatMode)RepeatBox.SelectedIndex;
+        if (_playlistSync || RepeatBox.SelectedIndex < 0)
+            return;
+        Playback.Playlist.Repeat = (RepeatMode)RepeatBox.SelectedIndex;
+        UpdateRepeatButton();
     }
 
-    private void Shuffle_Toggled(object sender, RoutedEventArgs e) =>
-        Playback.Playlist.Shuffle = ShuffleSwitch.IsOn;
+    private void Repeat_Click(object sender, RoutedEventArgs e) =>
+        SetRepeat(NextRepeat(Playback.Playlist.Repeat));
+
+    private void SetRepeat(RepeatMode mode)
+    {
+        if (_playlistSync)
+            return;
+        _playlistSync = true;
+        Playback.Playlist.Repeat = mode;
+        RepeatBox.SelectedIndex = (int)mode;
+        _playlistSync = false;
+        UpdateRepeatButton();
+    }
+
+    private static RepeatMode NextRepeat(RepeatMode mode) => mode switch
+    {
+        RepeatMode.Off => RepeatMode.All,
+        RepeatMode.All => RepeatMode.One,
+        _ => RepeatMode.Off
+    };
+
+    private void UpdateRepeatButton()
+    {
+        if (RepeatIcon == null || RepeatButton == null)
+            return;
+        var mode = Playback.Playlist.Repeat;
+        RepeatIcon.Glyph = mode == RepeatMode.One ? GlyphRepeatOne : GlyphRepeat;
+        RepeatIcon.Opacity = mode == RepeatMode.Off ? 0.45 : 1;
+        ApplyTip(RepeatButton, RepeatTitle(mode), HotkeyCatalog.CycleRepeat);
+    }
+
+    private static string RepeatTitle(RepeatMode mode) => mode switch
+    {
+        RepeatMode.All => "循环全部",
+        RepeatMode.One => "循环单条",
+        _ => "播完停止"
+    };
+
+    private void Shuffle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_playlistSync)
+            return;
+        SetShuffle(ShuffleSwitch.IsOn);
+    }
+
+    private void Shuffle_Click(object sender, RoutedEventArgs e) =>
+        SetShuffle(ShuffleButton.IsChecked == true);
+
+    private void SetShuffle(bool on)
+    {
+        if (_playlistSync)
+            return;
+        _playlistSync = true;
+        Playback.Playlist.Shuffle = on;
+        if (ShuffleSwitch != null)
+            ShuffleSwitch.IsOn = on;
+        if (ShuffleButton != null)
+            ShuffleButton.IsChecked = on;
+        _playlistSync = false;
+        if (ShuffleIcon != null)
+            ShuffleIcon.Opacity = on ? 1 : 0.45;
+    }
 
     private async void Playlist_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -558,11 +632,17 @@ public sealed partial class PlayerPage : Page
     private void ApplyControlTips()
     {
         ApplyTip(OpenButton, "打开", HotkeyCatalog.OpenFiles);
+        ApplyTip(OpenFilesItem, "打开文件", HotkeyCatalog.OpenFiles);
+        ApplyTip(FfmpegItem, "用 FFmpeg 打开当前项", HotkeyCatalog.PlayWithFfmpeg);
         ApplyTip(StopButton, "停止", HotkeyCatalog.Stop);
         ApplyTip(PreviousButton, "上一个", HotkeyCatalog.Previous);
+        ApplyTip(SeekBackButton, "后退 5 秒", HotkeyCatalog.SeekBack);
         ApplyTip(PlayButton, "播放/暂停", HotkeyCatalog.PlayPause);
+        ApplyTip(SeekForwardButton, "前进 5 秒", HotkeyCatalog.SeekForward);
         ApplyTip(NextButton, "下一个", HotkeyCatalog.Next);
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
+        UpdateRepeatButton();
+        ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(FitWindowButton, "自适应窗口", HotkeyCatalog.FitWindow);
         ApplyTip(PlaylistButton, "播放列表", HotkeyCatalog.TogglePlaylist);
         ApplyTip(PipelineButton, "管线信息", HotkeyCatalog.TogglePipeline);
@@ -636,10 +716,10 @@ public sealed partial class PlayerPage : Page
                 Ffmpeg_Click(this, new RoutedEventArgs());
                 break;
             case HotkeyCatalog.ToggleShuffle:
-                ShuffleSwitch.IsOn = !ShuffleSwitch.IsOn;
+                SetShuffle(!Playback.Playlist.Shuffle);
                 break;
             case HotkeyCatalog.CycleRepeat:
-                RepeatBox.SelectedIndex = (RepeatBox.SelectedIndex + 1) % RepeatBox.Items.Count;
+                SetRepeat(NextRepeat(Playback.Playlist.Repeat));
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);
