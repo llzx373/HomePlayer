@@ -14,6 +14,10 @@
             </ComboBox>
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="经典标题栏始终留在窗口最上方，画面不能盖住最小化、最大化和关闭。透明标题栏平时让画面铺到窗口上沿，鼠标移到顶部时出现，可以拖动窗口并点击这些按钮。" />
 
+            <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="默认跟随 Windows 当前的声音出口。改完后从下一次播放开始生效。" />
+
             <TextBlock Text="编解码器" Style="{ThemeResource SubtitleTextBlockStyle}" />
             <TextBlock x:Name="CodecSummary" TextWrapping="Wrap" />
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="每一组都按从上到下的顺序尝试。先点中一行，再用上移或下移调整。取消勾选后，播放时会跳过它。本程序是 64 位，x86 滤镜会列出来，但不能加载，所以不能勾选。改完后从下一次播放开始生效。" />

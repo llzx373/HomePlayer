@@ -13,6 +13,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private IBasicAudio? _audio;
     private IFilterGraph2? _graph;
     private readonly CodecPlan _plan;
+    private readonly string? _audioOutputId;
     private object? _splitter;
     private object? _video;
     private object? _audioFilter;
@@ -21,6 +22,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private InstalledCodec? _audioCodec;
     private string? _audioWarning;
     private bool _audioMissing;
+    private string? _audioDevice;
     private string _path = "";
     private bool _muted;
     private double _volume = 0.8;
@@ -28,7 +30,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private TimeSpan _seeked;
     private int _open;
 
-    public LavPlaybackEngine(CodecPlan plan) => _plan = plan;
+    public LavPlaybackEngine(CodecPlan plan, string? audioOutputId = null)
+    {
+        _plan = plan;
+        _audioOutputId = audioOutputId;
+    }
 
     public string? AudioWarning => _audioWarning;
     public bool AudioMissing => _audioMissing;
@@ -108,6 +114,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _path = path;
         _audioWarning = null;
         _audioMissing = false;
+        _audioDevice = AudioOutputs.Describe(_audioOutputId);
         _graph = Create<IFilterGraph2>(DsGuid.FilterGraph);
         _control = (IMediaControl)_graph;
         _seeking = (IMediaSeeking)_graph;
@@ -312,7 +319,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             }
 
             var output = FindPin((IBaseFilter)filter, output: true, video: false, anyOutput: true);
-            var rendered = output == null ? Hr.Fail : _graph.Render(output);
+            var rendered = output == null ? Hr.Fail : ConnectSound(output);
             var linked = output != null && IsConnected(output);
             ReleasePin(output);
             if (!Hr.Failed(rendered) && linked)
@@ -328,7 +335,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             errors.Add($"{codec.Name}：无法接到音频设备（0x{rendered:X8}）");
         }
 
-        var fallback = _graph!.Render(splitterAudio);
+        var fallback = ConnectSound(splitterAudio);
         ReleasePin(splitterAudio);
         var detail = errors.Count == 0 ? "没有启用音频解码器。" : string.Join("；", errors);
         if (Hr.Failed(fallback))
@@ -339,6 +346,35 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         }
 
         _audioWarning = "选用的音频解码器都没接上，已改用系统默认音频链路。" + detail;
+    }
+
+    private int ConnectSound(IPin output)
+    {
+        var renderer = AudioOutputs.CreateRenderer(_audioOutputId, out var name);
+        if (renderer != null)
+        {
+            _com.Add(renderer);
+            if (!Hr.Failed(_graph!.AddFilter((IBaseFilter)renderer, Trim(name))))
+            {
+                var input = FindPin((IBaseFilter)renderer, output: false, video: false);
+                var connected = input == null ? Hr.Fail : _graph.Connect(output, input);
+                ReleasePin(input);
+                if (!Hr.Failed(connected))
+                {
+                    _audioDevice = name;
+                    return connected;
+                }
+
+                Remove(renderer);
+            }
+        }
+
+        var rendered = _graph!.Render(output);
+        if (!Hr.Failed(rendered) && !string.IsNullOrWhiteSpace(_audioOutputId))
+            _audioDevice = AudioOutputs.Describe(null) + "（所选设备没接上）";
+        else if (!Hr.Failed(rendered))
+            _audioDevice = AudioOutputs.Describe(null);
+        return rendered;
     }
 
     private void EnsureSink()
@@ -394,6 +430,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _videoCodec = null;
         _audioCodec = null;
         _audioMissing = false;
+        _audioDevice = null;
         _sink = null;
         _duration = TimeSpan.Zero;
         _open = 0;
@@ -542,6 +579,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             AudioDecoder = _audioCodec == null
                 ? audioDecoder
                 : DescribeDecoder(string.IsNullOrWhiteSpace(audioDecoder) ? _audioCodec.Name : $"{_audioCodec.Name} / {audioDecoder}", _audioCodec),
+            AudioDevice = _audioDevice,
             Channels = channels,
             SampleRate = sampleRate,
             AudioTracks = audioTracks,
@@ -563,6 +601,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         lines.Add(UsageOf("分离器", _splitterCodec, _splitter));
         lines.Add(UsageOf("视频解码", _videoCodec, _video));
         lines.Add(UsageOf("音频解码", _audioCodec, _audioFilter));
+        lines.Add("声音出口：" + (_audioDevice ?? AudioOutputs.Describe(_audioOutputId)));
         if (!string.IsNullOrWhiteSpace(_audioWarning))
             lines.Add("音频：" + _audioWarning);
         return lines;

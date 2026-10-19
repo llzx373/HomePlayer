@@ -27,7 +27,7 @@ public sealed class AppHost : IAsyncDisposable
         var settings = LoadSettings();
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
-        var playback = new PlaybackController(post, () => CodecCatalog.Plan(settings));
+        var playback = new PlaybackController(post, () => CodecCatalog.Plan(settings), () => settings.AudioOutputId);
         playback.SetVolume(settings.Volume);
         var host = new AppHost(settings, repository, libraries, playback);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;

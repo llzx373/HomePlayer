@@ -21,6 +21,7 @@ public sealed class PipelineInfo
     public string? Hardware { get; init; }
     public string? AudioCodec { get; init; }
     public string? AudioDecoder { get; init; }
+    public string? AudioDevice { get; set; }
     public int? Channels { get; init; }
     public int? SampleRate { get; init; }
     public IReadOnlyList<string> AudioTracks { get; init; } = [];
@@ -65,6 +66,7 @@ public sealed class PipelineInfo
         text.AppendLine("音频");
         text.AppendLine($"编码：{Value(AudioCodec)}");
         text.AppendLine($"解码器：{Value(AudioDecoder)}");
+        text.AppendLine($"播放设备：{Value(AudioDevice)}");
         text.AppendLine($"声道：{(Channels is int channels ? channels.ToString(CultureInfo.InvariantCulture) : "未知")}");
         text.AppendLine($"采样率：{(SampleRate is int hertz ? $"{hertz} Hz" : "未知")}");
         if (AudioTracks.Count > 0)

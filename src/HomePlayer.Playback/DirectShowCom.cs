@@ -11,6 +11,8 @@ internal static class DsGuid
     public static readonly Guid LavAudio = new("E8E73B6B-4CB3-44A4-BE99-4F7BCB96E491");
     public static readonly Guid AsyncReader = new("E436EBB5-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid DirectSound = new("79376820-07D0-11CF-A24D-0020AFD79767");
+    public static readonly Guid SystemDeviceEnum = new("62BE5D10-60EB-11d0-BD3B-00A0C911CE86");
+    public static readonly Guid AudioRendererCategory = new("E0F158E1-CB04-11d0-BD4E-00A0C911CE86");
     public static readonly Guid Video = new("73646976-0000-0010-8000-00AA00389B71");
     public static readonly Guid Audio = new("73647561-0000-0010-8000-00AA00389B71");
     public static readonly Guid Stream = new("E436EB83-524F-11CE-9F53-0020AF0BA770");
@@ -278,6 +280,40 @@ internal interface ILavAudioSettings
     [PreserveSig] uint GetMixingLayout();
     [PreserveSig] int SetMixingFlags(uint flags);
     [PreserveSig] uint GetMixingFlags();
+}
+
+[ComImport, Guid("29840822-5B84-11D0-BD3B-00A0C911CE86"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface ICreateDevEnum
+{
+    [PreserveSig] int CreateClassEnumerator(in Guid type, out IEnumMoniker enumerator, int flags);
+}
+
+[ComImport, Guid("00000102-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IEnumMoniker
+{
+    [PreserveSig] int Next(int count, IntPtr monikers, IntPtr fetched);
+    [PreserveSig] int Skip(int count);
+    [PreserveSig] int Reset();
+    [PreserveSig] int Clone(out IEnumMoniker clone);
+}
+
+[ComImport, Guid("0000000F-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMonikerDs
+{
+    [PreserveSig] int GetClassID(out Guid classId);
+    [PreserveSig] int IsDirty();
+    [PreserveSig] int Load(IntPtr stream);
+    [PreserveSig] int Save(IntPtr stream, int clearDirty);
+    [PreserveSig] int GetSizeMax(out long size);
+    [PreserveSig] int BindToObject(IntPtr bindContext, IntPtr left, in Guid iid, [MarshalAs(UnmanagedType.Interface)] out object result);
+    [PreserveSig] int BindToStorage(IntPtr bindContext, IntPtr left, in Guid iid, [MarshalAs(UnmanagedType.Interface)] out object result);
+}
+
+[ComImport, Guid("55272A00-42CB-11CE-8135-00AA004BB851"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IPropertyBag
+{
+    [PreserveSig] int Read([MarshalAs(UnmanagedType.LPWStr)] string name, [In, Out, MarshalAs(UnmanagedType.Struct)] ref object value, IntPtr errorLog);
+    [PreserveSig] int Write([MarshalAs(UnmanagedType.LPWStr)] string name, ref object value);
 }
 
 [ComImport, Guid("A668B8F2-BA87-4F63-9D41-768F7DE9C50E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

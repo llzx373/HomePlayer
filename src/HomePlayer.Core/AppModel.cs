@@ -46,6 +46,7 @@ public sealed class AppSettings
     public bool CloseToTray { get; set; } = true;
     public double Volume { get; set; } = 0.8;
     public TitleBarMode TitleBar { get; set; } = TitleBarMode.Classic;
+    public string? AudioOutputId { get; set; }
     public List<CodecPreference> SplitterOrder { get; set; } = [];
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];
     public List<CodecPreference> AudioDecoderOrder { get; set; } = [];

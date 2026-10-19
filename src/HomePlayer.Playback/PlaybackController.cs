@@ -6,16 +6,18 @@ public sealed class PlaybackController : IDisposable
 {
     private readonly Action<Action> _post;
     private readonly Func<CodecPlan> _codecs;
+    private readonly Func<string?> _audioOutput;
     private IPlaybackEngine? _engine;
     private string? _reason;
     private int _token;
     private double _volume = 0.8;
     private bool _muted;
 
-    public PlaybackController(Action<Action> post, Func<CodecPlan> codecs)
+    public PlaybackController(Action<Action> post, Func<CodecPlan> codecs, Func<string?> audioOutput)
     {
         _post = post;
         _codecs = codecs;
+        _audioOutput = audioOutput;
     }
 
     public Playlist Playlist { get; } = new();
@@ -203,7 +205,7 @@ public sealed class PlaybackController : IDisposable
         var plan = _codecs();
         if (!forceFfmpeg && plan.Splitters.Count > 0 && plan.VideoDecoders.Count > 0)
         {
-            var lav = new LavPlaybackEngine(plan);
+            var lav = new LavPlaybackEngine(plan, _audioOutput());
             try
             {
                 Attach(lav);
@@ -224,7 +226,7 @@ public sealed class PlaybackController : IDisposable
             }
         }
 
-        var ffmpeg = new FfmpegPlaybackEngine();
+        var ffmpeg = new FfmpegPlaybackEngine(_audioOutput());
         try
         {
             Attach(ffmpeg);

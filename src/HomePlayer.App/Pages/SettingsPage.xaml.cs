@@ -26,6 +26,7 @@ public sealed partial class SettingsPage : Page
         SplitterList.ItemsSource = _splitters;
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
+        LoadAudioDevices(settings.AudioOutputId);
         ReloadCodecs(settings);
         _loading = false;
         CacheText.Text = $"缓存占用 {Format(App.Host.Libraries.CacheBytes())}";
@@ -36,6 +37,7 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.TmdbApiKey = string.IsNullOrWhiteSpace(ApiKeyBox.Text) ? null : ApiKeyBox.Text.Trim();
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
+        WriteAudioDevice();
         WriteCodecs();
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
@@ -48,6 +50,14 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
+    }
+
+    private void AudioDevice_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+            return;
+        WriteAudioDevice();
+        App.Host.SaveSettings();
     }
 
     private void SplitterUp_Click(object sender, RoutedEventArgs e) => Move(_splitters, SplitterList, -1);
@@ -77,6 +87,20 @@ public sealed partial class SettingsPage : Page
             return;
         WriteCodecs();
         App.Host.SaveSettings();
+    }
+
+    private void LoadAudioDevices(string? savedId)
+    {
+        var items = AudioOutputs.List(savedId);
+        AudioDeviceBox.ItemsSource = items;
+        AudioDeviceBox.SelectedItem = items.FirstOrDefault(item => item.Id == (savedId ?? AudioOutputs.SystemDefaultId)) ?? items[0];
+    }
+
+    private void WriteAudioDevice()
+    {
+        App.Host.Settings.AudioOutputId = AudioDeviceBox.SelectedItem is AudioOutput selected && !string.IsNullOrWhiteSpace(selected.Id)
+            ? selected.Id
+            : null;
     }
 
     private void ReloadCodecs(AppSettings settings)
