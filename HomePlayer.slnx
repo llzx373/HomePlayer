@@ -7,4 +7,7 @@
     <Project Path="src/HomePlayer.Library/HomePlayer.Library.csproj" />
     <Project Path="src/HomePlayer.Playback/HomePlayer.Playback.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HomePlayer.Core.Tests/HomePlayer.Core.Tests.csproj" />
+  </Folder>
 </Solution>
