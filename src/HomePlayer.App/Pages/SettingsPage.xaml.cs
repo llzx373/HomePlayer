@@ -20,6 +20,8 @@ public sealed partial class SettingsPage : Page
     private readonly ObservableCollection<HotkeyRow> _hotkeys = [];
     private HotkeyRow? _capturing;
     private bool _loading = true;
+    private bool _codecsReady;
+    private int _codecScanVersion;
 
     public SettingsPage()
     {
@@ -36,7 +38,8 @@ public sealed partial class SettingsPage : Page
         HotkeyList.ItemsSource = _hotkeys;
         LoadHotkeys(settings.Hotkeys);
         LoadAudioDevices(settings.AudioOutputId);
-        ReloadCodecs(settings);
+        CodecSummary.Text = "正在扫描编解码器…";
+        _ = ReloadCodecsAsync(settings);
         AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
         Unloaded += (_, _) => EndCapture();
         Loaded += (_, _) =>
@@ -105,11 +108,18 @@ public sealed partial class SettingsPage : Page
 
     private void AudioDown_Click(object sender, RoutedEventArgs e) => Move(_audios, AudioList, 1);
 
-    private void ResetCodecs_Click(object sender, RoutedEventArgs e)
+    private async void ResetCodecs_Click(object sender, RoutedEventArgs e)
     {
         _loading = true;
-        ReloadCodecs(new AppSettings());
-        _loading = false;
+        try
+        {
+            await ReloadCodecsAsync(new AppSettings());
+        }
+        finally
+        {
+            _loading = false;
+        }
+
         WriteCodecs();
         App.Host.SaveSettings();
     }
@@ -136,12 +146,29 @@ public sealed partial class SettingsPage : Page
             : null;
     }
 
-    private void ReloadCodecs(AppSettings settings)
+    private async Task ReloadCodecsAsync(AppSettings settings)
     {
-        var all = CodecCatalog.Scan();
+        var version = ++_codecScanVersion;
+        IReadOnlyList<InstalledCodec> all;
+        try
+        {
+            all = await Task.Run(CodecCatalog.Scan);
+        }
+        catch (Exception ex)
+        {
+            if (version != _codecScanVersion)
+                return;
+            _codecsReady = false;
+            CodecSummary.Text = "扫描编解码器失败：" + ex.Message;
+            return;
+        }
+
+        if (version != _codecScanVersion)
+            return;
         Fill(_splitters, CodecCatalog.Display(all, CodecKind.Splitter, settings.SplitterOrder));
         Fill(_videos, CodecCatalog.Display(all, CodecKind.VideoDecoder, settings.VideoDecoderOrder));
         Fill(_audios, CodecCatalog.Display(all, CodecKind.AudioDecoder, settings.AudioDecoderOrder));
+        _codecsReady = true;
         RefreshSummary();
     }
 
@@ -177,6 +204,8 @@ public sealed partial class SettingsPage : Page
 
     private void WriteCodecs()
     {
+        if (!_codecsReady)
+            return;
         App.Host.Settings.SplitterOrder = ToPreferences(_splitters);
         App.Host.Settings.VideoDecoderOrder = ToPreferences(_videos);
         App.Host.Settings.AudioDecoderOrder = ToPreferences(_audios);

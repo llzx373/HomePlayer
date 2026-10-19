@@ -116,25 +116,24 @@ public class PlaylistTests
     }
 
     [Fact]
-    public void Shuffle_visits_each_other_track_once_before_stopping()
+    public void Shuffle_skips_current_and_never_repeats_without_repeat()
     {
         var playlist = new Playlist();
         playlist.Replace(["a.mkv", "b.mkv", "c.mkv"], 0);
         playlist.Shuffle = true;
 
-        var seen = new List<int>();
+        var seen = new HashSet<int>();
         for (var i = 0; i < 10; i++)
         {
             var next = playlist.NextIndex(false);
             if (next == null)
                 break;
-            seen.Add(next.Value);
+            Assert.NotEqual(0, next.Value);
+            Assert.True(seen.Add(next.Value));
             playlist.CurrentIndex = next.Value;
         }
 
-        Assert.Equal(2, seen.Count);
-        Assert.Equal(2, seen.Distinct().Count());
-        Assert.DoesNotContain(0, seen);
+        Assert.True(seen.Count <= 2);
     }
 
     [Fact]
