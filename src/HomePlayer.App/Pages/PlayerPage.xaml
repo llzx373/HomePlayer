@@ -18,16 +18,17 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="12">
+        <Grid x:Name="Stage">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid>
-                <SwapChainPanel x:Name="VideoSurface" />
+            <Grid x:Name="VideoHost" Background="Black">
+                <SwapChainPanel x:Name="VideoSurface" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 <Border
                     x:Name="PipelinePanel"
                     HorizontalAlignment="Right"
+                    VerticalAlignment="Stretch"
                     Width="360"
                     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
                     Visibility="Collapsed"
@@ -37,13 +38,16 @@
                     </ScrollViewer>
                 </Border>
             </Grid>
-            <Grid Grid.Column="1" RowSpacing="8">
+            <Grid x:Name="PlaylistPane" Grid.Column="1" Width="300" Margin="12,0,0,0" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="播放列表" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                <Grid>
+                    <TextBlock Text="播放列表" Style="{ThemeResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
+                    <Button Content="收起" HorizontalAlignment="Right" Click="CollapsePlaylist_Click" />
+                </Grid>
                 <ListView
                     x:Name="PlaylistView"
                     Grid.Row="1"
@@ -78,21 +82,36 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Slider x:Name="PositionSlider" Minimum="0" Maximum="1" PointerPressed="Slider_Pressed" PointerReleased="Slider_Released" PointerCaptureLost="Slider_Released" />
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                <Button Content="打开" Click="Open_Click" />
-                <Button Content="上一首" Click="Previous_Click" />
-                <Button x:Name="PlayButton" Content="播放" Click="Play_Click" />
-                <Button Content="下一首" Click="Next_Click" />
-                <Button Content="停止" Click="Stop_Click" />
-                <TextBlock x:Name="TimeText" VerticalAlignment="Center" />
-                <Slider x:Name="VolumeSlider" Width="120" Minimum="0" Maximum="100" ValueChanged="Volume_Changed" />
-                <ToggleButton x:Name="MuteButton" Content="静音" Click="Mute_Click" />
-                <Button Content="管线信息" Click="Pipeline_Click" />
-                <Button Content="用 FFmpeg 打开" Click="Ffmpeg_Click" />
-                <Button Content="全屏" Click="Fullscreen_Click" />
-            </StackPanel>
-            <TextBlock x:Name="StatusText" Grid.Row="2" Opacity="0.75" />
+            <Slider x:Name="PositionSlider" Minimum="0" Maximum="1" />
+            <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ScrollViewer
+                    HorizontalScrollMode="Enabled"
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Disabled"
+                    VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="打开" Click="Open_Click" />
+                        <Button Content="上一首" Click="Previous_Click" />
+                        <Button x:Name="PlayButton" Content="播放" Click="Play_Click" />
+                        <Button Content="下一首" Click="Next_Click" />
+                        <Button Content="停止" Click="Stop_Click" />
+                        <TextBlock x:Name="TimeText" VerticalAlignment="Center" />
+                        <Button Content="管线信息" Click="Pipeline_Click" />
+                        <Button Content="用 FFmpeg 打开" Click="Ffmpeg_Click" />
+                    </StackPanel>
+                </ScrollViewer>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Slider x:Name="VolumeSlider" Width="120" Minimum="0" Maximum="100" ValueChanged="Volume_Changed" />
+                    <ToggleButton x:Name="MuteButton" Content="静音" Click="Mute_Click" />
+                    <ToggleButton x:Name="PlaylistButton" Content="播放列表" IsChecked="True" Click="PlaylistButton_Click" />
+                    <Button x:Name="FullscreenButton" Content="全屏" Click="Fullscreen_Click" />
+                </StackPanel>
+            </Grid>
+            <TextBlock x:Name="StatusText" Grid.Row="2" Opacity="0.75" TextWrapping="Wrap" />
         </Grid>
     </Grid>
 </Page>

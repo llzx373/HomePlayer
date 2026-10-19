@@ -96,8 +96,20 @@ public sealed class PlaybackController : IDisposable
         return MoveAsync(Playlist.PreviousIndex());
     }
 
+    public Task PlayIndexAsync(int index)
+    {
+        if (index < 0 || index >= Playlist.Items.Count)
+            return Task.CompletedTask;
+        Playlist.CurrentIndex = index;
+        return PlayCurrentAsync(false);
+    }
+
     public void Seek(TimeSpan position)
     {
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        if (Duration > TimeSpan.Zero && position > Duration)
+            position = Duration;
         _engine?.Seek(position);
         Notify();
     }

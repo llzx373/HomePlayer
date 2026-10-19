@@ -15,6 +15,10 @@ public sealed partial class MainWindow : Window
     private readonly TaskbarIcon _tray;
     private bool _fullscreen;
 
+    public bool IsFullscreen => _fullscreen;
+
+    public event Action? FullscreenChanged;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -57,9 +61,12 @@ public sealed partial class MainWindow : Window
 
     public void SetFullscreen(bool enabled)
     {
+        if (_fullscreen == enabled)
+            return;
         _fullscreen = enabled;
         Nav.IsPaneVisible = !enabled;
         AppWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
+        FullscreenChanged?.Invoke();
     }
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
