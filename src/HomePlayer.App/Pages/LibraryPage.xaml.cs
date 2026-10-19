@@ -20,6 +20,7 @@ public sealed partial class LibraryPage : Page
     private readonly DispatcherQueueTimer _filterTimer;
     private bool _loading;
     private bool _sorting;
+    private bool _needsFullReload;
 
     public LibraryPage()
     {
@@ -37,7 +38,11 @@ public sealed partial class LibraryPage : Page
         _filterTimer.IsRepeating = false;
         _filterTimer.Tick += (_, _) => BindCards();
         App.Host.Libraries.Changed += (_, _) => QueueReload();
-        Loaded += (_, _) => QueueReload();
+        Loaded += (_, _) =>
+        {
+            _needsFullReload = true;
+            QueueReload();
+        };
         Unloaded += (_, _) =>
         {
             _reloadTimer.Stop();
@@ -57,6 +62,22 @@ public sealed partial class LibraryPage : Page
     {
         if (App.Host.Exiting)
             return;
+        var force = _needsFullReload;
+        _needsFullReload = false;
+        var (all, ids) = App.Host.Libraries.TakeDirtyItems();
+        if (!force && !all && ids.Length == 0)
+            return;
+        if (force || all)
+        {
+            ReloadAll();
+            return;
+        }
+
+        ApplyItemUpdates(ids);
+    }
+
+    private void ReloadAll()
+    {
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
         var libraries = App.Host.Repository.ListLibraries();
         _loading = true;
@@ -66,11 +87,6 @@ public sealed partial class LibraryPage : Page
         LibraryList.SelectedItem = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
         _loading = false;
         BindCards();
-        EmptyText.Visibility = libraries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var pending = App.Host.Libraries.PendingCount;
-        EmptyText.Text = libraries.Count == 0
-            ? "还没有媒体库。添加一个本地文件夹开始。"
-            : pending > 0 ? $"正在处理后台队列，剩余约 {pending} 项。" : "";
     }
 
     private void BindCards()
@@ -82,43 +98,145 @@ public sealed partial class LibraryPage : Page
         if (library == null)
         {
             ConfigureSort(null);
+            UpdateEmptyText();
             return;
         }
 
         ConfigureSort(library.Kind);
         var query = SearchBox.Text?.Trim() ?? "";
-        var items = App.Host.Repository.ListItems(library.Id);
-        IEnumerable<MediaItem> sorted = library.Kind == LibraryKind.Raw
-            ? (SortBox.SelectedIndex == 1
-                ? items.OrderByDescending(item => item.MtimeUtcTicks)
-                : items.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
-            : (SortBox.SelectedIndex == 1
-                ? items.OrderByDescending(item => item.Year ?? 0).ThenBy(item => item.Title)
-                : items.OrderBy(item => item.Title ?? item.FileName, StringComparer.OrdinalIgnoreCase));
-        foreach (var item in sorted)
+        var comparer = Comparer<MediaItem>.Create((left, right) =>
+            CompareItems(left, right, library.Kind, SortBox.SelectedIndex));
+        foreach (var item in App.Host.Repository.ListItems(library.Id).OrderBy(item => item, comparer))
         {
-            var title = library.Kind == LibraryKind.Catalog && !string.IsNullOrWhiteSpace(item.Title) && item.MatchStatus == MatchStatus.Matched
-                ? item.Title!
-                : item.FileName;
-            if (query.Length > 0 && title.Contains(query, StringComparison.OrdinalIgnoreCase) == false && item.FileName.Contains(query, StringComparison.OrdinalIgnoreCase) == false)
-                continue;
-            var subtitle = library.Kind == LibraryKind.Raw
-                ? $"{ClockText.FormatSeconds(item.DurationSeconds)} · {Resolution(item)} · {item.VideoCodec ?? item.Status.ToString()}"
-                : CatalogSubtitle(item);
-            _cards.Add(new MediaCard
-            {
-                Item = item,
-                Library = library,
-                Title = title,
-                Subtitle = item.Error ?? subtitle,
-                Image = LoadImage(library.Kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath),
-                Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : ""
-            });
+            var card = CreateCard(item, library, query);
+            if (card != null)
+                _cards.Add(card);
         }
 
-        EmptyText.Visibility = _cards.Count == 0 && _libraries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (_cards.Count == 0 && library != null)
-            EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
+        UpdateEmptyText();
+    }
+
+    private void ApplyItemUpdates(string[] ids)
+    {
+        if (_loading || ids.Length == 0)
+            return;
+        var library = LibraryList.SelectedItem as MediaLibrary;
+        if (library == null)
+            return;
+        ConfigureSort(library.Kind);
+        var query = SearchBox.Text?.Trim() ?? "";
+        foreach (var id in ids)
+        {
+            var index = IndexOfCard(id);
+            var item = App.Host.Repository.GetItem(id);
+            if (item == null || item.LibraryId != library.Id)
+            {
+                if (index >= 0)
+                    _cards.RemoveAt(index);
+                continue;
+            }
+
+            var card = CreateCard(item, library, query);
+            if (index >= 0)
+                _cards.RemoveAt(index);
+            if (card == null)
+                continue;
+            _cards.Insert(FindInsertIndex(item, library.Kind, SortBox.SelectedIndex), card);
+        }
+
+        UpdateEmptyText();
+    }
+
+    private MediaCard? CreateCard(MediaItem item, MediaLibrary library, string query)
+    {
+        var title = library.Kind == LibraryKind.Catalog && !string.IsNullOrWhiteSpace(item.Title) && item.MatchStatus == MatchStatus.Matched
+            ? item.Title!
+            : item.FileName;
+        if (query.Length > 0
+            && !title.Contains(query, StringComparison.OrdinalIgnoreCase)
+            && !item.FileName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var subtitle = library.Kind == LibraryKind.Raw
+            ? $"{ClockText.FormatSeconds(item.DurationSeconds)} · {Resolution(item)} · {item.VideoCodec ?? item.Status.ToString()}"
+            : CatalogSubtitle(item);
+        return new MediaCard
+        {
+            Item = item,
+            Library = library,
+            Title = title,
+            Subtitle = item.Error ?? subtitle,
+            Image = LoadImage(library.Kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath),
+            Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : ""
+        };
+    }
+
+    private int IndexOfCard(string itemId)
+    {
+        for (var i = 0; i < _cards.Count; i++)
+        {
+            if (string.Equals(_cards[i].Item.Id, itemId, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private int FindInsertIndex(MediaItem item, LibraryKind kind, int sortIndex)
+    {
+        for (var i = 0; i < _cards.Count; i++)
+        {
+            if (CompareItems(item, _cards[i].Item, kind, sortIndex) < 0)
+                return i;
+        }
+
+        return _cards.Count;
+    }
+
+    private static int CompareItems(MediaItem left, MediaItem right, LibraryKind kind, int sortIndex)
+    {
+        if (kind == LibraryKind.Raw)
+        {
+            return sortIndex == 1
+                ? right.MtimeUtcTicks.CompareTo(left.MtimeUtcTicks)
+                : string.Compare(left.FileName, right.FileName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (sortIndex == 1)
+        {
+            var year = (right.Year ?? 0).CompareTo(left.Year ?? 0);
+            return year != 0
+                ? year
+                : string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.CurrentCulture);
+        }
+
+        return string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void UpdateEmptyText()
+    {
+        if (_libraries.Count == 0)
+        {
+            EmptyText.Visibility = Visibility.Visible;
+            EmptyText.Text = "还没有媒体库。添加一个本地文件夹开始。";
+            return;
+        }
+
+        if (_cards.Count > 0)
+        {
+            EmptyText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        EmptyText.Visibility = Visibility.Visible;
+        if (!string.IsNullOrWhiteSpace(SearchBox.Text))
+        {
+            EmptyText.Text = "没有匹配的条目。";
+            return;
+        }
+
+        EmptyText.Text = LibraryList.SelectedItem is not MediaLibrary
+            ? "选择一个媒体库。"
+            : App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
     }
 
     private void ConfigureSort(LibraryKind? kind)

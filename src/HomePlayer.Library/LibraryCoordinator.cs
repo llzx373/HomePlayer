@@ -23,7 +23,10 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private readonly List<Task> _workers = [];
     private readonly HashSet<Task> _tasks = [];
     private readonly object _tasksGate = new();
+    private readonly object _dirtyGate = new();
+    private readonly HashSet<string> _dirtyItems = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slotSignal = new(0);
+    private bool _dirtyAll;
     private readonly object _slot = new();
     private int _active;
     private int _maxParallel = 2;
@@ -38,6 +41,18 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     public event EventHandler? Changed;
 
     public int PendingCount => _repository.PendingCount();
+
+    public (bool All, string[] Ids) TakeDirtyItems()
+    {
+        lock (_dirtyGate)
+        {
+            var all = _dirtyAll;
+            _dirtyAll = false;
+            var ids = _dirtyItems.ToArray();
+            _dirtyItems.Clear();
+            return (all, ids);
+        }
+    }
 
     public void Start()
     {
@@ -80,6 +95,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         };
         _repository.InsertLibrary(library);
         Watch(library);
+        MarkAllDirty();
         ReconcileInBackground(library.Id);
         Changed?.Invoke(this, EventArgs.Empty);
         return library;
@@ -114,6 +130,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             }
         });
 
+        MarkAllDirty();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -141,6 +158,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
         _repository.MarkChanged(item, size, ticks);
         _repository.Enqueue(item.Id, library.Kind);
+        MarkDirty(item.Id);
         Submit(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -191,6 +209,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             }
         });
 
+        MarkAllDirty();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -350,12 +369,14 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 };
                 _repository.InsertItem(item);
                 _repository.Enqueue(item.Id, library.Kind);
+                MarkDirty(item.Id);
                 Submit(item.Id);
             }
             else if (item.Size != size || Math.Abs(item.MtimeUtcTicks - ticks) > TimeSpan.TicksPerSecond)
             {
                 _repository.MarkChanged(item, size, ticks);
                 _repository.Enqueue(item.Id, library.Kind);
+                MarkDirty(item.Id);
                 Submit(item.Id);
             }
         }
@@ -366,6 +387,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 continue;
             TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
             _repository.DeleteItem(item.Id);
+            MarkDirty(item.Id);
         }
 
         _repository.TouchScan(library.Id, DateTime.UtcNow);
@@ -453,6 +475,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         {
             _repository.DeleteItem(item.Id);
             _repository.MarkWork(itemId, 2);
+            MarkDirty(item.Id);
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -481,6 +504,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             _repository.MarkWork(item.Id, 3);
         }
 
+        MarkDirty(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -564,6 +588,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         item.Status = ItemStatus.Ready;
         item.Error = null;
         _repository.SaveMetadata(item);
+        MarkDirty(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -610,6 +635,18 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     }
 
     private object LibraryLock(string libraryId) => _libraryLocks.GetOrAdd(libraryId, _ => new object());
+
+    private void MarkDirty(string itemId)
+    {
+        lock (_dirtyGate)
+            _dirtyItems.Add(itemId);
+    }
+
+    private void MarkAllDirty()
+    {
+        lock (_dirtyGate)
+            _dirtyAll = true;
+    }
 
     private static long SecondTicks(DateTime utc) => utc.Ticks / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond;
 
