@@ -24,6 +24,12 @@
                 <Setter Property="Width" Value="44" />
                 <Setter Property="Height" Value="44" />
             </Style>
+            <Style x:Key="PlayerSpeedButton" TargetType="Button">
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="36" />
+                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
             <Style x:Key="PlayerIconToggleButton" TargetType="ToggleButton">
                 <Setter Property="Width" Value="36" />
                 <Setter Property="Height" Value="36" />

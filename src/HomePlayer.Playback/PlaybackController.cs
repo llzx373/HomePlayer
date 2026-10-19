@@ -11,6 +11,7 @@ public sealed class PlaybackController : IDisposable
     private string? _reason;
     private int _token;
     private double _volume = 0.8;
+    private double _rate = 1.0;
     private bool _muted;
     private int _videoWidth;
     private int _videoHeight;
@@ -29,6 +30,7 @@ public sealed class PlaybackController : IDisposable
     public TimeSpan Position => _engine?.Position ?? TimeSpan.Zero;
     public TimeSpan Duration => _engine?.Duration ?? TimeSpan.Zero;
     public double Volume => _volume;
+    public double Rate => _rate;
     public bool Muted => _muted;
     public int VideoWidth => _videoWidth;
     public int VideoHeight => _videoHeight;
@@ -48,6 +50,22 @@ public sealed class PlaybackController : IDisposable
     {
         _muted = muted;
         _engine?.SetMuted(muted);
+        Notify();
+    }
+
+    public void SetRate(double rate)
+    {
+        _rate = PlaybackRates.Clamp(rate);
+        if (_engine != null)
+        {
+            _engine.SetRate(_rate);
+            Status = Math.Abs(_engine.Rate - _rate) > 0.01
+                ? "当前滤镜不支持倍速"
+                : Status == "当前滤镜不支持倍速"
+                    ? "正在播放"
+                    : Status;
+        }
+
         Notify();
     }
 
@@ -159,6 +177,8 @@ public sealed class PlaybackController : IDisposable
 
     private async Task PlayCurrentAsync(bool forceFfmpeg)
     {
+        _rate = 1.0;
+        Notify();
         var token = ++_token;
         var previous = _engine;
         _engine = null;
@@ -211,10 +231,13 @@ public sealed class PlaybackController : IDisposable
                         item.Error = null;
                         engine.SetVolume(_volume);
                         engine.SetMuted(_muted);
+                        engine.SetRate(_rate);
                         engine.Play();
-                        Status = engine is LavPlaybackEngine { AudioMissing: true }
-                            ? "正在播放，音频没有接上"
-                            : "正在播放";
+                        Status = Math.Abs(engine.Rate - _rate) > 0.01
+                            ? "当前滤镜不支持倍速"
+                            : engine is LavPlaybackEngine { AudioMissing: true }
+                                ? "正在播放，音频没有接上"
+                                : "正在播放";
                         EngineLabel = engine.Name;
                         CaptureVideoSize(engine);
                         Notify();

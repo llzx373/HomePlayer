@@ -14,6 +14,8 @@ public interface IPlaybackEngine : IDisposable
     void Seek(TimeSpan position);
     void SetVolume(double linear);
     void SetMuted(bool muted);
+    double Rate { get; }
+    void SetRate(double rate);
     PipelineInfo GetPipeline();
     event Action<VideoFrame>? FrameArrived;
     event Action? Ended;

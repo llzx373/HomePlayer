@@ -26,6 +26,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private string _path = "";
     private bool _muted;
     private double _volume = 0.8;
+    private double _rate = 1.0;
     private TimeSpan _duration;
     private long _seekedTicks;
     private volatile bool _isPlaying;
@@ -44,6 +45,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration => _duration;
     public TimeSpan Position => ReadPosition();
+    public double Rate => _rate;
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
@@ -94,6 +96,8 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _sta.Invoke(() => _audio?.put_Volume(muted ? -10000 : ToDecibels(_volume)));
     }
 
+    public void SetRate(double rate) => _sta.Invoke(() => ApplyRate(PlaybackRates.Clamp(rate)));
+
     public PipelineInfo GetPipeline() => _sta.Invoke(ReadPipeline);
 
     public void Dispose()
@@ -136,6 +140,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         if (!Hr.Failed(_seeking.GetDuration(out var duration)))
             _duration = TimeSpan.FromTicks(duration);
         _audio.put_Volume(_muted ? -10000 : ToDecibels(_volume));
+        ApplyRate(_rate);
     }
 
     private object OpenSplitter(string path)
@@ -453,6 +458,24 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _sink = null;
         _duration = TimeSpan.Zero;
         _open = 0;
+    }
+
+    private void ApplyRate(double rate)
+    {
+        rate = PlaybackRates.Clamp(rate);
+        if (_seeking == null)
+        {
+            _rate = rate;
+            return;
+        }
+
+        if (Hr.Failed(_seeking.SetRate(rate)))
+        {
+            _rate = 1.0;
+            return;
+        }
+
+        _rate = !Hr.Failed(_seeking.GetRate(out var actual)) && actual > 0 ? actual : rate;
     }
 
     private TimeSpan ReadPosition()

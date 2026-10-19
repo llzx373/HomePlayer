@@ -1,3 +1,4 @@
+using System.Globalization;
 using HomePlayer.Core;
 using HomePlayer.Playback;
 using Microsoft.UI.Dispatching;
@@ -254,6 +255,7 @@ public sealed partial class PlayerPage : Page
         }
         MuteButton.IsChecked = Playback.Muted;
         UpdateVolumeIcon();
+        UpdateSpeedChrome();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
         SyncAlwaysOnTopButton();
         SyncSnapshotButton();
@@ -584,6 +586,45 @@ public sealed partial class PlayerPage : Page
         return string.IsNullOrWhiteSpace(cleaned) ? "screenshot" : cleaned;
     }
 
+    private void SpeedFlyout_Opening(object sender, object e) => SyncSpeedMenu();
+
+    private void SpeedItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag }
+            && double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate))
+            ApplyPlaybackRate(rate);
+    }
+
+    private void ApplyPlaybackRate(double rate)
+    {
+        Playback.SetRate(rate);
+        UpdateSpeedChrome();
+        if (Playback.Status == "当前滤镜不支持倍速")
+            ShowStatusHold("当前滤镜不支持倍速");
+    }
+
+    private void UpdateSpeedChrome()
+    {
+        if (SpeedText == null || SpeedButton == null)
+            return;
+        SpeedText.Text = PlaybackRates.Label(Playback.Rate);
+        ApplyTip(SpeedButton, "倍速", HotkeyCatalog.CycleSpeed);
+        SyncSpeedMenu();
+    }
+
+    private void SyncSpeedMenu()
+    {
+        if (SpeedFlyout == null)
+            return;
+        var rate = Playback.Rate;
+        foreach (var item in SpeedFlyout.Items.OfType<RadioMenuFlyoutItem>())
+        {
+            if (item.Tag is string tag
+                && double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+                item.IsChecked = Math.Abs(value - rate) < 0.001;
+        }
+    }
+
     private void AspectFlyout_Opening(object sender, object e) => SyncAspectMenu();
 
     private void AspectItem_Click(object sender, RoutedEventArgs e)
@@ -823,6 +864,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(SeekForwardButton, "前进 5 秒", HotkeyCatalog.SeekForward);
         ApplyTip(NextButton, "下一个", HotkeyCatalog.Next);
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
+        UpdateSpeedChrome();
         UpdateRepeatButton();
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(SnapshotButton, "截图", HotkeyCatalog.Snapshot);
@@ -905,6 +947,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.CycleRepeat:
                 SetRepeat(NextRepeat(Playback.Playlist.Repeat));
+                break;
+            case HotkeyCatalog.CycleSpeed:
+                ApplyPlaybackRate(PlaybackRates.Next(Playback.Rate));
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);

@@ -98,6 +98,11 @@ internal interface IMediaSeeking
     [PreserveSig] int GetCurrentPosition(out long position);
     [PreserveSig] int ConvertTimeFormat(out long target, ref Guid targetFormat, long source, ref Guid sourceFormat);
     [PreserveSig] int SetPositions(ref long current, uint currentFlags, ref long stop, uint stopFlags);
+    [PreserveSig] int GetPositions(out long current, out long stop);
+    [PreserveSig] int GetAvailable(out long earliest, out long latest);
+    [PreserveSig] int SetRate(double rate);
+    [PreserveSig] int GetRate(out double rate);
+    [PreserveSig] int GetPreroll(out long preroll);
 }
 
 [ComImport, Guid("56A868B3-0AD4-11CE-B03A-0020AF0BA770"), InterfaceType(ComInterfaceType.InterfaceIsDual)]

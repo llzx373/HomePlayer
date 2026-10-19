@@ -256,6 +256,58 @@
                         <Slider x:Name="VolumeSlider" Width="120" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="Volume_Changed" />
                     </StackPanel>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
+                    <Button
+                        x:Name="SpeedButton"
+                        Style="{StaticResource PlayerSpeedButton}"
+                        AutomationProperties.Name="倍速"
+                        ToolTipService.ToolTip="倍速">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon x:Name="SpeedIcon" Glyph="&#xEC57;" FontSize="16" />
+                            <TextBlock x:Name="SpeedText" Text="1.0×" VerticalAlignment="Center" FontSize="12" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="SpeedFlyout" Placement="Bottom" Opening="SpeedFlyout_Opening">
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed05Item"
+                                    Text="0.5×"
+                                    GroupName="Speed"
+                                    Tag="0.5"
+                                    Click="SpeedItem_Click" />
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed075Item"
+                                    Text="0.75×"
+                                    GroupName="Speed"
+                                    Tag="0.75"
+                                    Click="SpeedItem_Click" />
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed10Item"
+                                    Text="1.0×"
+                                    GroupName="Speed"
+                                    Tag="1.0"
+                                    IsChecked="True"
+                                    Click="SpeedItem_Click" />
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed125Item"
+                                    Text="1.25×"
+                                    GroupName="Speed"
+                                    Tag="1.25"
+                                    Click="SpeedItem_Click" />
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed15Item"
+                                    Text="1.5×"
+                                    GroupName="Speed"
+                                    Tag="1.5"
+                                    Click="SpeedItem_Click" />
+                                <RadioMenuFlyoutItem
+                                    x:Name="Speed20Item"
+                                    Text="2.0×"
+                                    GroupName="Speed"
+                                    Tag="2.0"
+                                    Click="SpeedItem_Click" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                         <Button
                             x:Name="RepeatButton"

@@ -15,6 +15,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
     private BufferedWaveProvider? _buffer;
     private string? _audioDevice;
     private double _volume = 0.8;
+    private double _rate = 1.0;
     private bool _muted;
 
     public FfmpegPlaybackEngine(string? audioOutputId = null) => _audioOutputId = audioOutputId;
@@ -24,6 +25,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
     public bool IsPlaying => _player?.IsPlaying == true;
     public TimeSpan Position => _player?.Position ?? TimeSpan.Zero;
     public TimeSpan Duration => _player?.Duration ?? TimeSpan.Zero;
+    public double Rate => _player?.Rate ?? _rate;
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
@@ -97,6 +99,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
                 }
             }
 
+            player.SetRate(_rate);
             lock (_gate)
                 _player = player;
         }
@@ -157,6 +160,13 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
         _muted = muted;
         if (_output != null)
             _output.Volume = muted ? 0 : (float)_volume;
+    }
+
+    public void SetRate(double rate)
+    {
+        _rate = PlaybackRates.Clamp(rate);
+        _player?.SetRate(_rate);
+        _buffer?.ClearBuffer();
     }
 
     public PipelineInfo GetPipeline()

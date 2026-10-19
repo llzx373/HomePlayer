@@ -21,6 +21,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private Thread? _thread;
     private CancellationTokenSource? _cancel;
     private readonly ManualResetEventSlim _resume = new(false);
+    private readonly System.Diagnostics.Stopwatch _clock = new();
+    private double _clockOrigin;
+    private double _rate = 1.0;
     private double? _seekSeconds;
     private long _audioWritten;
     private int _audioEpoch;
@@ -46,6 +49,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     public TimeSpan Duration { get; private set; }
     public TimeSpan Position => TimeSpan.FromTicks(Volatile.Read(ref _positionTicks));
     public bool HasAudio => _audioIndex >= 0;
+    public double Rate => Volatile.Read(ref _rate);
 
     public void Open(string path)
     {
@@ -154,6 +158,24 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             _resume.Set();
     }
 
+    public void SetRate(double rate)
+    {
+        rate = PlaybackRates.Clamp(rate);
+        lock (_gate)
+        {
+            var current = MediaSeconds();
+            Volatile.Write(ref _rate, rate);
+            _clockOrigin = current;
+            if (_clock.IsRunning)
+                _clock.Restart();
+            else
+                _clock.Reset();
+            Interlocked.Exchange(ref _audioWritten, 0);
+        }
+
+        Interlocked.Increment(ref _audioEpoch);
+    }
+
     public PipelineInfo GetPipeline()
     {
         long? size = File.Exists(_path) ? new FileInfo(_path).Length : null;
@@ -218,6 +240,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _isPlaying = false;
         Volatile.Write(ref _positionTicks, 0);
         _audioWritten = 0;
+        _clock.Reset();
+        _clockOrigin = 0;
+        Volatile.Write(ref _rate, 1.0);
         _endedRaised = false;
         _videoIndex = -1;
         _audioIndex = -1;
@@ -238,8 +263,6 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         var packet = ffmpeg.av_packet_alloc();
         var videoFrame = ffmpeg.av_frame_alloc();
         var audioFrame = ffmpeg.av_frame_alloc();
-        var clock = new System.Diagnostics.Stopwatch();
-        double clockOrigin = 0;
         var readErrors = 0;
         try
         {
@@ -259,8 +282,11 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 if (seek is double target)
                 {
                     SeekTo(target);
-                    clockOrigin = target;
-                    clock.Restart();
+                    lock (_gate)
+                    {
+                        _clockOrigin = target;
+                        _clock.Restart();
+                    }
                     Interlocked.Exchange(ref _audioWritten, 0);
                     if (!IsPlaying)
                     {
@@ -272,14 +298,14 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
                 if (!IsPlaying)
                 {
-                    if (!clock.IsRunning)
+                    if (!_clock.IsRunning)
                         continue;
-                    clock.Stop();
+                    _clock.Stop();
                     continue;
                 }
 
-                if (!clock.IsRunning)
-                    clock.Start();
+                if (!_clock.IsRunning)
+                    _clock.Start();
 
                 ffmpeg.av_packet_unref(packet);
                 var read = ffmpeg.av_read_frame(_format, packet);
@@ -309,9 +335,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     while (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
                     {
                         var pts = Pts(videoFrame, _videoTimeBase);
-                        if (WaitForPresentation(pts, clock, clockOrigin))
+                        if (WaitForPresentation(pts))
                         {
-                            var shown = double.IsFinite(pts) && pts >= 0 ? pts : MediaSeconds(clock, clockOrigin);
+                            var shown = double.IsFinite(pts) && pts >= 0 ? pts : MediaSeconds();
                             Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(Math.Max(0, shown)).Ticks);
                             Deliver(ToBgra(videoFrame));
                             _lastPresentMs = Environment.TickCount64;
@@ -384,7 +410,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
     }
 
-    private bool WaitForPresentation(double pts, System.Diagnostics.Stopwatch clock, double origin)
+    private bool WaitForPresentation(double pts)
     {
         while (IsPlaying && _cancel is { IsCancellationRequested: false })
         {
@@ -394,7 +420,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     return false;
             }
 
-            var wait = pts - MediaSeconds(clock, origin);
+            var wait = pts - MediaSeconds();
             if (wait <= 0.02)
             {
                 if (wait < -0.08 && Environment.TickCount64 - _lastPresentMs < 40)
@@ -410,16 +436,17 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         return false;
     }
 
-    private double MediaSeconds(System.Diagnostics.Stopwatch clock, double origin)
+    private double MediaSeconds()
     {
-        if (UnplayedBytes != null)
+        var rate = Volatile.Read(ref _rate);
+        if (Math.Abs(rate - 1) < 0.0001 && UnplayedBytes != null)
         {
             var queued = Math.Max(0, UnplayedBytes());
             var played = Math.Max(0, Interlocked.Read(ref _audioWritten) - queued);
-            return origin + played / 192000d;
+            return _clockOrigin + played / 192000d;
         }
 
-        return origin + clock.Elapsed.TotalSeconds;
+        return _clockOrigin + _clock.Elapsed.TotalSeconds * rate;
     }
 
     private void Deliver(VideoFrame frame)
@@ -451,9 +478,10 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             frame->sample_rate,
             AVRounding.AV_ROUND_UP);
         var bytes = outSamples * 2 * 2;
-        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(bytes, 4));
+        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(bytes * 2, 4));
         try
         {
+            int count;
             fixed (byte* pointer = buffer)
             {
                 var dest0 = pointer;
@@ -462,16 +490,48 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, frame->nb_samples);
                 if (converted <= 0)
                     return;
-                var count = converted * 4;
-                if (epoch != Volatile.Read(ref _audioEpoch))
-                    return;
-                Interlocked.Add(ref _audioWritten, count);
-                AudioPcm?.Invoke(buffer, count);
+                count = converted * 4;
             }
+
+            if (epoch != Volatile.Read(ref _audioEpoch))
+                return;
+            count = StretchPcm(buffer, count, Volatile.Read(ref _rate));
+            if (count <= 0)
+                return;
+            Interlocked.Add(ref _audioWritten, count);
+            AudioPcm?.Invoke(buffer, count);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static int StretchPcm(byte[] buffer, int count, double rate)
+    {
+        if (count < 4 || Math.Abs(rate - 1) < 0.0001)
+            return count;
+        var inFrames = count / 4;
+        var outFrames = Math.Max(0, (int)Math.Round(inFrames / rate));
+        if (outFrames == 0)
+            return 0;
+        outFrames = Math.Min(outFrames, buffer.Length / 4);
+        var outCount = outFrames * 4;
+        var output = ArrayPool<byte>.Shared.Rent(outCount);
+        try
+        {
+            for (var j = 0; j < outFrames; j++)
+            {
+                var i = Math.Min(inFrames - 1, (int)(j * rate));
+                Buffer.BlockCopy(buffer, i * 4, output, j * 4, 4);
+            }
+
+            Buffer.BlockCopy(output, 0, buffer, 0, outCount);
+            return outCount;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(output);
         }
     }
 

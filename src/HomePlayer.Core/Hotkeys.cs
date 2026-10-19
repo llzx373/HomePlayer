@@ -19,6 +19,7 @@ public static class HotkeyCatalog
     public const string PlayWithFfmpeg = "PlayWithFfmpeg";
     public const string ToggleShuffle = "ToggleShuffle";
     public const string CycleRepeat = "CycleRepeat";
+    public const string CycleSpeed = "CycleSpeed";
     public const string FitWindow = "FitWindow";
     public const string CycleAspect = "CycleAspect";
     public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
@@ -43,6 +44,7 @@ public static class HotkeyCatalog
         new(PlayWithFfmpeg, "用 FFmpeg 打开", ""),
         new(ToggleShuffle, "随机", ""),
         new(CycleRepeat, "循环模式", ""),
+        new(CycleSpeed, "循环倍速", ""),
         new(FitWindow, "自适应窗口", ""),
         new(CycleAspect, "循环画面比例", ""),
         new(ToggleAlwaysOnTop, "置顶", ""),

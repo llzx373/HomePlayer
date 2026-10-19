@@ -29,6 +29,51 @@ public class HotkeyCatalogTests
     }
 }
 
+public class PlaybackRatesTests
+{
+    [Theory]
+    [InlineData(0.1, 0.5)]
+    [InlineData(0.5, 0.5)]
+    [InlineData(1.0, 1.0)]
+    [InlineData(2.0, 2.0)]
+    [InlineData(4.0, 2.0)]
+    public void Clamp_limits_to_supported_range(double rate, double expected)
+    {
+        Assert.Equal(expected, PlaybackRates.Clamp(rate));
+    }
+
+    [Theory]
+    [InlineData(0.5, 0.75)]
+    [InlineData(0.75, 1.0)]
+    [InlineData(1.0, 1.25)]
+    [InlineData(1.25, 1.5)]
+    [InlineData(1.5, 2.0)]
+    [InlineData(2.0, 0.5)]
+    public void Next_cycles_preset_rates(double rate, double expected)
+    {
+        Assert.Equal(expected, PlaybackRates.Next(rate));
+    }
+
+    [Fact]
+    public void Next_advances_from_in_between_values()
+    {
+        Assert.Equal(1.25, PlaybackRates.Next(1.1));
+        Assert.Equal(0.5, PlaybackRates.Next(2.5));
+    }
+
+    [Theory]
+    [InlineData(0.5, "0.5×")]
+    [InlineData(0.75, "0.75×")]
+    [InlineData(1.0, "1.0×")]
+    [InlineData(1.25, "1.25×")]
+    [InlineData(1.5, "1.5×")]
+    [InlineData(2.0, "2.0×")]
+    public void Label_matches_menu_text(double rate, string expected)
+    {
+        Assert.Equal(expected, PlaybackRates.Label(rate));
+    }
+}
+
 public class ClockTextTests
 {
     [Theory]
