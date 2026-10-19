@@ -275,64 +275,75 @@
                         </ToggleButton>
                     </StackPanel>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
-                    <ToggleButton
-                        x:Name="FitWindowButton"
-                        Style="{StaticResource PlayerIconToggleButton}"
-                        AutomationProperties.Name="自适应窗口"
-                        ToolTipService.ToolTip="自适应窗口"
-                        Click="FitWindow_Click">
-                        <FontIcon x:Name="FitWindowIcon" Glyph="&#xE7C4;" FontSize="16" />
-                    </ToggleButton>
-                    <ToggleButton
-                        x:Name="AlwaysOnTopButton"
-                        Style="{StaticResource PlayerIconToggleButton}"
-                        AutomationProperties.Name="置顶"
-                        ToolTipService.ToolTip="置顶"
-                        Click="AlwaysOnTop_Click">
-                        <FontIcon x:Name="AlwaysOnTopIcon" Glyph="&#xE840;" FontSize="16" Opacity="0.45" />
-                    </ToggleButton>
-                    <Button
-                        x:Name="AspectButton"
-                        Style="{StaticResource PlayerIconButton}"
-                        AutomationProperties.Name="画面比例"
-                        ToolTipService.ToolTip="画面比例">
-                        <FontIcon x:Name="AspectIcon" Glyph="&#xE7F4;" FontSize="16" />
-                        <Button.Flyout>
-                            <MenuFlyout x:Name="AspectFlyout" Placement="Bottom" Opening="AspectFlyout_Opening">
-                                <RadioMenuFlyoutItem
-                                    x:Name="AspectFitItem"
-                                    Text="适应"
-                                    GroupName="Aspect"
-                                    Tag="Fit"
-                                    IsChecked="True"
-                                    Click="AspectItem_Click" />
-                                <RadioMenuFlyoutItem
-                                    x:Name="AspectFillItem"
-                                    Text="填充"
-                                    GroupName="Aspect"
-                                    Tag="Fill"
-                                    Click="AspectItem_Click" />
-                                <RadioMenuFlyoutItem
-                                    x:Name="AspectStretchItem"
-                                    Text="拉伸"
-                                    GroupName="Aspect"
-                                    Tag="Stretch"
-                                    Click="AspectItem_Click" />
-                                <RadioMenuFlyoutItem
-                                    x:Name="Aspect16x9Item"
-                                    Text="16:9"
-                                    GroupName="Aspect"
-                                    Tag="Ratio16x9"
-                                    Click="AspectItem_Click" />
-                                <RadioMenuFlyoutItem
-                                    x:Name="Aspect4x3Item"
-                                    Text="4:3"
-                                    GroupName="Aspect"
-                                    Tag="Ratio4x3"
-                                    Click="AspectItem_Click" />
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Button
+                            x:Name="SnapshotButton"
+                            Style="{StaticResource PlayerIconButton}"
+                            AutomationProperties.Name="截图"
+                            ToolTipService.ToolTip="截图"
+                            IsEnabled="False"
+                            Click="Snapshot_Click">
+                            <FontIcon x:Name="SnapshotIcon" Glyph="&#xE722;" FontSize="16" />
+                        </Button>
+                        <Button
+                            x:Name="AspectButton"
+                            Style="{StaticResource PlayerIconButton}"
+                            AutomationProperties.Name="画面比例"
+                            ToolTipService.ToolTip="画面比例">
+                            <FontIcon x:Name="AspectIcon" Glyph="&#xE7F4;" FontSize="16" />
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="AspectFlyout" Placement="Bottom" Opening="AspectFlyout_Opening">
+                                    <RadioMenuFlyoutItem
+                                        x:Name="AspectFitItem"
+                                        Text="适应"
+                                        GroupName="Aspect"
+                                        Tag="Fit"
+                                        IsChecked="True"
+                                        Click="AspectItem_Click" />
+                                    <RadioMenuFlyoutItem
+                                        x:Name="AspectFillItem"
+                                        Text="填充"
+                                        GroupName="Aspect"
+                                        Tag="Fill"
+                                        Click="AspectItem_Click" />
+                                    <RadioMenuFlyoutItem
+                                        x:Name="AspectStretchItem"
+                                        Text="拉伸"
+                                        GroupName="Aspect"
+                                        Tag="Stretch"
+                                        Click="AspectItem_Click" />
+                                    <RadioMenuFlyoutItem
+                                        x:Name="Aspect16x9Item"
+                                        Text="16:9"
+                                        GroupName="Aspect"
+                                        Tag="Ratio16x9"
+                                        Click="AspectItem_Click" />
+                                    <RadioMenuFlyoutItem
+                                        x:Name="Aspect4x3Item"
+                                        Text="4:3"
+                                        GroupName="Aspect"
+                                        Tag="Ratio4x3"
+                                        Click="AspectItem_Click" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                        <ToggleButton
+                            x:Name="FitWindowButton"
+                            Style="{StaticResource PlayerIconToggleButton}"
+                            AutomationProperties.Name="自适应窗口"
+                            ToolTipService.ToolTip="自适应窗口"
+                            Click="FitWindow_Click">
+                            <FontIcon x:Name="FitWindowIcon" Glyph="&#xE7C4;" FontSize="16" />
+                        </ToggleButton>
+                        <ToggleButton
+                            x:Name="AlwaysOnTopButton"
+                            Style="{StaticResource PlayerIconToggleButton}"
+                            AutomationProperties.Name="置顶"
+                            ToolTipService.ToolTip="置顶"
+                            Click="AlwaysOnTop_Click">
+                            <FontIcon x:Name="AlwaysOnTopIcon" Glyph="&#xE840;" FontSize="16" Opacity="0.45" />
+                        </ToggleButton>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                         <ToggleButton
                             x:Name="PlaylistButton"

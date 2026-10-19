@@ -22,6 +22,7 @@ public static class HotkeyCatalog
     public const string FitWindow = "FitWindow";
     public const string CycleAspect = "CycleAspect";
     public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
+    public const string Snapshot = "Snapshot";
 
     public static readonly HotkeyAction[] Actions =
     [
@@ -44,7 +45,8 @@ public static class HotkeyCatalog
         new(CycleRepeat, "循环模式", ""),
         new(FitWindow, "自适应窗口", ""),
         new(CycleAspect, "循环画面比例", ""),
-        new(ToggleAlwaysOnTop, "置顶", "")
+        new(ToggleAlwaysOnTop, "置顶", ""),
+        new(Snapshot, "截图", "Ctrl+S")
     ];
 
     public static Dictionary<string, string> Defaults()

@@ -53,6 +53,11 @@ public sealed class VideoPresenter : IDisposable
     private ID3D11RasterizerState? _rasterizer;
     private byte[]? _vertexBytecode;
     private VideoFrame? _pending;
+    private byte[]? _lastSnapshot;
+    private int _snapWidth;
+    private int _snapHeight;
+    private int _snapStride;
+    private bool _snapBottomUp;
     private int _width;
     private int _height;
     private int _frameWidth;
@@ -97,6 +102,15 @@ public sealed class VideoPresenter : IDisposable
         PostDraw();
     }
 
+    public bool HasLastFrame
+    {
+        get
+        {
+            lock (_gate)
+                return _lastSnapshot != null;
+        }
+    }
+
     public void Submit(VideoFrame frame)
     {
         VideoFrame? replaced;
@@ -104,10 +118,35 @@ public sealed class VideoPresenter : IDisposable
         {
             replaced = _pending;
             _pending = frame;
+            RememberSnapshot(frame);
         }
 
         replaced?.ReturnBuffer();
         PostDraw();
+    }
+
+    public bool TryCopyLastFrame(out int width, out int height, out int stride, out bool bottomUp, out byte[] data)
+    {
+        lock (_gate)
+        {
+            if (_lastSnapshot == null)
+            {
+                width = 0;
+                height = 0;
+                stride = 0;
+                bottomUp = false;
+                data = [];
+                return false;
+            }
+
+            width = _snapWidth;
+            height = _snapHeight;
+            stride = _snapStride;
+            bottomUp = _snapBottomUp;
+            data = new byte[_lastSnapshot.Length];
+            Buffer.BlockCopy(_lastSnapshot, 0, data, 0, _lastSnapshot.Length);
+            return true;
+        }
     }
 
     public void Dispose()
@@ -117,10 +156,28 @@ public sealed class VideoPresenter : IDisposable
         {
             pending = _pending;
             _pending = null;
+            _lastSnapshot = null;
         }
 
         pending?.ReturnBuffer();
         ReleaseDeviceResources();
+    }
+
+    private void RememberSnapshot(VideoFrame frame)
+    {
+        var rowBytes = frame.Width * 4;
+        if (frame.Width < 1 || frame.Height < 1 || frame.Stride < rowBytes)
+            return;
+        var length = frame.Stride * frame.Height;
+        if (length <= 0 || length > frame.Data.Length)
+            return;
+        if (_lastSnapshot == null || _lastSnapshot.Length != length)
+            _lastSnapshot = new byte[length];
+        Buffer.BlockCopy(frame.Data, 0, _lastSnapshot, 0, length);
+        _snapWidth = frame.Width;
+        _snapHeight = frame.Height;
+        _snapStride = frame.Stride;
+        _snapBottomUp = frame.BottomUp;
     }
 
     private void ReleaseDeviceResources()

@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics.Imaging;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -46,6 +48,9 @@ public sealed partial class PlayerPage : Page
     private DateTime _controlsHoldUntil;
     private double _controlsHeight = 110;
     private bool _playlistBeforeFullscreen;
+    private string? _statusHold;
+    private DateTime _statusHoldUntil;
+    private int _snapshotArmed;
 
     public PlayerPage()
     {
@@ -55,7 +60,7 @@ public sealed partial class PlayerPage : Page
         _presenter = new VideoPresenter(VideoSurface);
         VideoHost.SizeChanged += (_, _) => _presenter.Refresh();
         var playback = App.Host.Playback;
-        playback.FrameArrived += _presenter.Submit;
+        playback.FrameArrived += OnVideoFrame;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         App.Window.FullscreenChanged += () => DispatcherQueue.TryEnqueue(() =>
@@ -85,6 +90,9 @@ public sealed partial class PlayerPage : Page
         _timer.Tick += (_, _) =>
         {
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
+            SyncSnapshotButton();
+            if (_statusHold != null)
+                ApplyStatusText();
             if (++_pipelineTicks % 5 == 0 && PipelinePanel.Visibility == Visibility.Visible)
                 UpdatePipelineText();
         };
@@ -237,10 +245,7 @@ public sealed partial class PlayerPage : Page
     private void UpdateChrome()
     {
         PlayIcon.Glyph = Playback.IsPlaying ? GlyphPause : GlyphPlay;
-        var name = Playback.Playlist.Current?.DisplayName;
-        StatusText.Text = string.IsNullOrEmpty(name)
-            ? $"{Playback.EngineLabel} · {Playback.Status}"
-            : $"{name} · {Playback.EngineLabel} · {Playback.Status}";
+        ApplyStatusText();
         if (PlaylistView.SelectedIndex != Playback.Playlist.CurrentIndex)
         {
             PlaylistView.SelectedIndex = Playback.Playlist.CurrentIndex;
@@ -251,8 +256,46 @@ public sealed partial class PlayerPage : Page
         UpdateVolumeIcon();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
         SyncAlwaysOnTopButton();
+        SyncSnapshotButton();
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+    }
+
+    private void ApplyStatusText()
+    {
+        if (_statusHold != null && DateTime.UtcNow < _statusHoldUntil)
+        {
+            StatusText.Text = _statusHold;
+            return;
+        }
+
+        _statusHold = null;
+        var name = Playback.Playlist.Current?.DisplayName;
+        StatusText.Text = string.IsNullOrEmpty(name)
+            ? $"{Playback.EngineLabel} · {Playback.Status}"
+            : $"{name} · {Playback.EngineLabel} · {Playback.Status}";
+    }
+
+    private void ShowStatusHold(string message)
+    {
+        _statusHold = message;
+        _statusHoldUntil = DateTime.UtcNow.AddSeconds(4);
+        StatusText.Text = message;
+    }
+
+    private void SyncSnapshotButton()
+    {
+        if (SnapshotButton == null)
+            return;
+        SnapshotButton.IsEnabled = _presenter.HasLastFrame;
+    }
+
+    private void OnVideoFrame(VideoFrame frame)
+    {
+        _presenter.Submit(frame);
+        if (!_presenter.HasLastFrame || Interlocked.Exchange(ref _snapshotArmed, 1) == 1)
+            return;
+        DispatcherQueue.TryEnqueue(SyncSnapshotButton);
     }
 
     private void Play_Click(object sender, RoutedEventArgs e) => Playback.TogglePlay();
@@ -467,6 +510,79 @@ public sealed partial class PlayerPage : Page
 
     private void AlwaysOnTop_Click(object sender, RoutedEventArgs e) =>
         ApplyAlwaysOnTop(AlwaysOnTopButton.IsChecked == true);
+
+    private void Snapshot_Click(object sender, RoutedEventArgs e) => SaveSnapshot();
+
+    private void SaveSnapshot()
+    {
+        if (!_presenter.TryCopyLastFrame(out var width, out var height, out var stride, out var bottomUp, out var data))
+            return;
+        _ = WriteSnapshotAsync(width, height, stride, bottomUp, data);
+    }
+
+    private async Task WriteSnapshotAsync(int width, int height, int stride, bool bottomUp, byte[] data)
+    {
+        try
+        {
+            var pixels = PackTopDownBgra(width, height, stride, bottomUp, data);
+            var folderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "HomePlayer");
+            Directory.CreateDirectory(folderPath);
+            var title = SanitizeFileName(Playback.Playlist.Current?.DisplayName);
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var position = ClockText.Format(Playback.Position).Replace(':', '-');
+            var fileName = $"{title}_{stamp}_{position}.png";
+            var folder = await StorageFolder.GetFolderFromPathAsync(folderPath);
+            var file = await folder.CreateFileAsync(fileName, CreationCollisionOption.ReplaceExisting);
+            using var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+            encoder.SetPixelData(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Ignore,
+                (uint)width,
+                (uint)height,
+                96,
+                96,
+                pixels);
+            await encoder.FlushAsync();
+            var saved = file.Path;
+            DispatcherQueue.TryEnqueue(() => ShowStatusHold(saved));
+        }
+        catch (Exception ex)
+        {
+            DispatcherQueue.TryEnqueue(() => ShowStatusHold("截图失败：" + ex.Message));
+        }
+    }
+
+    private static byte[] PackTopDownBgra(int width, int height, int stride, bool bottomUp, byte[] data)
+    {
+        var rowBytes = width * 4;
+        if (width < 1 || height < 1 || stride < rowBytes)
+            throw new InvalidOperationException("没有可截取的画面");
+        var packed = new byte[checked(rowBytes * height)];
+        for (var y = 0; y < height; y++)
+        {
+            var sourceY = bottomUp ? height - 1 - y : y;
+            var source = sourceY * stride;
+            if (source < 0 || source + rowBytes > data.Length)
+                throw new InvalidOperationException("画面数据不完整");
+            var dest = y * rowBytes;
+            Buffer.BlockCopy(data, source, packed, dest, rowBytes);
+            for (var i = dest + 3; i < dest + rowBytes; i += 4)
+                packed[i] = 255;
+        }
+
+        return packed;
+    }
+
+    private static string SanitizeFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "screenshot";
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Trim().Select(ch => Array.IndexOf(invalid, ch) >= 0 ? '_' : ch).ToArray();
+        var cleaned = new string(chars).Trim().TrimEnd('.');
+        return string.IsNullOrWhiteSpace(cleaned) ? "screenshot" : cleaned;
+    }
 
     private void AspectFlyout_Opening(object sender, object e) => SyncAspectMenu();
 
@@ -709,6 +825,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
         UpdateRepeatButton();
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
+        ApplyTip(SnapshotButton, "截图", HotkeyCatalog.Snapshot);
         ApplyTip(FitWindowButton, "自适应窗口", HotkeyCatalog.FitWindow);
         ApplyTip(AlwaysOnTopButton, "置顶", HotkeyCatalog.ToggleAlwaysOnTop);
         ApplyTip(AspectButton, "画面比例", HotkeyCatalog.CycleAspect);
@@ -797,6 +914,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.ToggleAlwaysOnTop:
                 ApplyAlwaysOnTop(!App.Host.Settings.AlwaysOnTop);
+                break;
+            case HotkeyCatalog.Snapshot:
+                SaveSnapshot();
                 break;
         }
     }
