@@ -93,7 +93,7 @@ public sealed partial class MainWindow : Window
 
     public void ApplyTitleBar()
     {
-        var overlay = App.Host.Settings.TitleBar == TitleBarMode.Overlay;
+        var overlay = WantsPlayerOverlay();
         ExtendsContentIntoTitleBar = false;
         if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
             && (!presenter.HasBorder || presenter.HasTitleBar == overlay))
@@ -111,6 +111,9 @@ public sealed partial class MainWindow : Window
         SetOverlayOpen(true);
         OverlayTick?.Invoke();
     }
+
+    private bool WantsPlayerOverlay() =>
+        App.Host.Settings.TitleBar == TitleBarMode.Overlay && _pageTag == "player";
 
     public void SetFullscreen(bool enabled)
     {
@@ -158,7 +161,7 @@ public sealed partial class MainWindow : Window
             _ => typeof(LibraryPage)
         };
         RootFrame.Navigate(page);
-        ApplyNavPane();
+        ApplyTitleBar();
     }
 
     private void ApplyNavPane()
@@ -173,7 +176,7 @@ public sealed partial class MainWindow : Window
         }
 
         var player = _pageTag == "player";
-        var overlay = App.Host.Settings.TitleBar == TitleBarMode.Overlay;
+        var overlay = WantsPlayerOverlay();
         if (player && overlay)
         {
             Nav.IsPaneVisible = false;
@@ -258,7 +261,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateOverlay()
     {
-        if (_fullscreen || App.Host.Settings.TitleBar != TitleBarMode.Overlay || !AppWindow.IsVisible)
+        if (_fullscreen || !WantsPlayerOverlay() || !AppWindow.IsVisible)
         {
             SetOverlayOpen(false);
             return;
@@ -270,23 +273,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!TryGetClientCursor(out _, out var dipY, out _, out _, out var inside))
+        if (!TryGetClientCursor(out var dipX, out var dipY, out var width, out _, out _))
             return;
-        if (!inside)
-        {
-            if (DateTime.UtcNow >= _overlayHoldUntil)
-                SetOverlayOpen(false);
-            return;
-        }
 
-        var nearTop = _overlayVisible ? dipY <= 46 : dipY <= 12;
-        SetOverlayOpen(nearTop || DateTime.UtcNow < _overlayHoldUntil);
+        var band = OverlayTitleBar.Height > 0 ? OverlayTitleBar.Height : 40;
+        var alongTop = dipY >= -16 && dipY <= band
+            && dipX >= -16 && dipX <= width + 16;
+        SetOverlayOpen(alongTop || DateTime.UtcNow < _overlayHoldUntil);
     }
 
     private bool WantsNavOverlay() =>
         !_fullscreen
-        && _pageTag == "player"
-        && App.Host.Settings.TitleBar == TitleBarMode.Overlay
+        && WantsPlayerOverlay()
         && AppWindow.IsVisible;
 
     private void UpdateNavOverlay()
@@ -303,17 +301,13 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!TryGetClientCursor(out var dipX, out _, out _, out _, out var inside))
+        if (!TryGetClientCursor(out var dipX, out var dipY, out _, out var height, out _))
             return;
-        if (!inside)
-        {
-            if (DateTime.UtcNow >= _navHoldUntil)
-                SetNavOverlayOpen(false);
-            return;
-        }
 
-        var nearLeft = _navOverlayVisible ? dipX <= NavOverlayWidth + 8 : dipX <= 12;
-        SetNavOverlayOpen(nearLeft || DateTime.UtcNow < _navHoldUntil);
+        var band = OverlayNav.Width > 0 ? OverlayNav.Width : NavOverlayWidth;
+        var alongLeft = dipX >= -16 && dipX <= band
+            && dipY >= -16 && dipY <= height + 16;
+        SetNavOverlayOpen(alongLeft || DateTime.UtcNow < _navHoldUntil);
     }
 
     private void SetNavOverlayOpen(bool open)

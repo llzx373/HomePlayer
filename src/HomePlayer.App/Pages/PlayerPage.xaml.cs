@@ -165,9 +165,7 @@ public sealed partial class PlayerPage : Page
             return;
 
         RememberControlsHeight();
-        var band = _controlsVisible
-            ? Math.Max(_controlsHeight + 12, 48)
-            : 40;
+        var band = Math.Max(_controlsHeight, 1);
         var alongBottom = x >= -16 && x <= width + 16
             && y >= height - band
             && y <= height + 24;
