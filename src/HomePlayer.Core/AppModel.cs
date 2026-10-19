@@ -104,11 +104,20 @@ public sealed record MediaProbe(
 
 public sealed class VideoFrame
 {
+    private int _released;
+
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required int Stride { get; init; }
     public required byte[] Data { get; init; }
     public bool BottomUp { get; init; }
+    public Action? ReleaseBuffer { get; init; }
+
+    public void ReturnBuffer()
+    {
+        if (Interlocked.Exchange(ref _released, 1) == 0)
+            ReleaseBuffer?.Invoke();
+    }
 }
 
 public sealed record ParsedName(string Title, int? Year, int? Season, int? Episode, bool IsTv);

@@ -1,5 +1,6 @@
 using HomePlayer.Core;
 using HomePlayer.Playback;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -13,6 +14,8 @@ public sealed partial class PlayerPage : Page
 {
     private readonly VideoPresenter _presenter;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly DispatcherQueueTimer _saveSettingsTimer;
+    private int _pipelineTicks;
     private bool _scrubbing;
     private bool _pointerDown;
     private bool _layingProgress;
@@ -53,13 +56,20 @@ public sealed partial class PlayerPage : Page
         _updatingVolume = false;
         PositionBar.SizeChanged += (_, _) => LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
         ControlsBar.SizeChanged += (_, _) => RememberControlsHeight();
+        _saveSettingsTimer = DispatcherQueue.CreateTimer();
+        _saveSettingsTimer.Interval = TimeSpan.FromMilliseconds(600);
+        _saveSettingsTimer.IsRepeating = false;
+        _saveSettingsTimer.Tick += (_, _) =>
+        {
+            _saveSettingsTimer.Stop();
+            App.Host.SaveSettings();
+        };
         _timer.Tick += (_, _) =>
         {
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
-            if (PipelinePanel.Visibility == Visibility.Visible)
-                PipelineText.Text = playback.Pipeline()?.Format() ?? "当前没有播放。";
+            if (++_pipelineTicks % 5 == 0 && PipelinePanel.Visibility == Visibility.Visible)
+                UpdatePipelineText();
         };
-        _timer.Start();
         Loaded += (_, _) =>
         {
             ApplyHotkeys();
@@ -74,7 +84,10 @@ public sealed partial class PlayerPage : Page
             SyncFullscreenButton();
             LayoutProgress(ShownSeconds());
             _presenter.Refresh();
+            if (!_timer.IsEnabled)
+                _timer.Start();
         };
+        Unloaded += (_, _) => _timer.Stop();
     }
 
     private PlaybackController Playback => App.Host.Playback;
@@ -361,7 +374,8 @@ public sealed partial class PlayerPage : Page
         if (_updatingVolume)
             return;
         Playback.SetVolume(VolumeSlider.Value / 100);
-        App.Host.SaveSettings();
+        _saveSettingsTimer.Stop();
+        _saveSettingsTimer.Start();
     }
 
     private void Mute_Click(object sender, RoutedEventArgs e)
@@ -430,18 +444,25 @@ public sealed partial class PlayerPage : Page
     {
         if (Playback.Playlist.Current != null)
             Playback.Playlist.CurrentIndex = Playback.Playlist.Items.IndexOf(Playback.Playlist.Current);
+        Playback.Playlist.RefreshShuffleOrder();
     }
 
     private async void Open_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker();
-        foreach (var extension in VideoFiles.Extensions)
-            picker.FileTypeFilter.Add(extension);
-        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
-        var files = await picker.PickMultipleFilesAsync();
-        if (files == null || files.Count == 0)
-            return;
-        await Playback.PlayPathsAsync(files.Select(file => file.Path).ToList(), 0);
+        try
+        {
+            var picker = new FileOpenPicker();
+            foreach (var extension in VideoFiles.Extensions)
+                picker.FileTypeFilter.Add(extension);
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
+            var files = await picker.PickMultipleFilesAsync();
+            if (files == null || files.Count == 0)
+                return;
+            await Playback.PlayPathsAsync(files.Select(file => file.Path).ToList(), 0);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void VideoHost_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -540,6 +561,18 @@ public sealed partial class PlayerPage : Page
         var open = PipelinePanel.Visibility != Visibility.Visible;
         PipelinePanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         if (open)
+            UpdatePipelineText();
+    }
+
+    private void UpdatePipelineText()
+    {
+        try
+        {
             PipelineText.Text = Playback.Pipeline()?.Format() ?? "当前没有播放。";
+        }
+        catch (Exception ex)
+        {
+            PipelineText.Text = "读取管线信息失败：" + ex.Message;
+        }
     }
 }

@@ -17,7 +17,7 @@ public sealed class TmdbClient
     public async Task<IReadOnlyList<TmdbHit>> SearchAsync(string query, int? year, bool tv, string apiKey, CancellationToken cancellationToken)
     {
         var key = $"search:{(tv ? "tv" : "movie")}:{query}:{year?.ToString(CultureInfo.InvariantCulture) ?? "-"}";
-        var cached = _repository.ReadCache(key);
+        var cached = _repository.ReadCache(key, TimeSpan.FromDays(30));
         if (cached != null)
             return ParseSearch(cached, tv);
 
@@ -31,18 +31,18 @@ public sealed class TmdbClient
         return ParseSearch(json, tv);
     }
 
-    public async Task<string?> DownloadPosterAsync(string? posterPath, int tmdbId, string apiKey, CancellationToken cancellationToken)
+    public async Task<string?> DownloadPosterAsync(string? posterPath, int tmdbId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(posterPath))
             return null;
         var destination = Path.Combine(AppPaths.Posters, $"{tmdbId}.jpg");
-        if (File.Exists(destination))
-            return destination;
         Directory.CreateDirectory(AppPaths.Posters);
         var url = "https://image.tmdb.org/t/p/w342" + posterPath;
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (File.Exists(destination))
+                return destination;
             await PaceAsync(cancellationToken);
             using var response = await _http.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();

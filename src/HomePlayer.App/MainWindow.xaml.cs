@@ -88,7 +88,26 @@ public sealed partial class MainWindow : Window
     {
         Root.Loaded -= OnRootLoaded;
         ApplyTitleBar();
-        _overlayTimer.Start();
+        UpdateOverlayTimer();
+    }
+
+    private void UpdateOverlayTimer()
+    {
+        var minimized = AppWindow.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Minimized;
+        var needs = AppWindow.IsVisible
+            && !minimized
+            && _pageTag == "player"
+            && (_fullscreen || App.Host.Settings.TitleBar == TitleBarMode.Overlay);
+        if (needs)
+        {
+            if (!_overlayTimer.IsEnabled)
+                _overlayTimer.Start();
+        }
+        else
+        {
+            _overlayTimer.Stop();
+        }
     }
 
     public void ApplyTitleBar()
@@ -104,12 +123,14 @@ public sealed partial class MainWindow : Window
             _overlayHoldUntil = DateTime.MinValue;
             SetOverlayOpen(false);
             OverlayTick?.Invoke();
+            UpdateOverlayTimer();
             return;
         }
 
         _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
         SetOverlayOpen(true);
         OverlayTick?.Invoke();
+        UpdateOverlayTimer();
     }
 
     private bool WantsPlayerOverlay() =>
@@ -125,16 +146,23 @@ public sealed partial class MainWindow : Window
         ApplyNavPane();
         if (!enabled)
             ApplyTitleBar();
+        UpdateOverlayTimer();
         FullscreenChanged?.Invoke();
     }
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         App.Host.Playback.Pause();
-        if (App.Host.Exiting || !App.Host.Settings.CloseToTray)
+        if (App.Host.Exiting)
             return;
         args.Cancel = true;
-        AppWindow.Hide();
+        if (App.Host.Settings.CloseToTray)
+        {
+            AppWindow.Hide();
+            return;
+        }
+
+        _ = ExitAsync();
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
@@ -142,12 +170,14 @@ public sealed partial class MainWindow : Window
         if (args.DidVisibilityChange && !sender.IsVisible)
         {
             App.Host.Playback.Pause();
+            UpdateOverlayTimer();
             return;
         }
 
         if (args.DidPresenterChange && sender.Presenter is OverlappedPresenter presenter
             && presenter.State == OverlappedPresenterState.Minimized)
             App.Host.Playback.Pause();
+        UpdateOverlayTimer();
     }
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -197,14 +227,21 @@ public sealed partial class MainWindow : Window
 
     private async void Root_Drop(object sender, DragEventArgs e)
     {
-        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
-            return;
-        var items = await e.DataView.GetStorageItemsAsync();
-        var paths = VideoFiles.Expand(items.Select(item => item.Path));
-        if (paths.Count == 0)
-            return;
-        await App.Host.Playback.PlayPathsAsync(paths, 0);
-        Nav.SelectedItem = Nav.MenuItems[1];
+        try
+        {
+            if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+                return;
+            var items = await e.DataView.GetStorageItemsAsync();
+            var itemPaths = items.Select(item => item.Path).ToList();
+            var paths = await Task.Run(() => VideoFiles.Expand(itemPaths));
+            if (paths.Count == 0)
+                return;
+            await App.Host.Playback.PlayPathsAsync(paths, 0);
+            Nav.SelectedItem = Nav.MenuItems[1];
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void Root_DragOver(object sender, DragEventArgs e)
@@ -215,10 +252,26 @@ public sealed partial class MainWindow : Window
     private async Task ExitAsync()
     {
         App.Host.Exiting = true;
-        _tray.Dispose();
-        await App.Host.DisposeAsync();
-        Close();
-        Environment.Exit(0);
+        try
+        {
+            _tray.Dispose();
+            await App.Host.DisposeAsync();
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            try
+            {
+                Close();
+            }
+            catch
+            {
+            }
+
+            Environment.Exit(0);
+        }
     }
 
     private sealed class TrayCommand(Action action) : ICommand

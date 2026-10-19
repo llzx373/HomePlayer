@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 using HomePlayer.Core;
@@ -37,10 +38,13 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     public event Action<byte[], int>? AudioPcm;
     public Func<int>? UnplayedBytes { get; set; }
 
+    private volatile bool _isPlaying;
+    private long _positionTicks;
+
     public bool IsOpen { get; private set; }
-    public bool IsPlaying { get; private set; }
+    public bool IsPlaying => _isPlaying;
     public TimeSpan Duration { get; private set; }
-    public TimeSpan Position { get; private set; }
+    public TimeSpan Position => TimeSpan.FromTicks(Volatile.Read(ref _positionTicks));
     public bool HasAudio => _audioIndex >= 0;
 
     public void Open(string path)
@@ -48,79 +52,95 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Close();
         FfmpegNative.Ensure();
         _path = path;
-        _format = ffmpeg.avformat_alloc_context();
-        var opened = _format;
-        FfmpegError.Check(ffmpeg.avformat_open_input(&opened, path, null, null), "FFmpeg 打开文件");
-        _format = opened;
-        FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "FFmpeg 读取媒体信息");
-        _container = _format->iformat == null ? null : Marshal.PtrToStringAnsi((IntPtr)_format->iformat->name);
-        Duration = _format->duration > 0
-            ? TimeSpan.FromSeconds(_format->duration / (double)ffmpeg.AV_TIME_BASE)
-            : TimeSpan.Zero;
-
-        AVCodec* videoDecoder = null;
-        _videoIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
-        if (_videoIndex < 0)
-            throw new InvalidOperationException("文件里没有可解码的视频流。");
-        _videoCodec = ffmpeg.avcodec_alloc_context3(videoDecoder);
-        FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_videoCodec, _format->streams[_videoIndex]->codecpar), "复制视频参数");
-        FfmpegError.Check(ffmpeg.avcodec_open2(_videoCodec, videoDecoder, null), "打开视频解码器");
-        _videoCodecName = ffmpeg.avcodec_get_name(videoDecoder->id);
-        _videoTimeBase = _format->streams[_videoIndex]->time_base;
-        _width = _videoCodec->width;
-        _height = _videoCodec->height;
-        _scaler = ffmpeg.sws_getContext(
-            _width, _height, _videoCodec->pix_fmt,
-            _width, _height, AVPixelFormat.AV_PIX_FMT_BGRA,
-            (int)SwsFlags.SWS_BILINEAR, null, null, null);
-        if (_scaler == null)
-            throw new InvalidOperationException("无法创建画面转换器。");
-
-        AVCodec* audioDecoder = null;
-        _audioIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, _videoIndex, &audioDecoder, 0);
-        if (_audioIndex >= 0 && audioDecoder != null)
+        try
         {
-            _audioCodec = ffmpeg.avcodec_alloc_context3(audioDecoder);
-            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, _format->streams[_audioIndex]->codecpar), "复制音频参数");
-            FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, audioDecoder, null), "打开音频解码器");
-            _audioCodecName = ffmpeg.avcodec_get_name(audioDecoder->id);
-            _channels = _audioCodec->ch_layout.nb_channels;
-            _sampleRate = _audioCodec->sample_rate;
-            AVChannelLayout outputLayout;
-            ffmpeg.av_channel_layout_default(&outputLayout, 2);
-            var inputLayout = _audioCodec->ch_layout;
-            SwrContext* resampler = null;
-            FfmpegError.Check(ffmpeg.swr_alloc_set_opts2(
-                &resampler,
-                &outputLayout,
-                AVSampleFormat.AV_SAMPLE_FMT_S16,
-                48000,
-                &inputLayout,
-                _audioCodec->sample_fmt,
-                _audioCodec->sample_rate,
-                0,
-                null), "创建音频重采样");
-            _resampler = resampler;
-            FfmpegError.Check(ffmpeg.swr_init(_resampler), "初始化音频重采样");
-        }
+            _format = ffmpeg.avformat_alloc_context();
+            var opened = _format;
+            var openResult = ffmpeg.avformat_open_input(&opened, path, null, null);
+            _format = opened;
+            FfmpegError.Check(openResult, "FFmpeg 打开文件");
+            FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "FFmpeg 读取媒体信息");
+            _container = _format->iformat == null ? null : Marshal.PtrToStringAnsi((IntPtr)_format->iformat->name);
+            Duration = _format->duration > 0
+                ? TimeSpan.FromSeconds(_format->duration / (double)ffmpeg.AV_TIME_BASE)
+                : TimeSpan.Zero;
 
-        IsOpen = true;
-        _cancel = new CancellationTokenSource();
-        _thread = new Thread(Loop) { IsBackground = true, Name = "FFmpeg playback" };
-        _thread.Start();
+            AVCodec* videoDecoder = null;
+            _videoIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
+            if (_videoIndex < 0)
+                throw new InvalidOperationException("文件里没有可解码的视频流。");
+            _videoCodec = ffmpeg.avcodec_alloc_context3(videoDecoder);
+            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_videoCodec, _format->streams[_videoIndex]->codecpar), "复制视频参数");
+            FfmpegError.Check(ffmpeg.avcodec_open2(_videoCodec, videoDecoder, null), "打开视频解码器");
+            _videoCodecName = ffmpeg.avcodec_get_name(videoDecoder->id);
+            _videoTimeBase = _format->streams[_videoIndex]->time_base;
+            _width = _videoCodec->width;
+            _height = _videoCodec->height;
+            _scaler = ffmpeg.sws_getContext(
+                _width, _height, _videoCodec->pix_fmt,
+                _width, _height, AVPixelFormat.AV_PIX_FMT_BGRA,
+                (int)SwsFlags.SWS_BILINEAR, null, null, null);
+            if (_scaler == null)
+                throw new InvalidOperationException("无法创建画面转换器。");
+
+            AVCodec* audioDecoder = null;
+            _audioIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, _videoIndex, &audioDecoder, 0);
+            if (_audioIndex >= 0 && audioDecoder != null)
+            {
+                _audioCodec = ffmpeg.avcodec_alloc_context3(audioDecoder);
+                FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, _format->streams[_audioIndex]->codecpar), "复制音频参数");
+                FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, audioDecoder, null), "打开音频解码器");
+                _audioCodecName = ffmpeg.avcodec_get_name(audioDecoder->id);
+                _channels = _audioCodec->ch_layout.nb_channels;
+                _sampleRate = _audioCodec->sample_rate;
+                AVChannelLayout outputLayout;
+                ffmpeg.av_channel_layout_default(&outputLayout, 2);
+                try
+                {
+                    var inputLayout = _audioCodec->ch_layout;
+                    SwrContext* resampler = null;
+                    FfmpegError.Check(ffmpeg.swr_alloc_set_opts2(
+                        &resampler,
+                        &outputLayout,
+                        AVSampleFormat.AV_SAMPLE_FMT_S16,
+                        48000,
+                        &inputLayout,
+                        _audioCodec->sample_fmt,
+                        _audioCodec->sample_rate,
+                        0,
+                        null), "创建音频重采样");
+                    _resampler = resampler;
+                    FfmpegError.Check(ffmpeg.swr_init(_resampler), "初始化音频重采样");
+                }
+                finally
+                {
+                    ffmpeg.av_channel_layout_uninit(&outputLayout);
+                }
+            }
+
+            IsOpen = true;
+            _cancel = new CancellationTokenSource();
+            _thread = new Thread(Loop) { IsBackground = true, Name = "FFmpeg playback" };
+            _thread.Start();
+        }
+        catch
+        {
+            Close();
+            throw;
+        }
     }
 
     public void Play()
     {
         if (!IsOpen)
             return;
-        IsPlaying = true;
+        _isPlaying = true;
         _resume.Set();
     }
 
     public void Pause()
     {
-        IsPlaying = false;
+        _isPlaying = false;
         _resume.Reset();
     }
 
@@ -169,7 +189,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     {
         _cancel?.Cancel();
         _resume.Set();
-        _thread?.Join(2000);
+        if (_thread is { IsAlive: true })
+            _thread.Join(2000);
         _thread = null;
         _cancel?.Dispose();
         _cancel = null;
@@ -194,7 +215,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             ffmpeg.avformat_close_input(&format);
         _format = null;
         IsOpen = false;
-        IsPlaying = false;
+        _isPlaying = false;
+        Volatile.Write(ref _positionTicks, 0);
         _audioWritten = 0;
         _endedRaised = false;
         _videoIndex = -1;
@@ -218,6 +240,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         var audioFrame = ffmpeg.av_frame_alloc();
         var clock = new System.Diagnostics.Stopwatch();
         double clockOrigin = 0;
+        var readErrors = 0;
         try
         {
             while (_cancel is { IsCancellationRequested: false })
@@ -268,7 +291,17 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 }
 
                 if (read < 0)
+                {
+                    if (++readErrors >= 10)
+                    {
+                        RaiseEnded();
+                        Pause();
+                    }
+
                     continue;
+                }
+
+                readErrors = 0;
 
                 if (packet->stream_index == _videoIndex)
                 {
@@ -279,8 +312,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                         if (WaitForPresentation(pts, clock, clockOrigin))
                         {
                             var shown = double.IsFinite(pts) && pts >= 0 ? pts : MediaSeconds(clock, clockOrigin);
-                            Position = TimeSpan.FromSeconds(Math.Max(0, shown));
-                            FrameArrived?.Invoke(ToBgra(videoFrame));
+                            Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(Math.Max(0, shown)).Ticks);
+                            Deliver(ToBgra(videoFrame));
                             _lastPresentMs = Environment.TickCount64;
                         }
 
@@ -304,6 +337,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         catch (Exception)
         {
             RaiseEnded();
+            Pause();
         }
         finally
         {
@@ -328,7 +362,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 ffmpeg.avcodec_send_packet(_videoCodec, packet);
                 if (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
                 {
-                    FrameArrived?.Invoke(ToBgra(videoFrame));
+                    Deliver(ToBgra(videoFrame));
                     ffmpeg.av_frame_unref(videoFrame);
                     return;
                 }
@@ -347,7 +381,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         ffmpeg.avcodec_flush_buffers(_videoCodec);
         if (_audioCodec != null)
             ffmpeg.avcodec_flush_buffers(_audioCodec);
-        Position = TimeSpan.FromSeconds(seconds);
+        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
     }
 
     private bool WaitForPresentation(double pts, System.Diagnostics.Stopwatch clock, double origin)
@@ -388,6 +422,26 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         return origin + clock.Elapsed.TotalSeconds;
     }
 
+    private void Deliver(VideoFrame frame)
+    {
+        var handler = FrameArrived;
+        if (handler == null)
+        {
+            frame.ReturnBuffer();
+            return;
+        }
+
+        try
+        {
+            handler(frame);
+        }
+        catch
+        {
+            frame.ReturnBuffer();
+            throw;
+        }
+    }
+
     private void EmitAudio(AVFrame* frame)
     {
         var epoch = Volatile.Read(ref _audioEpoch);
@@ -397,38 +451,60 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             frame->sample_rate,
             AVRounding.AV_ROUND_UP);
         var bytes = outSamples * 2 * 2;
-        var buffer = new byte[Math.Max(bytes, 4)];
-        fixed (byte* pointer = buffer)
+        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(bytes, 4));
+        try
         {
-            var dest0 = pointer;
-            var dest = &dest0;
-            var source = frame->extended_data;
-            var converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, frame->nb_samples);
-            if (converted <= 0)
-                return;
-            var count = converted * 4;
-            if (epoch != Volatile.Read(ref _audioEpoch))
-                return;
-            Interlocked.Add(ref _audioWritten, count);
-            AudioPcm?.Invoke(buffer, count);
+            fixed (byte* pointer = buffer)
+            {
+                var dest0 = pointer;
+                var dest = &dest0;
+                var source = frame->extended_data;
+                var converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, frame->nb_samples);
+                if (converted <= 0)
+                    return;
+                var count = converted * 4;
+                if (epoch != Volatile.Read(ref _audioEpoch))
+                    return;
+                Interlocked.Add(ref _audioWritten, count);
+                AudioPcm?.Invoke(buffer, count);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
     private VideoFrame ToBgra(AVFrame* source)
     {
         var size = ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
-        var buffer = new byte[size];
-        var stride = _width * 4;
-        fixed (byte* pointer = buffer)
+        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        try
         {
-            var data = new byte_ptrArray4();
-            var lines = new int_array4();
-            ffmpeg.av_image_fill_arrays(ref data, ref lines, pointer, AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
-            ffmpeg.sws_scale(_scaler, source->data, source->linesize, 0, source->height, data, lines);
-            stride = lines[0];
-        }
+            var stride = _width * 4;
+            fixed (byte* pointer = buffer)
+            {
+                var data = new byte_ptrArray4();
+                var lines = new int_array4();
+                ffmpeg.av_image_fill_arrays(ref data, ref lines, pointer, AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
+                ffmpeg.sws_scale(_scaler, source->data, source->linesize, 0, source->height, data, lines);
+                stride = lines[0];
+            }
 
-        return new VideoFrame { Width = _width, Height = _height, Stride = stride, Data = buffer };
+            return new VideoFrame
+            {
+                Width = _width,
+                Height = _height,
+                Stride = stride,
+                Data = buffer,
+                ReleaseBuffer = () => ArrayPool<byte>.Shared.Return(buffer)
+            };
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
+        }
     }
 
     private void RaiseEnded()

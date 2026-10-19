@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace HomePlayer;
@@ -14,9 +15,11 @@ public sealed partial class LibraryPage : Page
 {
     private readonly ObservableCollection<MediaLibrary> _libraries = [];
     private readonly ObservableCollection<MediaCard> _cards = [];
+    private readonly Dictionary<string, (DateTime Stamp, BitmapImage? Image)> _imageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DispatcherQueueTimer _reloadTimer;
+    private readonly DispatcherQueueTimer _filterTimer;
     private bool _loading;
     private bool _sorting;
-    private bool _reloadQueued;
 
     public LibraryPage()
     {
@@ -25,24 +28,35 @@ public sealed partial class LibraryPage : Page
         LibraryList.DisplayMemberPath = nameof(MediaLibrary.Name);
         LibraryList.ItemsSource = _libraries;
         Cards.ItemsSource = _cards;
+        _reloadTimer = DispatcherQueue.CreateTimer();
+        _reloadTimer.Interval = TimeSpan.FromMilliseconds(400);
+        _reloadTimer.IsRepeating = false;
+        _reloadTimer.Tick += (_, _) => Reload();
+        _filterTimer = DispatcherQueue.CreateTimer();
+        _filterTimer.Interval = TimeSpan.FromMilliseconds(200);
+        _filterTimer.IsRepeating = false;
+        _filterTimer.Tick += (_, _) => BindCards();
         App.Host.Libraries.Changed += (_, _) => QueueReload();
         Loaded += (_, _) => QueueReload();
+        Unloaded += (_, _) =>
+        {
+            _reloadTimer.Stop();
+            _filterTimer.Stop();
+        };
     }
 
     private void QueueReload()
     {
-        if (_reloadQueued)
+        if (!IsLoaded || App.Host.Exiting)
             return;
-        _reloadQueued = true;
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
-        {
-            _reloadQueued = false;
-            Reload();
-        });
+        if (!_reloadTimer.IsRunning)
+            _reloadTimer.Start();
     }
 
     private void Reload()
     {
+        if (App.Host.Exiting)
+            return;
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
         var libraries = App.Host.Repository.ListLibraries();
         _loading = true;
@@ -173,7 +187,16 @@ public sealed partial class LibraryPage : Page
             var result = await dialog.ShowAsync();
             if (choosingFolder)
             {
-                var folder = await FolderDialog.PickAsync();
+                string? folder = null;
+                try
+                {
+                    folder = await FolderDialog.PickAsync();
+                }
+                catch (Exception ex)
+                {
+                    await Message(ex.Message);
+                }
+
                 if (!string.IsNullOrWhiteSpace(folder))
                 {
                     path.Text = folder;
@@ -216,8 +239,16 @@ public sealed partial class LibraryPage : Page
             CloseButtonText = "取消",
             XamlRoot = XamlRoot
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            App.Host.Libraries.Remove(library.Id);
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        try
+        {
+            await App.Host.Libraries.RemoveAsync(library.Id);
+        }
+        catch (Exception ex)
+        {
+            await Message(ex.Message);
+        }
     }
 
     private void Refresh_Click(object sender, RoutedEventArgs e)
@@ -232,7 +263,8 @@ public sealed partial class LibraryPage : Page
     {
         if (_sorting || _loading)
             return;
-        BindCards();
+        _filterTimer.Stop();
+        _filterTimer.Start();
     }
 
     private async void Card_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -345,25 +377,41 @@ public sealed partial class LibraryPage : Page
         var query = new TextBox { Text = FilenameParser.Parse(card.Item.FileName).Title };
         var results = new ListView { Height = 240 };
         var search = new Button { Content = "搜索" };
+        var error = new TextBlock { Foreground = new SolidColorBrush(Microsoft.UI.Colors.OrangeRed), TextWrapping = TextWrapping.Wrap };
         var client = new TmdbClient(App.Host.Repository);
         IReadOnlyList<TmdbHit> hits = [];
+        var searchVersion = 0;
         search.Click += async (_, _) =>
         {
+            var version = ++searchVersion;
+            hits = [];
+            results.ItemsSource = null;
+            error.Text = "";
+            search.IsEnabled = false;
             try
             {
                 var movies = await client.SearchAsync(query.Text, null, false, key, CancellationToken.None);
                 var shows = await client.SearchAsync(query.Text, null, true, key, CancellationToken.None);
+                if (version != searchVersion)
+                    return;
                 hits = movies.Concat(shows).ToList();
                 results.ItemsSource = hits.Select(hit => $"{(hit.MediaType == "tv" ? "剧集" : "电影")}  {hit.Title}  {hit.Year}").ToList();
             }
             catch (Exception ex)
             {
-                await Message(ex.Message);
+                if (version == searchVersion)
+                    error.Text = ex.Message;
+            }
+            finally
+            {
+                if (version == searchVersion)
+                    search.IsEnabled = true;
             }
         };
         var panel = new StackPanel { Spacing = 8, Width = 480 };
         panel.Children.Add(query);
         panel.Children.Add(search);
+        panel.Children.Add(error);
         panel.Children.Add(results);
         var dialog = new ContentDialog
         {
@@ -378,7 +426,7 @@ public sealed partial class LibraryPage : Page
         var item = App.Host.Repository.GetItem(card.Item.Id);
         if (item == null)
             return;
-        await App.Host.Libraries.ApplyHitAsync(item, hits[results.SelectedIndex], key, CancellationToken.None);
+        await App.Host.Libraries.ApplyHitAsync(item, hits[results.SelectedIndex], CancellationToken.None);
     }
 
     private async Task Message(string text) =>
@@ -405,13 +453,26 @@ public sealed partial class LibraryPage : Page
         return string.Join(" · ", new[] { year, episode, rating, item.OriginalTitle }.Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
-    private static BitmapImage? LoadImage(string? path)
+    private BitmapImage? LoadImage(string? path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return null;
+        DateTime stamp;
+        try
+        {
+            stamp = File.GetLastWriteTimeUtc(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (_imageCache.TryGetValue(path, out var cached) && cached.Stamp == stamp)
+            return cached.Image;
         var image = new BitmapImage();
         image.DecodePixelWidth = 480;
         image.UriSource = new Uri(path);
+        _imageCache[path] = (stamp, image);
         return image;
     }
 }

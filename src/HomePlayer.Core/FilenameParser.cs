@@ -56,8 +56,16 @@ public static partial class FilenameParser
         if (year < 1900 || year > max)
             return null;
 
-        text = text[..last.Index];
+        text = TrimDanglingBrackets(text[..last.Index]);
         return year;
+    }
+
+    private static string TrimDanglingBrackets(string text)
+    {
+        text = text.TrimEnd();
+        while (text.Length > 0 && text[^1] is '(' or '[' or '{' or '（' or '【' or '-' or '.' or ',')
+            text = text[..^1].TrimEnd();
+        return text;
     }
 
     private static string Clean(string raw)

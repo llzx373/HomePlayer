@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using HomePlayer.Core;
 using HomePlayer.Data;
@@ -13,9 +14,16 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CancellationTokenSource> _debounce = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _queued = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _inFlight = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _resubmit = new(StringComparer.Ordinal);
+    private readonly object _queuedGate = new();
+    private readonly ConcurrentDictionary<string, object> _libraryLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly List<Task> _workers = [];
+    private readonly HashSet<Task> _tasks = [];
+    private readonly object _tasksGate = new();
+    private readonly SemaphoreSlim _slotSignal = new(0);
     private readonly object _slot = new();
     private int _active;
     private int _maxParallel = 2;
@@ -40,10 +48,21 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         for (var i = 0; i < 2; i++)
             _workers.Add(Task.Run(() => WorkerAsync(_shutdown.Token)));
         foreach (var library in _repository.ListLibraries())
-            _ = Task.Run(() => Reconcile(library.Id));
+            ReconcileInBackground(library.Id);
     }
 
-    public void SetPlaybackActive(bool active) => _maxParallel = active ? 1 : 2;
+    public void SetPlaybackActive(bool active)
+    {
+        Volatile.Write(ref _maxParallel, active ? 1 : 2);
+        try
+        {
+            if (_slotSignal.CurrentCount == 0)
+                _slotSignal.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
 
     public MediaLibrary Add(string name, string root, LibraryKind kind)
     {
@@ -61,29 +80,44 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         };
         _repository.InsertLibrary(library);
         Watch(library);
-        _ = Task.Run(() => Reconcile(library.Id));
+        ReconcileInBackground(library.Id);
         Changed?.Invoke(this, EventArgs.Empty);
         return library;
     }
 
-    public void Remove(string libraryId)
+    public async Task RemoveAsync(string libraryId)
     {
         if (_watchers.Remove(libraryId, out var watcher))
             watcher.Dispose();
-        if (_debounce.Remove(libraryId, out var debounce))
-            debounce.Cancel();
-        var library = _repository.GetLibrary(libraryId);
-        if (library != null)
+        CancellationTokenSource? debounce = null;
+        lock (_debounce)
+            _debounce.Remove(libraryId, out debounce);
+        if (debounce != null)
         {
-            foreach (var item in _repository.ListItems(libraryId))
-                TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
+            debounce.Cancel();
+            debounce.Dispose();
         }
 
-        _repository.DeleteLibrary(libraryId);
+        await Task.Run(() =>
+        {
+            lock (LibraryLock(libraryId))
+            {
+                var library = _repository.GetLibrary(libraryId);
+                if (library != null)
+                {
+                    foreach (var item in _repository.ListItems(libraryId))
+                        TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
+                }
+
+                _repository.DeleteLibrary(libraryId);
+                _libraryLocks.TryRemove(libraryId, out _);
+            }
+        });
+
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Refresh(string libraryId) => _ = Task.Run(() => Reconcile(libraryId));
+    public void Refresh(string libraryId) => ReconcileInBackground(libraryId);
 
     public void Requeue(string itemId)
     {
@@ -92,10 +126,20 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         if (item == null || library == null)
             return;
         var full = item.FullPath(library.RootPath);
-        if (!File.Exists(full))
+        long size;
+        long ticks;
+        try
+        {
+            var info = new FileInfo(full);
+            size = info.Length;
+            ticks = SecondTicks(info.LastWriteTimeUtc);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
             return;
-        var info = new FileInfo(full);
-        _repository.MarkChanged(item, info.Length, SecondTicks(info.LastWriteTimeUtc));
+        }
+
+        _repository.MarkChanged(item, size, ticks);
         _repository.Enqueue(item.Id, library.Kind);
         Submit(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -105,22 +149,47 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     {
         if (!Directory.Exists(AppPaths.Cache))
             return 0;
-        return Directory.EnumerateFiles(AppPaths.Cache, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length);
+        try
+        {
+            return Directory.EnumerateFiles(AppPaths.Cache, "*", SearchOption.AllDirectories)
+                .Sum(file =>
+                {
+                    try
+                    {
+                        return new FileInfo(file).Length;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        return 0;
+                    }
+                });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
     }
 
-    public void ClearCache()
+    public async Task ClearCacheAsync()
     {
-        TryDeleteDirectory(AppPaths.Cache);
-        AppPaths.Ensure();
-        foreach (var library in _repository.ListLibraries())
+        await Task.Run(() =>
         {
-            foreach (var item in _repository.ListItems(library.Id))
+            TryDeleteDirectory(AppPaths.Cache);
+            AppPaths.Ensure();
+            foreach (var library in _repository.ListLibraries())
             {
-                _repository.MarkChanged(item, item.Size, item.MtimeUtcTicks);
-                _repository.Enqueue(item.Id, library.Kind);
-                Submit(item.Id);
+                if (_shutdown.IsCancellationRequested)
+                    return;
+                foreach (var item in _repository.ListItems(library.Id))
+                {
+                    if (_shutdown.IsCancellationRequested)
+                        return;
+                    _repository.MarkChanged(item, item.Size, item.MtimeUtcTicks);
+                    _repository.Enqueue(item.Id, library.Kind);
+                    Submit(item.Id);
+                }
             }
-        }
+        });
 
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -131,13 +200,40 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         _queue.Writer.TryComplete();
         foreach (var watcher in _watchers.Values)
             watcher.Dispose();
+        _watchers.Clear();
+        lock (_debounce)
+        {
+            foreach (var source in _debounce.Values)
+            {
+                source.Cancel();
+                source.Dispose();
+            }
+
+            _debounce.Clear();
+        }
+
         try
         {
             await Task.WhenAll(_workers);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
         }
+
+        Task[] tasks;
+        lock (_tasksGate)
+            tasks = [.. _tasks];
+        try
+        {
+            if (tasks.Length > 0)
+                await Task.WhenAll(tasks);
+        }
+        catch
+        {
+        }
+
+        _slotSignal.Dispose();
+        _shutdown.Dispose();
     }
 
     private void Watch(MediaLibrary library)
@@ -156,7 +252,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         watcher.Changed += onChange;
         watcher.Deleted += onChange;
         watcher.Renamed += (_, _) => Debounce(library.Id);
-        watcher.Error += (_, _) => _ = Task.Run(() => Reconcile(library.Id));
+        watcher.Error += (_, _) => ReconcileInBackground(library.Id);
         _watchers[library.Id] = watcher;
     }
 
@@ -165,10 +261,14 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         lock (_debounce)
         {
             if (_debounce.Remove(libraryId, out var previous))
+            {
                 previous.Cancel();
+                previous.Dispose();
+            }
+
             var source = new CancellationTokenSource();
             _debounce[libraryId] = source;
-            _ = Task.Run(async () =>
+            Track(Task.Run(async () =>
             {
                 try
                 {
@@ -178,11 +278,39 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 catch (OperationCanceledException)
                 {
                 }
-            });
+                finally
+                {
+                    lock (_debounce)
+                    {
+                        if (_debounce.TryGetValue(libraryId, out var current) && ReferenceEquals(current, source))
+                            _debounce.Remove(libraryId);
+                    }
+
+                    source.Dispose();
+                }
+            }));
         }
     }
 
+    private void ReconcileInBackground(string libraryId) => Track(Task.Run(() => Reconcile(libraryId)));
+
     private void Reconcile(string libraryId)
+    {
+        lock (LibraryLock(libraryId))
+        {
+            if (_shutdown.IsCancellationRequested)
+                return;
+            try
+            {
+                ReconcileCore(libraryId);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    private void ReconcileCore(string libraryId)
     {
         var library = _repository.GetLibrary(libraryId);
         if (library == null || !Directory.Exists(library.RootPath))
@@ -192,19 +320,23 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in VideoFiles.Enumerate(library.RootPath))
         {
+            if (_shutdown.IsCancellationRequested)
+                return;
             var relative = Path.GetRelativePath(library.RootPath, file);
             seen.Add(relative);
-            FileInfo info;
+            long size;
+            long ticks;
             try
             {
-                info = new FileInfo(file);
+                var info = new FileInfo(file);
+                size = info.Length;
+                ticks = SecondTicks(info.LastWriteTimeUtc);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
                 continue;
             }
 
-            var ticks = SecondTicks(info.LastWriteTimeUtc);
             if (!byPath.TryGetValue(relative, out var item))
             {
                 item = new MediaItem
@@ -212,7 +344,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                     Id = Guid.NewGuid().ToString("N"),
                     LibraryId = library.Id,
                     RelativePath = relative,
-                    Size = info.Length,
+                    Size = size,
                     MtimeUtcTicks = ticks,
                     Status = ItemStatus.Pending
                 };
@@ -220,9 +352,9 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 _repository.Enqueue(item.Id, library.Kind);
                 Submit(item.Id);
             }
-            else if (item.Size != info.Length || Math.Abs(item.MtimeUtcTicks - ticks) > TimeSpan.TicksPerSecond)
+            else if (item.Size != size || Math.Abs(item.MtimeUtcTicks - ticks) > TimeSpan.TicksPerSecond)
             {
-                _repository.MarkChanged(item, info.Length, ticks);
+                _repository.MarkChanged(item, size, ticks);
                 _repository.Enqueue(item.Id, library.Kind);
                 Submit(item.Id);
             }
@@ -242,29 +374,66 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     private void Submit(string itemId)
     {
-        lock (_queued)
+        lock (_queuedGate)
         {
-            if (!_queued.Add(itemId))
+            if (_inFlight.Contains(itemId))
+            {
+                _resubmit.Add(itemId);
+                return;
+            }
+
+            if (!_pending.Add(itemId))
                 return;
         }
 
-        _queue.Writer.TryWrite(itemId);
+        if (!_queue.Writer.TryWrite(itemId))
+        {
+            lock (_queuedGate)
+                _pending.Remove(itemId);
+        }
     }
 
     private async Task WorkerAsync(CancellationToken cancellationToken)
     {
         await foreach (var itemId in _queue.Reader.ReadAllAsync(cancellationToken))
         {
-            lock (_queued)
-                _queued.Remove(itemId);
-            await AcquireAsync(cancellationToken);
+            lock (_queuedGate)
+            {
+                _pending.Remove(itemId);
+                _inFlight.Add(itemId);
+            }
+
             try
             {
-                await ProcessAsync(itemId, cancellationToken);
+                var acquired = false;
+                try
+                {
+                    await AcquireAsync(cancellationToken);
+                    acquired = true;
+                    await ProcessAsync(itemId, cancellationToken);
+                }
+                finally
+                {
+                    if (acquired)
+                        Release();
+
+                    bool resubmit;
+                    lock (_queuedGate)
+                    {
+                        _inFlight.Remove(itemId);
+                        resubmit = _resubmit.Remove(itemId);
+                    }
+
+                    if (resubmit && !cancellationToken.IsCancellationRequested)
+                        Submit(itemId);
+                }
             }
-            finally
+            catch (OperationCanceledException)
             {
-                Release();
+                throw;
+            }
+            catch (Exception)
+            {
             }
         }
     }
@@ -291,14 +460,20 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         _repository.MarkWork(itemId, 1);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var probe = FfmpegProbe.Read(full);
+            cancellationToken.ThrowIfCancellationRequested();
             _repository.SaveProbe(item.Id, probe);
             item = _repository.GetItem(item.Id) ?? item;
             if (library.Kind == LibraryKind.Raw)
-                BuildThumbs(item, full);
+                BuildThumbs(item, full, cancellationToken);
             else
                 await MatchAsync(item, full, cancellationToken);
             _repository.MarkWork(item.Id, 2);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -309,14 +484,18 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void BuildThumbs(MediaItem item, string full)
+    private void BuildThumbs(MediaItem item, string full, CancellationToken cancellationToken)
     {
         var frames = FfmpegImages.ExtractNine(full);
         var directory = Path.Combine(AppPaths.Thumbs, item.Id);
         Directory.CreateDirectory(directory);
         var paths = new string?[9];
         for (var i = 0; i < frames.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             paths[i] = ImageFiles.SaveJpeg(frames[i], Path.Combine(directory, $"f{i}.jpg"));
+        }
+
         var sheet = ImageFiles.ComposeSheet(paths, Path.Combine(directory, "sheet.jpg"))
             ?? throw new InvalidOperationException("没有抽出可用的画面。");
         var saved = paths.Where(path => path != null).Cast<string>().ToArray();
@@ -345,7 +524,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         {
             hits = await _tmdb.SearchAsync(parsed.Title, parsed.Year, parsed.IsTv, apiKey, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             item.Title = item.FileName;
             item.MatchStatus = MatchStatus.NeedsReview;
@@ -360,7 +539,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             : [];
         if (parsed.Year != null && uniqueYear.Count == 1)
         {
-            await ApplyHitAsync(item, uniqueYear[0], apiKey, cancellationToken);
+            await ApplyHitAsync(item, uniqueYear[0], cancellationToken);
             return;
         }
 
@@ -371,7 +550,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         _repository.SaveMetadata(item);
     }
 
-    public async Task ApplyHitAsync(MediaItem item, TmdbHit hit, string apiKey, CancellationToken cancellationToken)
+    public async Task ApplyHitAsync(MediaItem item, TmdbHit hit, CancellationToken cancellationToken)
     {
         item.TmdbId = hit.Id;
         item.MediaType = hit.MediaType;
@@ -380,7 +559,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         item.Year = hit.Year;
         item.Overview = hit.Overview;
         item.Rating = hit.Rating;
-        item.PosterPath = await _tmdb.DownloadPosterAsync(hit.PosterPath, hit.Id, apiKey, cancellationToken);
+        item.PosterPath = await _tmdb.DownloadPosterAsync(hit.PosterPath, hit.Id, cancellationToken);
         item.MatchStatus = MatchStatus.Matched;
         item.Status = ItemStatus.Ready;
         item.Error = null;
@@ -395,14 +574,14 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             lock (_slot)
             {
-                if (_active < _maxParallel)
+                if (_active < Volatile.Read(ref _maxParallel))
                 {
                     _active++;
                     return;
                 }
             }
 
-            await Task.Delay(40, cancellationToken);
+            await _slotSignal.WaitAsync(cancellationToken);
         }
     }
 
@@ -410,7 +589,27 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     {
         lock (_slot)
             _active = Math.Max(0, _active - 1);
+        if (_slotSignal.CurrentCount == 0)
+            _slotSignal.Release();
     }
+
+    private Task Track(Task task)
+    {
+        lock (_tasksGate)
+            _tasks.Add(task);
+        _ = task.ContinueWith(
+            completed =>
+            {
+                lock (_tasksGate)
+                    _tasks.Remove(completed);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return task;
+    }
+
+    private object LibraryLock(string libraryId) => _libraryLocks.GetOrAdd(libraryId, _ => new object());
 
     private static long SecondTicks(DateTime utc) => utc.Ticks / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond;
 
@@ -421,7 +620,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             if (Directory.Exists(path))
                 Directory.Delete(path, true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
     }

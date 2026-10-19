@@ -36,7 +36,7 @@ public static class FfmpegNative
         {
             Path.Combine(AppContext.BaseDirectory, "ffmpeg"),
             AppContext.BaseDirectory,
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "third_party", "ffmpeg"))
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "third_party", "ffmpeg"))
         };
         foreach (var dir in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {

@@ -8,12 +8,20 @@ namespace HomePlayer;
 
 public sealed class AppHost : IAsyncDisposable
 {
-    private AppHost(AppSettings settings, LibraryRepository repository, LibraryCoordinator libraries, PlaybackController playback)
+    private readonly CodecPlanCache _codecPlans;
+
+    private AppHost(
+        AppSettings settings,
+        LibraryRepository repository,
+        LibraryCoordinator libraries,
+        PlaybackController playback,
+        CodecPlanCache codecPlans)
     {
         Settings = settings;
         Repository = repository;
         Libraries = libraries;
         Playback = playback;
+        _codecPlans = codecPlans;
     }
 
     public AppSettings Settings { get; }
@@ -22,14 +30,17 @@ public sealed class AppHost : IAsyncDisposable
     public PlaybackController Playback { get; }
     public bool Exiting { get; set; }
 
+    public void InvalidateCodecPlan() => _codecPlans.Invalidate();
+
     public static AppHost Create(Action<Action> post)
     {
         var settings = LoadSettings();
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
-        var playback = new PlaybackController(post, () => CodecCatalog.Plan(settings), () => settings.AudioOutputId);
+        var codecPlans = new CodecPlanCache(() => settings);
+        var playback = new PlaybackController(post, codecPlans.Get, () => settings.AudioOutputId);
         playback.SetVolume(settings.Volume);
-        var host = new AppHost(settings, repository, libraries, playback);
+        var host = new AppHost(settings, repository, libraries, playback, codecPlans);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
         libraries.Start();
         return host;
@@ -37,9 +48,15 @@ public sealed class AppHost : IAsyncDisposable
 
     public void SaveSettings()
     {
-        Settings.Volume = Playback.Volume;
-        var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(AppPaths.SettingsFile, json);
+        try
+        {
+            Settings.Volume = Playback.Volume;
+            var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(AppPaths.SettingsFile, json);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -68,5 +85,14 @@ public sealed class AppHost : IAsyncDisposable
     {
         settings.Hotkeys = HotkeyCatalog.Merge(settings.Hotkeys);
         return settings;
+    }
+
+    private sealed class CodecPlanCache(Func<AppSettings> settings)
+    {
+        private CodecPlan? _plan;
+
+        public CodecPlan Get() => _plan ??= CodecCatalog.Plan(settings());
+
+        public void Invalidate() => _plan = null;
     }
 }

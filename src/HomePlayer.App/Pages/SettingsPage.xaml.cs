@@ -24,6 +24,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         var settings = App.Host.Settings;
         ApiKeyBox.Text = settings.TmdbApiKey ?? "";
         TraySwitch.IsOn = settings.CloseToTray;
@@ -38,8 +39,29 @@ public sealed partial class SettingsPage : Page
         ReloadCodecs(settings);
         AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
         Unloaded += (_, _) => EndCapture();
+        Loaded += (_, _) =>
+        {
+            _loading = true;
+            LoadAudioDevices(App.Host.Settings.AudioOutputId);
+            _loading = false;
+            _ = RefreshCacheTextAsync();
+        };
         _loading = false;
-        CacheText.Text = $"缓存占用 {Format(App.Host.Libraries.CacheBytes())}";
+        CacheText.Text = "缓存占用计算中…";
+        _ = RefreshCacheTextAsync();
+    }
+
+    private async Task RefreshCacheTextAsync()
+    {
+        try
+        {
+            var bytes = await Task.Run(() => App.Host.Libraries.CacheBytes());
+            CacheText.Text = $"缓存占用 {Format(bytes)}";
+        }
+        catch (Exception)
+        {
+            CacheText.Text = "缓存占用未知";
+        }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -158,6 +180,7 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.SplitterOrder = ToPreferences(_splitters);
         App.Host.Settings.VideoDecoderOrder = ToPreferences(_videos);
         App.Host.Settings.AudioDecoderOrder = ToPreferences(_audios);
+        App.Host.InvalidateCodecPlan();
         RefreshSummary();
     }
 
@@ -286,8 +309,15 @@ public sealed partial class SettingsPage : Page
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
             return;
-        App.Host.Libraries.ClearCache();
-        CacheText.Text = $"缓存占用 {Format(App.Host.Libraries.CacheBytes())}";
+        try
+        {
+            await App.Host.Libraries.ClearCacheAsync();
+            await RefreshCacheTextAsync();
+        }
+        catch (Exception ex)
+        {
+            CacheText.Text = "清除缓存失败：" + ex.Message;
+        }
     }
 
     private static string Format(long bytes)

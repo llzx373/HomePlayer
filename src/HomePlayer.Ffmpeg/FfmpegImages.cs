@@ -45,26 +45,35 @@ public static unsafe class FfmpegImages
 
         public DecodeSession(string path)
         {
-            _format = ffmpeg.avformat_alloc_context();
-            var opened = _format;
-            FfmpegError.Check(ffmpeg.avformat_open_input(&opened, path, null, null), "打开文件");
-            _format = opened;
-            FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "读取媒体信息");
-            DurationSeconds = _format->duration > 0 ? _format->duration / (double)ffmpeg.AV_TIME_BASE : 0;
-            AVCodec* codec = null;
-            _streamIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
-            FfmpegError.Check(_streamIndex, "查找视频流");
-            _codec = ffmpeg.avcodec_alloc_context3(codec);
-            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_codec, _format->streams[_streamIndex]->codecpar), "复制编码参数");
-            FfmpegError.Check(ffmpeg.avcodec_open2(_codec, codec, null), "打开解码器");
-            _timeBase = _format->streams[_streamIndex]->time_base;
-            (_dstWidth, _dstHeight) = Fit(_codec->width, _codec->height, 480, 270);
-            _scaler = ffmpeg.sws_getContext(
-                _codec->width, _codec->height, _codec->pix_fmt,
-                _dstWidth, _dstHeight, AVPixelFormat.AV_PIX_FMT_BGRA,
-                (int)SwsFlags.SWS_BILINEAR, null, null, null);
-            if (_scaler == null)
-                throw new InvalidOperationException("无法创建画面缩放器。");
+            try
+            {
+                _format = ffmpeg.avformat_alloc_context();
+                var opened = _format;
+                var openResult = ffmpeg.avformat_open_input(&opened, path, null, null);
+                _format = opened;
+                FfmpegError.Check(openResult, "打开文件");
+                FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "读取媒体信息");
+                DurationSeconds = _format->duration > 0 ? _format->duration / (double)ffmpeg.AV_TIME_BASE : 0;
+                AVCodec* codec = null;
+                _streamIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
+                FfmpegError.Check(_streamIndex, "查找视频流");
+                _codec = ffmpeg.avcodec_alloc_context3(codec);
+                FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_codec, _format->streams[_streamIndex]->codecpar), "复制编码参数");
+                FfmpegError.Check(ffmpeg.avcodec_open2(_codec, codec, null), "打开解码器");
+                _timeBase = _format->streams[_streamIndex]->time_base;
+                (_dstWidth, _dstHeight) = Fit(_codec->width, _codec->height, 480, 270);
+                _scaler = ffmpeg.sws_getContext(
+                    _codec->width, _codec->height, _codec->pix_fmt,
+                    _dstWidth, _dstHeight, AVPixelFormat.AV_PIX_FMT_BGRA,
+                    (int)SwsFlags.SWS_BILINEAR, null, null, null);
+                if (_scaler == null)
+                    throw new InvalidOperationException("无法创建画面缩放器。");
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
         }
 
         public VideoFrame? FrameAt(double seconds)

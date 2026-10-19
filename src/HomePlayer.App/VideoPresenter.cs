@@ -59,6 +59,11 @@ public sealed class VideoPresenter : IDisposable
     private int _frameHeight;
     private float _scaleX = 1;
     private float _scaleY = 1;
+    private readonly uint[] _vertexStrides = [16];
+    private readonly uint[] _vertexOffsets = [0];
+    private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
+    private readonly ID3D11ShaderResourceView[] _frameViews = new ID3D11ShaderResourceView[1];
+    private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
     private int _posted;
     private bool _drawing;
     private bool _resizing;
@@ -79,13 +84,27 @@ public sealed class VideoPresenter : IDisposable
 
     public void Submit(VideoFrame frame)
     {
+        VideoFrame? replaced;
         lock (_gate)
+        {
+            replaced = _pending;
             _pending = frame;
+        }
+
+        replaced?.ReturnBuffer();
         PostDraw();
     }
 
     public void Dispose()
     {
+        VideoFrame? pending;
+        lock (_gate)
+        {
+            pending = _pending;
+            _pending = null;
+        }
+
+        pending?.ReturnBuffer();
         _target?.Dispose();
         _frameView?.Dispose();
         _frameTexture?.Dispose();
@@ -214,9 +233,16 @@ public sealed class VideoPresenter : IDisposable
             return;
         VideoFrame? frame;
         lock (_gate)
+        {
             frame = _pending;
+            _pending = null;
+        }
+
         if (frame == null || frame.Width < 1 || frame.Height < 1)
+        {
+            frame?.ReturnBuffer();
             return;
+        }
 
         _drawing = true;
         try
@@ -234,13 +260,14 @@ public sealed class VideoPresenter : IDisposable
             _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
             _context.IASetInputLayout(_layout);
             _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
-            uint[] stride = [16];
-            uint[] offset = [0];
-            _context.IASetVertexBuffers(0, 1, [_vertices], stride, offset);
+            _vertexBuffers[0] = _vertices;
+            _context.IASetVertexBuffers(0, 1, _vertexBuffers, _vertexStrides, _vertexOffsets);
             _context.VSSetShader(_vertexShader, null!, 0);
             _context.PSSetShader(_pixelShader, null!, 0);
-            _context.PSSetShaderResources(0, 1, [_frameView]);
-            _context.PSSetSamplers(0, 1, [_sampler!]);
+            _frameViews[0] = _frameView;
+            _context.PSSetShaderResources(0, 1, _frameViews);
+            _samplers[0] = _sampler!;
+            _context.PSSetSamplers(0, 1, _samplers);
             _context.Draw(4, 0);
             _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
             _swapChain.Present(0, PresentFlags.None);
@@ -250,10 +277,11 @@ public sealed class VideoPresenter : IDisposable
         }
         finally
         {
+            frame.ReturnBuffer();
             _drawing = false;
             var newer = false;
             lock (_gate)
-                newer = !ReferenceEquals(_pending, frame);
+                newer = _pending != null;
             if (newer)
                 PostDraw();
         }
@@ -318,12 +346,23 @@ public sealed class VideoPresenter : IDisposable
         var rowBytes = frame.Width * 4;
         if (rowBytes <= 0 || frame.Stride < rowBytes)
             return;
-        for (var y = 0; y < frame.Height; y++)
+        fixed (byte* source = frame.Data)
         {
-            var source = y * frame.Stride;
-            if (source + rowBytes > frame.Data.Length)
+            if (destinationPitch == frame.Stride && frame.Stride == rowBytes)
+            {
+                var bytes = rowBytes * frame.Height;
+                if (bytes <= frame.Data.Length)
+                    Buffer.MemoryCopy(source, destination, bytes, bytes);
                 return;
-            Marshal.Copy(frame.Data, source, (IntPtr)(destination + y * destinationPitch), rowBytes);
+            }
+
+            for (var y = 0; y < frame.Height; y++)
+            {
+                var offset = y * frame.Stride;
+                if (offset + rowBytes > frame.Data.Length)
+                    return;
+                Buffer.MemoryCopy(source + offset, destination + y * destinationPitch, rowBytes, rowBytes);
+            }
         }
     }
 
@@ -339,7 +378,18 @@ public sealed class VideoPresenter : IDisposable
             out ID3D11Device device,
             out ID3D11DeviceContext context);
         if (result.Failure)
-            return;
+        {
+            result = D3D11.D3D11CreateDevice(
+                null,
+                DriverType.Warp,
+                DeviceCreationFlags.BgraSupport,
+                new[] { FeatureLevel.Level_11_0 },
+                out device,
+                out context);
+            if (result.Failure)
+                return;
+        }
+
         _device = device;
         _context = context;
     }

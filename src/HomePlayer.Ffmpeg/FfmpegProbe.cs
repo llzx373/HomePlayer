@@ -14,8 +14,9 @@ public static unsafe class FfmpegProbe
         {
             format = ffmpeg.avformat_alloc_context();
             var opened = format;
-            FfmpegError.Check(ffmpeg.avformat_open_input(&opened, path, null, null), "打开文件");
+            var openResult = ffmpeg.avformat_open_input(&opened, path, null, null);
             format = opened;
+            FfmpegError.Check(openResult, "打开文件");
             FfmpegError.Check(ffmpeg.avformat_find_stream_info(format, null), "读取媒体信息");
 
             AVCodec* videoCodec = null;

@@ -32,41 +32,85 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
     {
         Stop();
         var player = new FfmpegPlayer();
-        player.FrameArrived += frame => FrameArrived?.Invoke(frame);
-        player.Ended += () => Ended?.Invoke();
-        player.AudioPcm += OnPcm;
-        player.Open(path);
-        if (player.HasAudio)
+        try
         {
-            _buffer = new BufferedWaveProvider(new WaveFormat(48000, 16, 2))
+            player.FrameArrived += frame =>
             {
-                DiscardOnBufferOverflow = true,
-                BufferDuration = TimeSpan.FromSeconds(2)
-            };
-            if (string.IsNullOrWhiteSpace(_audioOutputId))
-            {
-                _output = new WasapiOut(AudioClientShareMode.Shared, 100);
-                _audioDevice = "系统默认";
-            }
-            else
-            {
-                _device = AudioOutputs.OpenWasapi(_audioOutputId);
-                _audioDevice = _device == null
-                    ? "系统默认（所选设备不可用）"
-                    : _device.ID == _audioOutputId
-                        ? _device.FriendlyName
-                        : _device.FriendlyName + "（所选设备不可用，已改用系统默认）";
-                _output = _device == null
-                    ? new WasapiOut(AudioClientShareMode.Shared, 100)
-                    : new WasapiOut(_device, AudioClientShareMode.Shared, true, 100);
-            }
-            _output.Init(_buffer);
-            _output.Volume = _muted ? 0 : (float)_volume;
-            player.UnplayedBytes = () => _buffer?.BufferedBytes ?? 0;
-        }
+                var handler = FrameArrived;
+                if (handler == null)
+                {
+                    frame.ReturnBuffer();
+                    return;
+                }
 
-        lock (_gate)
-            _player = player;
+                handler(frame);
+            };
+            player.Ended += () => Ended?.Invoke();
+            player.AudioPcm += OnPcm;
+            player.Open(path);
+            if (player.HasAudio)
+            {
+                var buffer = new BufferedWaveProvider(new WaveFormat(48000, 16, 2))
+                {
+                    DiscardOnBufferOverflow = true,
+                    BufferDuration = TimeSpan.FromSeconds(2)
+                };
+                MMDevice? device = null;
+                WasapiOut? output = null;
+                try
+                {
+                    string name;
+                    if (string.IsNullOrWhiteSpace(_audioOutputId))
+                    {
+                        output = new WasapiOut(AudioClientShareMode.Shared, 100);
+                        name = "系统默认";
+                    }
+                    else
+                    {
+                        device = AudioOutputs.OpenWasapi(_audioOutputId);
+                        name = device == null
+                            ? "系统默认（所选设备不可用）"
+                            : device.ID == _audioOutputId
+                                ? device.FriendlyName
+                                : device.FriendlyName + "（所选设备不可用，已改用系统默认）";
+                        output = device == null
+                            ? new WasapiOut(AudioClientShareMode.Shared, 100)
+                            : new WasapiOut(device, AudioClientShareMode.Shared, true, 100);
+                    }
+
+                    output.Init(buffer);
+                    output.Volume = _muted ? 0 : (float)_volume;
+                    _buffer = buffer;
+                    _output = output;
+                    _device = device;
+                    _audioDevice = name;
+                    player.UnplayedBytes = () => _buffer?.BufferedBytes ?? 0;
+                }
+                catch (Exception ex)
+                {
+                    output?.Dispose();
+                    device?.Dispose();
+                    _buffer = null;
+                    _output = null;
+                    _device = null;
+                    _audioDevice = "音频输出失败，已静音播放：" + ex.Message;
+                }
+            }
+
+            lock (_gate)
+                _player = player;
+        }
+        catch
+        {
+            player.Dispose();
+            _output?.Dispose();
+            _output = null;
+            _device?.Dispose();
+            _device = null;
+            _buffer = null;
+            _audioDevice = null;
+            throw;
+        }
     }
 
     public void Play()

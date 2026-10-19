@@ -21,26 +21,30 @@ public static class VideoFiles
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
-            IEnumerable<string> children;
-            IEnumerable<string> files;
+            var files = new List<string>();
             try
             {
-                children = Directory.EnumerateDirectories(dir);
-                files = Directory.EnumerateFiles(dir);
+                foreach (var file in Directory.EnumerateFiles(dir))
+                {
+                    if (IsVideo(file))
+                        files.Add(file);
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                continue;
             }
 
             foreach (var file in files)
-            {
-                if (IsVideo(file))
-                    yield return file;
-            }
+                yield return file;
 
-            foreach (var child in children)
-                stack.Push(child);
+            try
+            {
+                foreach (var child in Directory.EnumerateDirectories(dir))
+                    stack.Push(child);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
         }
     }
 

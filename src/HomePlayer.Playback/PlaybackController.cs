@@ -154,6 +154,26 @@ public sealed class PlaybackController : IDisposable
     private async Task PlayCurrentAsync(bool forceFfmpeg)
     {
         var token = ++_token;
+        var previous = _engine;
+        _engine = null;
+        if (previous != null)
+        {
+            Detach(previous);
+            PlaybackActiveChanged?.Invoke(false);
+            await Task.Run(() =>
+            {
+                try
+                {
+                    previous.Dispose();
+                }
+                catch
+                {
+                }
+            });
+            if (token != _token)
+                return;
+        }
+
         var failures = 0;
         while (token == _token && Playlist.Current != null && failures < Playlist.Items.Count)
         {
@@ -162,20 +182,43 @@ public sealed class PlaybackController : IDisposable
             Notify();
             try
             {
-                await Task.Run(() => OpenEngine(item.Path, forceFfmpeg));
+                var (engine, reason) = await Task.Run(() => OpenEngine(item.Path, forceFfmpeg));
                 if (token != _token)
+                {
+                    _ = Task.Run(() => Discard(engine));
                     return;
+                }
+
                 _post(() =>
                 {
-                    item.Error = null;
-                _engine?.SetVolume(_volume);
-                _engine?.SetMuted(_muted);
-                _engine?.Play();
-                Status = (_engine as LavPlaybackEngine)?.AudioMissing == true
-                    ? "正在播放，音频没有接上"
-                    : "正在播放";
-                    EngineLabel = _engine?.Name ?? "";
-                    Notify();
+                    if (token != _token)
+                    {
+                        _ = Task.Run(() => Discard(engine));
+                        return;
+                    }
+
+                    _engine = engine;
+                    _reason = reason;
+                    PlaybackActiveChanged?.Invoke(true);
+                    try
+                    {
+                        item.Error = null;
+                        engine.SetVolume(_volume);
+                        engine.SetMuted(_muted);
+                        engine.Play();
+                        Status = engine is LavPlaybackEngine { AudioMissing: true }
+                            ? "正在播放，音频没有接上"
+                            : "正在播放";
+                        EngineLabel = engine.Name;
+                        Notify();
+                    }
+                    catch (Exception ex)
+                    {
+                        DisposeEngine();
+                        Status = ex.Message;
+                        EngineLabel = "未播放";
+                        Notify();
+                    }
                 });
                 return;
             }
@@ -197,18 +240,20 @@ public sealed class PlaybackController : IDisposable
             }
         }
 
-        _post(() =>
+        if (token == _token)
         {
-            DisposeEngine();
-            Status = "无法播放";
-            EngineLabel = "未播放";
-            Notify();
-        });
+            _post(() =>
+            {
+                DisposeEngine();
+                Status = "无法播放";
+                EngineLabel = "未播放";
+                Notify();
+            });
+        }
     }
 
-    private void OpenEngine(string path, bool forceFfmpeg)
+    private (IPlaybackEngine Engine, string Reason) OpenEngine(string path, bool forceFfmpeg)
     {
-        DisposeEngine();
         Exception? lavError = null;
         var plan = _codecs();
         if (!forceFfmpeg && plan.Splitters.Count > 0 && plan.VideoDecoders.Count > 0)
@@ -218,19 +263,17 @@ public sealed class PlaybackController : IDisposable
             {
                 Attach(lav);
                 lav.Open(path);
-                _engine = lav;
-                _reason = lav.AudioMissing
+                var reason = lav.AudioMissing
                     ? "画面已打开，音频没有接上：" + lav.AudioWarning
                     : string.IsNullOrWhiteSpace(lav.AudioWarning)
                         ? "已按设置的顺序建立滤镜图。"
                         : lav.AudioWarning;
-                return;
+                return (lav, reason);
             }
             catch (Exception ex)
             {
                 lavError = ex;
-                Detach(lav);
-                lav.Dispose();
+                Discard(lav);
             }
         }
 
@@ -239,15 +282,14 @@ public sealed class PlaybackController : IDisposable
         {
             Attach(ffmpeg);
             ffmpeg.Open(path);
-            _engine = ffmpeg;
-            _reason = lavError == null
+            var reason = lavError == null
                 ? (forceFfmpeg ? "已按指定改用 FFmpeg。" : "没有可用的 64 位分离器或视频解码器，已改用 FFmpeg。")
                 : "DirectShow 滤镜无法播放该文件，已改用 FFmpeg：" + lavError.Message;
+            return (ffmpeg, reason);
         }
         catch (Exception ex)
         {
-            Detach(ffmpeg);
-            ffmpeg.Dispose();
+            Discard(ffmpeg);
             throw new InvalidOperationException(lavError == null ? ex.Message : $"{lavError.Message}；FFmpeg 也失败：{ex.Message}", ex);
         }
     }
@@ -256,7 +298,18 @@ public sealed class PlaybackController : IDisposable
     {
         engine.FrameArrived += OnFrame;
         engine.Ended += OnEnded;
-        PlaybackActiveChanged?.Invoke(true);
+    }
+
+    private void Discard(IPlaybackEngine engine)
+    {
+        Detach(engine);
+        try
+        {
+            engine.Dispose();
+        }
+        catch
+        {
+        }
     }
 
     private void Detach(IPlaybackEngine engine)
@@ -265,12 +318,25 @@ public sealed class PlaybackController : IDisposable
         engine.Ended -= OnEnded;
     }
 
-    private void OnFrame(VideoFrame frame) => FrameArrived?.Invoke(frame);
+    private void OnFrame(VideoFrame frame)
+    {
+        var handler = FrameArrived;
+        if (handler == null)
+        {
+            frame.ReturnBuffer();
+            return;
+        }
+
+        handler(frame);
+    }
 
     private void OnEnded()
     {
+        var token = _token;
         _post(() =>
         {
+            if (token != _token)
+                return;
             var next = Playlist.NextIndex(true);
             if (next == null)
             {
@@ -298,8 +364,14 @@ public sealed class PlaybackController : IDisposable
         if (engine == null)
             return;
         Detach(engine);
-        engine.Dispose();
         PlaybackActiveChanged?.Invoke(false);
+        try
+        {
+            engine.Dispose();
+        }
+        catch
+        {
+        }
     }
 
     private void Notify() => Changed?.Invoke();

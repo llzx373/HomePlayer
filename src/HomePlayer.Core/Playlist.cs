@@ -96,6 +96,8 @@ public sealed class Playlist
         _shuffleCursor = -1;
     }
 
+    public void RefreshShuffleOrder() => RebuildShuffle();
+
     public int? NextIndex(bool endOfTrack)
     {
         if (Items.Count == 0 || CurrentIndex < 0)

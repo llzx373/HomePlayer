@@ -325,14 +325,22 @@ public sealed class LibraryRepository : IDisposable
         }
     }
 
-    public string? ReadCache(string key)
+    public string? ReadCache(string key, TimeSpan? maxAge = null)
     {
         lock (_gate)
         {
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT Payload FROM TmdbCache WHERE Key = $key;";
+            command.CommandText = "SELECT Payload, StoredUtc FROM TmdbCache WHERE Key = $key;";
             command.Parameters.AddWithValue("$key", key);
-            return command.ExecuteScalar() as string;
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+                return null;
+            var payload = reader.GetString(0);
+            if (maxAge is TimeSpan age
+                && DateTimeOffset.TryParse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var stored)
+                && DateTimeOffset.UtcNow - stored > age)
+                return null;
+            return payload;
         }
     }
 

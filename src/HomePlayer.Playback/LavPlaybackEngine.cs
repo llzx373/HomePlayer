@@ -27,7 +27,8 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private bool _muted;
     private double _volume = 0.8;
     private TimeSpan _duration;
-    private TimeSpan _seeked;
+    private long _seekedTicks;
+    private volatile bool _isPlaying;
     private int _open;
 
     public LavPlaybackEngine(CodecPlan plan, string? audioOutputId = null)
@@ -40,9 +41,9 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     public bool AudioMissing => _audioMissing;
     public string Name => "LAV";
     public bool IsOpen => _open == 1;
-    public bool IsPlaying { get; private set; }
+    public bool IsPlaying => _isPlaying;
     public TimeSpan Duration => _duration;
-    public TimeSpan Position => _sta.Invoke(ReadPosition);
+    public TimeSpan Position => ReadPosition();
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
@@ -56,13 +57,13 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     public void Play() => _sta.Invoke(() =>
     {
         Hr.Throw(_control?.Run() ?? Hr.Fail, "LAV 开始播放");
-        IsPlaying = true;
+        _isPlaying = true;
     });
 
     public void Pause() => _sta.Invoke(() =>
     {
         _control?.Pause();
-        IsPlaying = false;
+        _isPlaying = false;
     });
 
     public void Stop() => _sta.Invoke(StopGraph);
@@ -71,7 +72,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     {
         if (position < TimeSpan.Zero)
             position = TimeSpan.Zero;
-        _seeked = position;
+        Volatile.Write(ref _seekedTicks, position.Ticks);
         _sink?.ClearPresented();
         if (_seeking == null)
             return;
@@ -122,7 +123,14 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _splitter = OpenSplitter(path);
         var splitterVideo = FindPin((IBaseFilter)_splitter, output: true, video: true)
             ?? throw new InvalidOperationException("分离器没有视频输出。");
-        _video = ConnectVideo(splitterVideo);
+        try
+        {
+            _video = ConnectVideo(splitterVideo);
+        }
+        finally
+        {
+            ReleasePin(splitterVideo);
+        }
         ConnectAudio();
         _graph.SetDefaultSyncSource();
         if (!Hr.Failed(_seeking.GetDuration(out var duration)))
@@ -382,10 +390,20 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         if (_sink != null)
             return;
         _sink = new BgraSinkFilter();
-        _sink.FrameArrived += frame => FrameArrived?.Invoke(frame);
+        _sink.FrameArrived += frame =>
+        {
+            var handler = FrameArrived;
+            if (handler == null)
+            {
+                frame.ReturnBuffer();
+                return;
+            }
+
+            handler(frame);
+        };
         _sink.Ended += () =>
         {
-            IsPlaying = false;
+            _isPlaying = false;
             Ended?.Invoke();
         };
         AddSink(_graph!, _sink);
@@ -401,12 +419,13 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         {
         }
 
-        IsPlaying = false;
+        _isPlaying = false;
     }
 
     private void CloseGraph()
     {
         StopGraph();
+        Volatile.Write(ref _seekedTicks, 0);
         foreach (var com in _com)
         {
             try
@@ -445,7 +464,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
                 return presented;
         }
 
-        return _seeked;
+        return TimeSpan.FromTicks(Volatile.Read(ref _seekedTicks));
     }
 
     private PipelineInfo ReadPipeline()
@@ -473,12 +492,6 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
                 var filterPointer = Marshal.ReadIntPtr(filterSlot);
                 var unknown = Marshal.GetObjectForIUnknown(filterPointer);
                 Marshal.Release(filterPointer);
-                if (unknown is BgraSinkFilter)
-                {
-                    filters.Add("HomePlayer Video Sink");
-                    continue;
-                }
-
                 var filter = (IBaseFilter)unknown;
                 var filterName = "未命名滤镜";
                 if (filter.QueryFilterInfo(out var info) >= 0)
@@ -1029,6 +1042,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         }
         finally
         {
+            Marshal.Release(filterPointer);
             Marshal.Release(graphPointer);
         }
     }
@@ -1048,6 +1062,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         }
         finally
         {
+            Marshal.Release(inputPointer);
             Marshal.Release(outputPointer);
             Marshal.Release(graphPointer);
         }

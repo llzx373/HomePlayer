@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 using HomePlayer.Core;
 
@@ -8,14 +9,14 @@ namespace HomePlayer.Playback;
 public sealed class BgraSinkFilter : IBaseFilterSink
 {
     private readonly BgraSinkPin _pin;
-    private int _state;
+    private volatile int _state;
     private IntPtr _graph;
     private string _name = "HomePlayer Video Sink";
     private readonly System.Diagnostics.Stopwatch _playClock = new();
     private IntPtr _clock;
     private long _runStart;
     private long _lastPresentMs;
-    private bool _completed;
+    private volatile bool _completed;
     private long _segmentMediaStart;
     private long _segmentStreamStart;
     private bool _segmentTimed;
@@ -129,7 +130,25 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
     internal bool IsRunning => _state == 2;
 
-    internal void Deliver(VideoFrame frame) => FrameArrived?.Invoke(frame);
+    internal void Deliver(VideoFrame frame)
+    {
+        var handler = FrameArrived;
+        if (handler == null)
+        {
+            frame.ReturnBuffer();
+            return;
+        }
+
+        try
+        {
+            handler(frame);
+        }
+        catch
+        {
+            frame.ReturnBuffer();
+            throw;
+        }
+    }
 
     internal void NoteSegment(long start)
     {
@@ -327,10 +346,12 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
 
     public BgraSinkPin(BgraSinkFilter filter) => _filter = filter;
 
+    private volatile bool _flushing;
+
     public int Width { get; private set; }
     public int Height { get; private set; }
     public bool BottomUp { get; private set; }
-    public bool Flushing { get; private set; }
+    public bool Flushing => _flushing;
     public ManualResetEventSlim FlushGate { get; } = new(false);
 
     public int Connect(IntPtr receivePin, IntPtr mediaType) => Hr.NotImpl;
@@ -419,14 +440,14 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
 
     public int BeginFlush()
     {
-        Flushing = true;
+        _flushing = true;
         FlushGate.Set();
         return Hr.Ok;
     }
 
     public int EndFlush()
     {
-        Flushing = false;
+        _flushing = false;
         FlushGate.Reset();
         return Hr.Ok;
     }
@@ -469,17 +490,29 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         var stride = Width * 4;
         var needed = stride * Height;
         var copyLength = Math.Min(length, needed);
-        var data = new byte[needed];
-        Marshal.Copy(buffer, data, 0, copyLength);
-        _filter.Deliver(new VideoFrame
+        var data = ArrayPool<byte>.Shared.Rent(needed);
+        var frame = new VideoFrame
         {
             Width = Width,
             Height = Height,
             Stride = stride,
             Data = data,
-            BottomUp = BottomUp
-        });
-        return Hr.Ok;
+            BottomUp = BottomUp,
+            ReleaseBuffer = () => ArrayPool<byte>.Shared.Return(data)
+        };
+        try
+        {
+            Marshal.Copy(buffer, data, 0, copyLength);
+            if (copyLength < needed)
+                Array.Clear(data, copyLength, needed - copyLength);
+            _filter.Deliver(frame);
+            return Hr.Ok;
+        }
+        catch
+        {
+            frame.ReturnBuffer();
+            return Hr.Fail;
+        }
     }
 
     private static int SamplePointer(IntPtr sample, out IntPtr buffer) =>
@@ -495,7 +528,7 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
 
     private static int SampleMediaTime(IntPtr sample, out long start)
     {
-        var result = Vtable<SampleTimeDelegate>(sample, 16)(sample, out start, out _);
+        var result = Vtable<SampleTimeDelegate>(sample, 17)(sample, out start, out _);
         return result;
     }
 
