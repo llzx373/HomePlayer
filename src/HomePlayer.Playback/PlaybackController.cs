@@ -162,6 +162,16 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
+    public IReadOnlyList<MediaTrack> GetAudioTracks() => _engine?.GetAudioTracks() ?? [];
+
+    public int AudioTrackIndex => _engine?.AudioTrackIndex ?? -1;
+
+    public void SetAudioTrack(int index)
+    {
+        _engine?.SetAudioTrack(index);
+        Notify();
+    }
+
     public PipelineInfo? Pipeline()
     {
         var info = _engine?.GetPipeline();

@@ -176,6 +176,16 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
         _player?.StepFrame();
     }
 
+    public IReadOnlyList<MediaTrack> GetAudioTracks() => _player?.GetAudioTracks() ?? [];
+
+    public int AudioTrackIndex => _player?.AudioTrackIndex ?? -1;
+
+    public void SetAudioTrack(int index)
+    {
+        _buffer?.ClearBuffer();
+        _player?.SetAudioTrack(index);
+    }
+
     public PipelineInfo GetPipeline()
     {
         var info = _player?.GetPipeline() ?? new PipelineInfo { Engine = "FFmpeg" };

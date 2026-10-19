@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using HomePlayer.Core;
 
@@ -31,6 +32,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     private long _seekedTicks;
     private volatile bool _isPlaying;
     private int _open;
+    private const int StreamSelectEnable = 1;
 
     public LavPlaybackEngine(CodecPlan plan, string? audioOutputId = null)
     {
@@ -119,6 +121,12 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     });
 
     public PipelineInfo GetPipeline() => _sta.Invoke(ReadPipeline);
+
+    public IReadOnlyList<MediaTrack> GetAudioTracks() => _sta.Invoke(ReadAudioTracks);
+
+    public int AudioTrackIndex => _sta.Invoke(SelectedAudioIndex);
+
+    public void SetAudioTrack(int index) => _sta.Invoke(() => EnableAudio(index));
 
     public void Dispose()
     {
@@ -828,7 +836,69 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
 
     private static string Trim(string name) => name.Length <= 100 ? name : name[..100];
 
+    private List<MediaTrack> ReadAudioTracks()
+    {
+        var tracks = new List<MediaTrack>();
+        ForEachStream((index, flags, lcid, name, major) =>
+        {
+            if (major != DsGuid.Audio)
+                return;
+            tracks.Add(new MediaTrack(index, MediaTrackKind.Audio, name, LanguageFromLcid(lcid), (flags & 1) != 0));
+        });
+        return tracks;
+    }
+
+    private int SelectedAudioIndex()
+    {
+        foreach (var track in ReadAudioTracks())
+        {
+            if (track.Selected)
+                return track.Index;
+        }
+
+        return -1;
+    }
+
+    private void EnableAudio(int index)
+    {
+        if (_splitter is not IamStreamSelect select)
+            return;
+        var tracks = ReadAudioTracks();
+        if (tracks.All(track => track.Index != index))
+            return;
+        if (tracks.Find(track => track.Selected)?.Index == index)
+            return;
+        if (Hr.Failed(select.Enable(index, StreamSelectEnable)))
+            return;
+        var position = ReadPosition();
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        var current = position.Ticks + 10_000;
+        if (_duration > TimeSpan.Zero && current > _duration.Ticks)
+            current = _duration.Ticks;
+        Volatile.Write(ref _seekedTicks, current);
+        _sink?.ClearPresented();
+        if (_seeking == null)
+            return;
+        long stop = 0;
+        _seeking.SetPositions(ref current, 1, ref stop, 0);
+    }
+
     private void ReadStreams(List<string> audio, List<string> subtitles)
+    {
+        ForEachStream((index, flags, _, name, major) =>
+        {
+            var label = string.IsNullOrWhiteSpace(name) ? $"流 {index + 1}" : name;
+            var enabled = (flags & 1) != 0 ? "当前" : "未使用";
+            var line = $"{enabled}：{label}";
+            if (major == DsGuid.Audio)
+                audio.Add(line);
+            else if (major != DsGuid.Video)
+                subtitles.Add(line);
+        });
+    }
+
+    private void ForEachStream(Action<int, int, int, string, Guid> visit)
     {
         if (_splitter is not IamStreamSelect select || select.Count(out var count) < 0)
             return;
@@ -837,9 +907,9 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             var slot = Marshal.AllocCoTaskMem(IntPtr.Size);
             try
             {
-                if (select.Info(i, slot, out var flags, out _, out _, out var namePtr, out var obj, out var unk) < 0)
+                if (select.Info(i, slot, out var flags, out var lcid, out _, out var namePtr, out var obj, out var unk) < 0)
                     continue;
-                var name = namePtr == 0 ? $"流 {i + 1}" : Marshal.PtrToStringUni(namePtr) ?? $"流 {i + 1}";
+                var name = namePtr == 0 ? "" : Marshal.PtrToStringUni(namePtr) ?? "";
                 if (namePtr != 0)
                     NativeMethods.CoTaskMemFree(namePtr);
                 var major = Guid.Empty;
@@ -850,12 +920,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
                     FreeType(typePtr);
                 }
 
-                var enabled = (flags & 1) != 0 ? "当前" : "未使用";
-                var line = $"{enabled}：{name}";
-                if (major == DsGuid.Audio)
-                    audio.Add(line);
-                else if (major != DsGuid.Video)
-                    subtitles.Add(line);
+                visit(i, flags, lcid, name, major);
                 if (obj != 0)
                     Marshal.Release(obj);
                 if (unk != 0)
@@ -865,6 +930,21 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             {
                 Marshal.FreeCoTaskMem(slot);
             }
+        }
+    }
+
+    private static string? LanguageFromLcid(int lcid)
+    {
+        if (lcid <= 0)
+            return null;
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(lcid);
+            return culture.LCID == CultureInfo.InvariantCulture.LCID ? null : culture.DisplayName;
+        }
+        catch (CultureNotFoundException)
+        {
+            return null;
         }
     }
 

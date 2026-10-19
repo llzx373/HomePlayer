@@ -17,6 +17,9 @@ public interface IPlaybackEngine : IDisposable
     double Rate { get; }
     void SetRate(double rate);
     void StepFrame();
+    IReadOnlyList<MediaTrack> GetAudioTracks();
+    int AudioTrackIndex { get; }
+    void SetAudioTrack(int index);
     PipelineInfo GetPipeline();
     event Action<VideoFrame>? FrameArrived;
     event Action? Ended;

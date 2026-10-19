@@ -256,6 +256,7 @@ public sealed partial class PlayerPage : Page
         MuteButton.IsChecked = Playback.Muted;
         UpdateVolumeIcon();
         UpdateSpeedChrome();
+        UpdateAudioChrome();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
         SyncAlwaysOnTopButton();
         SyncSnapshotButton();
@@ -588,6 +589,70 @@ public sealed partial class PlayerPage : Page
         return string.IsNullOrWhiteSpace(cleaned) ? "screenshot" : cleaned;
     }
 
+    private void AudioFlyout_Opening(object sender, object e) => RebuildAudioMenu();
+
+    private void RebuildAudioMenu()
+    {
+        if (AudioFlyout == null)
+            return;
+        AudioFlyout.Items.Clear();
+        var tracks = Playback.GetAudioTracks();
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            var track = tracks[i];
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = AudioTrackText(track, i + 1),
+                GroupName = "AudioTrack",
+                Tag = track.Index,
+                IsChecked = track.Selected
+            };
+            item.Click += AudioItem_Click;
+            AudioFlyout.Items.Add(item);
+        }
+    }
+
+    private void AudioItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: int index })
+            Playback.SetAudioTrack(index);
+    }
+
+    private void CycleAudioTrack()
+    {
+        var tracks = Playback.GetAudioTracks();
+        if (tracks.Count == 0)
+            return;
+        var current = Playback.AudioTrackIndex;
+        var position = -1;
+        for (var i = 0; i < tracks.Count; i++)
+        {
+            if (tracks[i].Index == current)
+            {
+                position = i;
+                break;
+            }
+        }
+
+        var next = tracks[(position + 1) % tracks.Count];
+        Playback.SetAudioTrack(next.Index);
+    }
+
+    private void UpdateAudioChrome()
+    {
+        if (AudioButton == null)
+            return;
+        var hasTracks = Playback.GetAudioTracks().Count > 0;
+        AudioButton.IsEnabled = hasTracks;
+        ApplyTip(AudioButton, hasTracks ? "音轨" : "没有音轨", HotkeyCatalog.CycleAudioTrack);
+    }
+
+    private static string AudioTrackText(MediaTrack track, int number)
+    {
+        var title = string.IsNullOrWhiteSpace(track.Title) ? $"音轨 {number}" : track.Title;
+        return string.IsNullOrWhiteSpace(track.Language) ? title : $"{track.Language} · {title}";
+    }
+
     private void SpeedFlyout_Opening(object sender, object e) => SyncSpeedMenu();
 
     private void SpeedItem_Click(object sender, RoutedEventArgs e)
@@ -868,6 +933,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(StepFrameButton, "下一帧", HotkeyCatalog.StepFrame);
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
         UpdateSpeedChrome();
+        UpdateAudioChrome();
         UpdateRepeatButton();
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(SnapshotButton, "截图", HotkeyCatalog.Snapshot);
@@ -956,6 +1022,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.CycleSpeed:
                 ApplyPlaybackRate(PlaybackRates.Next(Playback.Rate));
+                break;
+            case HotkeyCatalog.CycleAudioTrack:
+                CycleAudioTrack();
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);

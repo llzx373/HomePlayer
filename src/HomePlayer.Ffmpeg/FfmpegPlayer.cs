@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
 using HomePlayer.Core;
@@ -15,6 +16,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private SwrContext* _resampler;
     private int _videoIndex = -1;
     private int _audioIndex = -1;
+    private List<MediaTrack> _audioTracks = [];
+    private int? _requestedAudioIndex;
     private AVRational _videoTimeBase;
     private int _width;
     private int _height;
@@ -91,37 +94,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             AVCodec* audioDecoder = null;
             _audioIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, _videoIndex, &audioDecoder, 0);
             if (_audioIndex >= 0 && audioDecoder != null)
-            {
-                _audioCodec = ffmpeg.avcodec_alloc_context3(audioDecoder);
-                FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, _format->streams[_audioIndex]->codecpar), "复制音频参数");
-                FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, audioDecoder, null), "打开音频解码器");
-                _audioCodecName = ffmpeg.avcodec_get_name(audioDecoder->id);
-                _channels = _audioCodec->ch_layout.nb_channels;
-                _sampleRate = _audioCodec->sample_rate;
-                AVChannelLayout outputLayout;
-                ffmpeg.av_channel_layout_default(&outputLayout, 2);
-                try
-                {
-                    var inputLayout = _audioCodec->ch_layout;
-                    SwrContext* resampler = null;
-                    FfmpegError.Check(ffmpeg.swr_alloc_set_opts2(
-                        &resampler,
-                        &outputLayout,
-                        AVSampleFormat.AV_SAMPLE_FMT_S16,
-                        48000,
-                        &inputLayout,
-                        _audioCodec->sample_fmt,
-                        _audioCodec->sample_rate,
-                        0,
-                        null), "创建音频重采样");
-                    _resampler = resampler;
-                    FfmpegError.Check(ffmpeg.swr_init(_resampler), "初始化音频重采样");
-                }
-                finally
-                {
-                    ffmpeg.av_channel_layout_uninit(&outputLayout);
-                }
-            }
+                OpenAudioDecoder(_audioIndex);
+            LoadAudioTracks();
 
             IsOpen = true;
             _cancel = new CancellationTokenSource();
@@ -168,6 +142,32 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             _resume.Set();
     }
 
+    public IReadOnlyList<MediaTrack> GetAudioTracks()
+    {
+        lock (_gate)
+            return [.. _audioTracks];
+    }
+
+    public int AudioTrackIndex => Volatile.Read(ref _audioIndex);
+
+    public void SetAudioTrack(int index)
+    {
+        if (!IsOpen)
+            return;
+        lock (_gate)
+        {
+            if (_audioTracks.All(track => track.Index != index))
+                return;
+            if (index == _audioIndex && _requestedAudioIndex == null)
+                return;
+            _requestedAudioIndex = index;
+        }
+
+        Interlocked.Increment(ref _audioEpoch);
+        Interlocked.Exchange(ref _audioWritten, 0);
+        _resume.Set();
+    }
+
     public void SetRate(double rate)
     {
         rate = PlaybackRates.Clamp(rate);
@@ -210,7 +210,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             AudioDecoder = _audioCodecName == null ? null : $"{_audioCodecName}（FFmpeg 软件解码）",
             Channels = HasAudio ? 2 : null,
             SampleRate = HasAudio ? 48000 : null,
-            AudioTracks = _audioCodecName == null ? [] : [$"当前：{_audioCodecName}，{_channels} 声道，{_sampleRate} Hz"],
+            AudioTracks = FormatAudioTracks(),
             SubtitleTracks = [],
             Filters = ["FFmpeg demuxer", "FFmpeg video decoder", "swscale → BGRA", HasAudio ? "FFmpeg audio decoder → WASAPI" : "无音频"],
             Connections = [$"视频 {_videoCodecName} {_width}×{_height}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz stereo s16" : "无音频"]
@@ -227,17 +227,10 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _cancel?.Dispose();
         _cancel = null;
         _resume.Reset();
-        var resampler = _resampler;
-        if (resampler != null)
-            ffmpeg.swr_free(&resampler);
-        _resampler = null;
+        CloseAudioDecoder();
         if (_scaler != null)
             ffmpeg.sws_freeContext(_scaler);
         _scaler = null;
-        var audioCodec = _audioCodec;
-        if (audioCodec != null)
-            ffmpeg.avcodec_free_context(&audioCodec);
-        _audioCodec = null;
         var videoCodec = _videoCodec;
         if (videoCodec != null)
             ffmpeg.avcodec_free_context(&videoCodec);
@@ -256,7 +249,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Volatile.Write(ref _rate, 1.0);
         _endedRaised = false;
         _videoIndex = -1;
-        _audioIndex = -1;
+        Volatile.Write(ref _audioIndex, -1);
+        lock (_gate)
+        {
+            _audioTracks = [];
+            _requestedAudioIndex = null;
+        }
     }
 
     public void Dispose()
@@ -284,10 +282,19 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     break;
 
                 double? seek;
+                int? audioSwitch;
                 lock (_gate)
                 {
                     seek = _seekSeconds;
                     _seekSeconds = null;
+                    audioSwitch = _requestedAudioIndex;
+                    _requestedAudioIndex = null;
+                }
+
+                if (audioSwitch is int audioIndex && audioIndex != Volatile.Read(ref _audioIndex))
+                {
+                    if (SwitchAudio(audioIndex))
+                        seek ??= Position.TotalSeconds;
                 }
 
                 if (seek is double target)
@@ -438,6 +445,190 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         }
     }
 
+    private bool SwitchAudio(int index)
+    {
+        var previous = Volatile.Read(ref _audioIndex);
+        try
+        {
+            OpenAudioDecoder(index);
+            MarkSelected();
+            if (_videoCodec != null)
+                ffmpeg.avcodec_flush_buffers(_videoCodec);
+            if (_audioCodec != null)
+                ffmpeg.avcodec_flush_buffers(_audioCodec);
+            Interlocked.Increment(ref _audioEpoch);
+            Interlocked.Exchange(ref _audioWritten, 0);
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                if (previous >= 0)
+                    OpenAudioDecoder(previous);
+            }
+            catch
+            {
+                Volatile.Write(ref _audioIndex, -1);
+            }
+
+            MarkSelected();
+            return false;
+        }
+    }
+
+    private void OpenAudioDecoder(int streamIndex)
+    {
+        CloseAudioDecoder();
+        if (_format == null || streamIndex < 0 || streamIndex >= (int)_format->nb_streams)
+            throw new InvalidOperationException("没有可解码的音频流。");
+        var stream = _format->streams[streamIndex];
+        if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_AUDIO)
+            throw new InvalidOperationException("没有可解码的音频流。");
+        var decoder = ffmpeg.avcodec_find_decoder(stream->codecpar->codec_id);
+        if (decoder == null)
+            throw new InvalidOperationException("没有可解码的音频流。");
+        try
+        {
+            _audioCodec = ffmpeg.avcodec_alloc_context3(decoder);
+            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, stream->codecpar), "复制音频参数");
+            FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, decoder, null), "打开音频解码器");
+            _audioCodecName = ffmpeg.avcodec_get_name(decoder->id);
+            _channels = _audioCodec->ch_layout.nb_channels;
+            _sampleRate = _audioCodec->sample_rate;
+            AVChannelLayout outputLayout;
+            ffmpeg.av_channel_layout_default(&outputLayout, 2);
+            try
+            {
+                var inputLayout = _audioCodec->ch_layout;
+                SwrContext* resampler = null;
+                FfmpegError.Check(ffmpeg.swr_alloc_set_opts2(
+                    &resampler,
+                    &outputLayout,
+                    AVSampleFormat.AV_SAMPLE_FMT_S16,
+                    48000,
+                    &inputLayout,
+                    _audioCodec->sample_fmt,
+                    _audioCodec->sample_rate,
+                    0,
+                    null), "创建音频重采样");
+                _resampler = resampler;
+                FfmpegError.Check(ffmpeg.swr_init(_resampler), "初始化音频重采样");
+            }
+            finally
+            {
+                ffmpeg.av_channel_layout_uninit(&outputLayout);
+            }
+
+            Volatile.Write(ref _audioIndex, streamIndex);
+        }
+        catch
+        {
+            CloseAudioDecoder();
+            throw;
+        }
+    }
+
+    private void CloseAudioDecoder()
+    {
+        var resampler = _resampler;
+        if (resampler != null)
+            ffmpeg.swr_free(&resampler);
+        _resampler = null;
+        var audioCodec = _audioCodec;
+        if (audioCodec != null)
+            ffmpeg.avcodec_free_context(&audioCodec);
+        _audioCodec = null;
+        _audioCodecName = null;
+        _channels = 0;
+        _sampleRate = 0;
+    }
+
+    private void LoadAudioTracks()
+    {
+        var tracks = new List<MediaTrack>();
+        if (_format != null)
+        {
+            for (var i = 0; i < (int)_format->nb_streams; i++)
+            {
+                var stream = _format->streams[i];
+                if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_AUDIO)
+                    continue;
+                tracks.Add(new MediaTrack(
+                    i,
+                    MediaTrackKind.Audio,
+                    DictGet(stream->metadata, "title") ?? "",
+                    DictLanguage(stream->metadata),
+                    i == Volatile.Read(ref _audioIndex)));
+            }
+        }
+
+        lock (_gate)
+            _audioTracks = tracks;
+    }
+
+    private void MarkSelected()
+    {
+        var selected = Volatile.Read(ref _audioIndex);
+        lock (_gate)
+        {
+            for (var i = 0; i < _audioTracks.Count; i++)
+            {
+                var track = _audioTracks[i];
+                _audioTracks[i] = track with { Selected = track.Index == selected };
+            }
+        }
+    }
+
+    private IReadOnlyList<string> FormatAudioTracks()
+    {
+        lock (_gate)
+        {
+            if (_audioTracks.Count == 0)
+                return _audioCodecName == null ? [] : [$"当前：{_audioCodecName}，{_channels} 声道，{_sampleRate} Hz"];
+            return _audioTracks.Select(track =>
+            {
+                var mark = track.Selected ? "当前" : "未使用";
+                var name = string.IsNullOrWhiteSpace(track.Title) ? $"流 {track.Index}" : track.Title;
+                var language = string.IsNullOrWhiteSpace(track.Language) ? "" : $"，{track.Language}";
+                return $"{mark}：{name}{language}";
+            }).ToList();
+        }
+    }
+
+    private static string? DictGet(AVDictionary* dict, string key)
+    {
+        if (dict == null)
+            return null;
+        var entry = ffmpeg.av_dict_get(dict, key, null, 0);
+        if (entry == null)
+            return null;
+        var text = Marshal.PtrToStringUTF8((IntPtr)entry->value);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static string? DictLanguage(AVDictionary* metadata)
+    {
+        var code = DictGet(metadata, "language");
+        if (code == null || code.Equals("und", StringComparison.OrdinalIgnoreCase) || code.Equals("unk", StringComparison.OrdinalIgnoreCase))
+            return null;
+        try
+        {
+            foreach (var culture in CultureInfo.GetCultures(CultureTypes.NeutralCultures))
+            {
+                if (culture.TwoLetterISOLanguageName.Equals(code, StringComparison.OrdinalIgnoreCase)
+                    || culture.ThreeLetterISOLanguageName.Equals(code, StringComparison.OrdinalIgnoreCase)
+                    || culture.ThreeLetterWindowsLanguageName.Equals(code, StringComparison.OrdinalIgnoreCase))
+                    return culture.DisplayName;
+            }
+        }
+        catch (CultureNotFoundException)
+        {
+        }
+
+        return code;
+    }
+
     private void SeekTo(double seconds)
     {
         var ticks = (long)(seconds / Q2d(_videoTimeBase));
@@ -480,7 +671,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 return false;
             lock (_gate)
             {
-                if (_seekSeconds != null)
+                if (_seekSeconds != null || _requestedAudioIndex != null)
                     return false;
             }
 
