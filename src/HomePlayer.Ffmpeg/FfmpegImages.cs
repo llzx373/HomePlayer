@@ -12,11 +12,13 @@ public static unsafe class FfmpegImages
         using var session = new DecodeSession(path);
         if (session.DurationSeconds >= 1)
         {
+            // 长视频的相邻预览点间隔很大，直接用 seek 到的关键帧，避免每个点都解码几十帧。
+            var keyframeOnly = session.DurationSeconds >= 300;
             var frames = new VideoFrame?[9];
             for (var k = 0; k < 9; k++)
             {
                 var target = session.DurationSeconds * (k + 0.5) / 9.0;
-                frames[k] = session.FrameAt(target);
+                frames[k] = session.FrameAt(target, keyframeOnly);
             }
 
             return frames;
@@ -76,37 +78,51 @@ public static unsafe class FfmpegImages
             }
         }
 
-        public VideoFrame? FrameAt(double seconds)
+        public VideoFrame? FrameAt(double seconds, bool keyframeOnly)
         {
-            var timestamp = (long)(seconds / Q2d(_timeBase));
-            ffmpeg.av_seek_frame(_format, _streamIndex, Math.Max(0, timestamp), ffmpeg.AVSEEK_FLAG_BACKWARD);
-            ffmpeg.avcodec_flush_buffers(_codec);
-            VideoFrame? best = null;
-            for (var i = 0; i < 40; i++)
+            if (SeekAndDecode(seconds, out var first, out var firstPts))
             {
-                if (!TryDecode(out var frame, out var pts))
-                    break;
-                best = frame;
-                if (pts + 0.05 >= seconds)
-                    break;
-            }
+                if (keyframeOnly || firstPts + 0.05 >= seconds)
+                    return first;
 
-            if (best != null)
+                var best = first;
+                for (var i = 1; i < 40; i++)
+                {
+                    if (!TryDecode(out var frame, out var pts))
+                        break;
+                    best = frame;
+                    if (pts + 0.05 >= seconds)
+                        break;
+                }
+
                 return best;
+            }
 
             foreach (var delta in new[] { -0.02, 0.02 })
             {
                 var nudged = Math.Clamp(seconds + DurationSeconds * delta, 0, Math.Max(0, DurationSeconds - 0.05));
                 if (Math.Abs(nudged - seconds) < 0.01)
                     continue;
-                timestamp = (long)(nudged / Q2d(_timeBase));
-                ffmpeg.av_seek_frame(_format, _streamIndex, Math.Max(0, timestamp), ffmpeg.AVSEEK_FLAG_BACKWARD);
-                ffmpeg.avcodec_flush_buffers(_codec);
-                if (TryDecode(out var retry, out _))
+                if (SeekAndDecode(nudged, out var retry, out _))
                     return retry;
             }
 
             return null;
+        }
+
+        private bool SeekAndDecode(double seconds, out VideoFrame? frame, out double pts)
+        {
+            var timestamp = (long)(seconds / Q2d(_timeBase));
+            ffmpeg.av_seek_frame(_format, _streamIndex, Math.Max(0, timestamp), ffmpeg.AVSEEK_FLAG_BACKWARD);
+            ffmpeg.avcodec_flush_buffers(_codec);
+            if (!TryDecode(out var decoded, out pts))
+            {
+                frame = null;
+                return false;
+            }
+
+            frame = decoded;
+            return true;
         }
 
         public List<VideoFrame> TakeEvenly(int count)
