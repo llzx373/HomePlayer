@@ -240,6 +240,15 @@
                                 Click="Next_Click">
                                 <FontIcon x:Name="NextIcon" Glyph="&#xE893;" FontSize="16" />
                             </Button>
+                            <Button
+                                x:Name="StepFrameButton"
+                                Style="{StaticResource PlayerIconButton}"
+                                AutomationProperties.Name="下一帧"
+                                ToolTipService.ToolTip="下一帧"
+                                IsEnabled="False"
+                                Click="StepFrame_Click">
+                                <FontIcon x:Name="StepFrameIcon" Glyph="&#xE1A5;" FontSize="16" />
+                            </Button>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

@@ -261,6 +261,7 @@ public sealed partial class PlayerPage : Page
         SyncSnapshotButton();
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+        StepFrameButton.IsEnabled = Playback.IsOpen;
     }
 
     private void ApplyStatusText()
@@ -308,6 +309,7 @@ public sealed partial class PlayerPage : Page
         Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
     private void SeekForward_Click(object sender, RoutedEventArgs e) =>
         Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
+    private void StepFrame_Click(object sender, RoutedEventArgs e) => Playback.StepFrame();
 
     private void Position_Pressed(object sender, PointerRoutedEventArgs e)
     {
@@ -863,6 +865,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(PlayButton, "播放/暂停", HotkeyCatalog.PlayPause);
         ApplyTip(SeekForwardButton, "前进 5 秒", HotkeyCatalog.SeekForward);
         ApplyTip(NextButton, "下一个", HotkeyCatalog.Next);
+        ApplyTip(StepFrameButton, "下一帧", HotkeyCatalog.StepFrame);
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
         UpdateSpeedChrome();
         UpdateRepeatButton();
@@ -910,6 +913,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.SeekForward:
                 Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
+                break;
+            case HotkeyCatalog.StepFrame:
+                Playback.StepFrame();
                 break;
             case HotkeyCatalog.VolumeUp:
                 VolumeSlider.Value = Math.Min(100, VolumeSlider.Value + 5);

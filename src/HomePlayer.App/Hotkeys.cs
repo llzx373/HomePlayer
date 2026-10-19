@@ -4,6 +4,8 @@ namespace HomePlayer;
 
 internal static class HotkeyChord
 {
+    private const VirtualKey PeriodKey = (VirtualKey)190;
+
     public static bool TryParse(string? text, out VirtualKey key, out VirtualKeyModifiers modifiers)
     {
         key = VirtualKey.None;
@@ -82,6 +84,18 @@ internal static class HotkeyChord
                 key = VirtualKey.Number0 + (ch - '0');
                 return true;
             }
+
+            if (text == ".")
+            {
+                key = PeriodKey;
+                return true;
+            }
+        }
+
+        if (text.Equals("OemPeriod", StringComparison.OrdinalIgnoreCase) || text == "190")
+        {
+            key = PeriodKey;
+            return true;
         }
 
         if (text.StartsWith("Number", StringComparison.OrdinalIgnoreCase) && text.Length == 7 && char.IsDigit(text[6]))
@@ -97,6 +111,8 @@ internal static class HotkeyChord
     {
         if (key == VirtualKey.Space)
             return "Space";
+        if (key == PeriodKey)
+            return ".";
         if (key is >= VirtualKey.Number0 and <= VirtualKey.Number9)
             return ((char)('0' + (key - VirtualKey.Number0))).ToString();
         if (key is >= VirtualKey.A and <= VirtualKey.Z)

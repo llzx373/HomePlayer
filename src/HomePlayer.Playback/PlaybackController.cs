@@ -26,6 +26,7 @@ public sealed class PlaybackController : IDisposable
     public Playlist Playlist { get; } = new();
     public string Status { get; private set; } = "就绪";
     public string EngineLabel { get; private set; } = "未播放";
+    public bool IsOpen => _engine?.IsOpen == true;
     public bool IsPlaying => _engine?.IsPlaying == true;
     public TimeSpan Position => _engine?.Position ?? TimeSpan.Zero;
     public TimeSpan Duration => _engine?.Duration ?? TimeSpan.Zero;
@@ -150,6 +151,14 @@ public sealed class PlaybackController : IDisposable
         if (Duration > TimeSpan.Zero && position > Duration)
             position = Duration;
         _engine?.Seek(position);
+        Notify();
+    }
+
+    public void StepFrame()
+    {
+        if (_engine == null)
+            return;
+        _engine.StepFrame();
         Notify();
     }
 

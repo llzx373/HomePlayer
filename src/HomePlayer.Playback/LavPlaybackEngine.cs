@@ -98,6 +98,26 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
 
     public void SetRate(double rate) => _sta.Invoke(() => ApplyRate(PlaybackRates.Clamp(rate)));
 
+    public void StepFrame() => _sta.Invoke(() =>
+    {
+        _control?.Pause();
+        _isPlaying = false;
+        if (_seeking == null)
+            return;
+        var fps = ReadPipeline().FrameRate is double rate && rate > 0 ? rate : 24;
+        var position = ReadPosition() + TimeSpan.FromSeconds(1 / fps);
+        if (_duration > TimeSpan.Zero && position > _duration)
+            position = _duration;
+        if (position <= ReadPosition())
+            return;
+        Volatile.Write(ref _seekedTicks, position.Ticks);
+        _sink?.ClearPresented();
+        var current = position.Ticks;
+        long stop = 0;
+        _seeking.SetPositions(ref current, 1, ref stop, 0);
+        _control?.Pause();
+    });
+
     public PipelineInfo GetPipeline() => _sta.Invoke(ReadPipeline);
 
     public void Dispose()

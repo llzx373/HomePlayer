@@ -24,6 +24,7 @@ public static class HotkeyCatalog
     public const string CycleAspect = "CycleAspect";
     public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
     public const string Snapshot = "Snapshot";
+    public const string StepFrame = "StepFrame";
 
     public static readonly HotkeyAction[] Actions =
     [
@@ -31,6 +32,7 @@ public static class HotkeyCatalog
         new(Stop, "停止", ""),
         new(Previous, "上一个", ""),
         new(Next, "下一个", ""),
+        new(StepFrame, "下一帧", "."),
         new(SeekBack, "后退 5 秒", "Left"),
         new(SeekForward, "前进 5 秒", "Right"),
         new(VolumeUp, "音量加", "Up"),

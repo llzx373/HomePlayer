@@ -42,6 +42,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     public Func<int>? UnplayedBytes { get; set; }
 
     private volatile bool _isPlaying;
+    private volatile bool _step;
     private long _positionTicks;
 
     public bool IsOpen { get; private set; }
@@ -148,6 +149,15 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _resume.Reset();
     }
 
+    public void StepFrame()
+    {
+        if (!IsOpen)
+            return;
+        _step = true;
+        Pause();
+        _resume.Set();
+    }
+
     public void Seek(TimeSpan position)
     {
         Interlocked.Increment(ref _audioEpoch);
@@ -238,6 +248,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _format = null;
         IsOpen = false;
         _isPlaying = false;
+        _step = false;
         Volatile.Write(ref _positionTicks, 0);
         _audioWritten = 0;
         _clock.Reset();
@@ -296,21 +307,39 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     }
                 }
 
-                if (!IsPlaying)
+                if (!IsPlaying && !_step)
                 {
-                    if (!_clock.IsRunning)
-                        continue;
-                    _clock.Stop();
+                    _resume.Reset();
+                    if (_clock.IsRunning)
+                        _clock.Stop();
                     continue;
                 }
 
-                if (!_clock.IsRunning)
+                if (_step)
+                {
+                    if (_clock.IsRunning)
+                        _clock.Stop();
+                    if (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
+                    {
+                        PresentDecoded(videoFrame);
+                        ffmpeg.av_frame_unref(videoFrame);
+                        FinishStep();
+                        continue;
+                    }
+                }
+                else if (!_clock.IsRunning)
                     _clock.Start();
 
                 ffmpeg.av_packet_unref(packet);
                 var read = ffmpeg.av_read_frame(_format, packet);
                 if (FfmpegError.IsEof(read))
                 {
+                    if (_step)
+                    {
+                        FinishStep();
+                        continue;
+                    }
+
                     RaiseEnded();
                     Pause();
                     continue;
@@ -320,8 +349,13 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 {
                     if (++readErrors >= 10)
                     {
-                        RaiseEnded();
-                        Pause();
+                        if (_step)
+                            FinishStep();
+                        else
+                        {
+                            RaiseEnded();
+                            Pause();
+                        }
                     }
 
                     continue;
@@ -337,10 +371,13 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                         var pts = Pts(videoFrame, _videoTimeBase);
                         if (WaitForPresentation(pts))
                         {
-                            var shown = double.IsFinite(pts) && pts >= 0 ? pts : MediaSeconds();
-                            Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(Math.Max(0, shown)).Ticks);
-                            Deliver(ToBgra(videoFrame));
-                            _lastPresentMs = Environment.TickCount64;
+                            PresentDecoded(videoFrame, pts);
+                            if (_step)
+                            {
+                                ffmpeg.av_frame_unref(videoFrame);
+                                FinishStep();
+                                break;
+                            }
                         }
 
                         ffmpeg.av_frame_unref(videoFrame);
@@ -351,7 +388,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     ffmpeg.avcodec_send_packet(_audioCodec, packet);
                     while (ffmpeg.avcodec_receive_frame(_audioCodec, audioFrame) >= 0)
                     {
-                        EmitAudio(audioFrame);
+                        if (!_step)
+                            EmitAudio(audioFrame);
                         ffmpeg.av_frame_unref(audioFrame);
                     }
                 }
@@ -410,10 +448,36 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
     }
 
+    private void PresentDecoded(AVFrame* videoFrame, double? pts = null)
+    {
+        pts ??= Pts(videoFrame, _videoTimeBase);
+        var shown = double.IsFinite(pts.Value) && pts.Value >= 0 ? pts.Value : MediaSeconds();
+        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(Math.Max(0, shown)).Ticks);
+        Deliver(ToBgra(videoFrame));
+        _lastPresentMs = Environment.TickCount64;
+    }
+
+    private void FinishStep()
+    {
+        _step = false;
+        Pause();
+        lock (_gate)
+        {
+            _clockOrigin = Position.TotalSeconds;
+            _clock.Reset();
+        }
+
+        Interlocked.Exchange(ref _audioWritten, 0);
+    }
+
     private bool WaitForPresentation(double pts)
     {
-        while (IsPlaying && _cancel is { IsCancellationRequested: false })
+        while (_cancel is { IsCancellationRequested: false })
         {
+            if (_step)
+                return true;
+            if (!IsPlaying)
+                return false;
             lock (_gate)
             {
                 if (_seekSeconds != null)

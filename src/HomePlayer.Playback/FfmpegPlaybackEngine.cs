@@ -169,6 +169,13 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
         _buffer?.ClearBuffer();
     }
 
+    public void StepFrame()
+    {
+        _output?.Pause();
+        _buffer?.ClearBuffer();
+        _player?.StepFrame();
+    }
+
     public PipelineInfo GetPipeline()
     {
         var info = _player?.GetPipeline() ?? new PipelineInfo { Engine = "FFmpeg" };

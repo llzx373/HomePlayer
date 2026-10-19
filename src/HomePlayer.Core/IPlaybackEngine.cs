@@ -16,6 +16,7 @@ public interface IPlaybackEngine : IDisposable
     void SetMuted(bool muted);
     double Rate { get; }
     void SetRate(double rate);
+    void StepFrame();
     PipelineInfo GetPipeline();
     event Action<VideoFrame>? FrameArrived;
     event Action? Ended;
