@@ -18,6 +18,7 @@ public sealed partial class MainWindow : Window
     private readonly TaskbarIcon _tray;
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private bool _fullscreen;
+    private int _fitRestoreTries;
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
     private string _pageTag = "library";
@@ -388,6 +389,64 @@ public sealed partial class MainWindow : Window
         else
             presenter.Maximize();
         UpdateMaximizeIcon();
+    }
+
+    public void FitToVideo(int videoWidth, int videoHeight, FrameworkElement area)
+    {
+        if (_fullscreen || videoWidth < 1 || videoHeight < 1 || area.ActualWidth < 2 || area.ActualHeight < 2)
+            return;
+        if (AppWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+        if (presenter.State == OverlappedPresenterState.Minimized)
+            return;
+        if (presenter.State == OverlappedPresenterState.Maximized)
+        {
+            if (_fitRestoreTries >= 2)
+            {
+                _fitRestoreTries = 0;
+                return;
+            }
+
+            _fitRestoreTries++;
+            presenter.Restore();
+            area.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                FitToVideo(videoWidth, videoHeight, area));
+            return;
+        }
+
+        _fitRestoreTries = 0;
+        var scale = area.XamlRoot?.RasterizationScale ?? 1;
+        if (scale < 0.1)
+            scale = 1;
+        var areaWidth = Math.Max(1, (int)Math.Round(area.ActualWidth * scale));
+        var areaHeight = Math.Max(1, (int)Math.Round(area.ActualHeight * scale));
+        var outer = AppWindow.Size;
+        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        var next = WindowFit.ForVideo(
+            videoWidth,
+            videoHeight,
+            areaWidth,
+            areaHeight,
+            outer.Width - areaWidth,
+            outer.Height - areaHeight,
+            Math.Min(480, work.Width),
+            Math.Min(320, work.Height),
+            work.Width,
+            work.Height);
+        if (next == null)
+            return;
+        var pos = AppWindow.Position;
+        var x = pos.X;
+        var y = pos.Y;
+        if (x + next.Value.Width > work.X + work.Width)
+            x = work.X + work.Width - next.Value.Width;
+        if (y + next.Value.Height > work.Y + work.Height)
+            y = work.Y + work.Height - next.Value.Height;
+        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(
+            Math.Max(work.X, x),
+            Math.Max(work.Y, y),
+            next.Value.Width,
+            next.Value.Height));
     }
 
     [DllImport("user32.dll")]

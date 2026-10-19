@@ -43,6 +43,7 @@ public sealed partial class PlayerPage : Page
         var playback = App.Host.Playback;
         playback.FrameArrived += _presenter.Submit;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
+        playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         App.Window.FullscreenChanged += () => DispatcherQueue.TryEnqueue(() =>
         {
             ApplyChromeLayout();
@@ -84,6 +85,7 @@ public sealed partial class PlayerPage : Page
             SyncFullscreenButton();
             LayoutProgress(ShownSeconds());
             _presenter.Refresh();
+            FitWindow(false);
             if (!_timer.IsEnabled)
                 _timer.Start();
         };
@@ -161,6 +163,7 @@ public sealed partial class PlayerPage : Page
         RememberControlsHeight();
         Stage.UpdateLayout();
         _presenter.Refresh();
+        FitWindow(false);
     }
 
     private void UpdateControlsOverlay()
@@ -398,6 +401,17 @@ public sealed partial class PlayerPage : Page
     private void SyncFullscreenButton() =>
         FullscreenButton.Content = App.Window.IsFullscreen ? "退出全屏" : "全屏";
 
+    private void FitWindow_Click(object sender, RoutedEventArgs e) => FitWindow(true);
+
+    private void FitWindow(bool force)
+    {
+        if (!force && !App.Host.Settings.FitWindow)
+            return;
+        if (!IsLoaded || Visibility != Visibility.Visible)
+            return;
+        App.Window.FitToVideo(Playback.VideoWidth, Playback.VideoHeight, VideoHost);
+    }
+
     private void PlaylistButton_Click(object sender, RoutedEventArgs e) =>
         SetPlaylist(PlaylistButton.IsChecked == true);
 
@@ -552,6 +566,9 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.CycleRepeat:
                 RepeatBox.SelectedIndex = (RepeatBox.SelectedIndex + 1) % RepeatBox.Items.Count;
+                break;
+            case HotkeyCatalog.FitWindow:
+                FitWindow(true);
                 break;
         }
     }

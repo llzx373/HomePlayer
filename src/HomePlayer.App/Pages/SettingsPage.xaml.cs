@@ -31,7 +31,9 @@ public sealed partial class SettingsPage : Page
         ApiKeyBox.Text = settings.TmdbApiKey ?? "";
         TraySwitch.IsOn = settings.CloseToTray;
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
+        FitWindowSwitch.IsOn = settings.FitWindow;
         TitleBarBox.SelectionChanged += TitleBar_Changed;
+        FitWindowSwitch.Toggled += FitWindow_Toggled;
         SplitterList.ItemsSource = _splitters;
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
@@ -72,6 +74,7 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.TmdbApiKey = string.IsNullOrWhiteSpace(ApiKeyBox.Text) ? null : ApiKeyBox.Text.Trim();
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
+        App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
         WriteAudioDevice();
         WriteCodecs();
         WriteHotkeys();
@@ -86,6 +89,14 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
+    }
+
+    private void FitWindow_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
+        App.Host.SaveSettings();
     }
 
     private void AudioDevice_Changed(object sender, SelectionChangedEventArgs e)

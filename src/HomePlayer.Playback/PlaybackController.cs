@@ -12,6 +12,8 @@ public sealed class PlaybackController : IDisposable
     private int _token;
     private double _volume = 0.8;
     private bool _muted;
+    private int _videoWidth;
+    private int _videoHeight;
 
     public PlaybackController(Action<Action> post, Func<CodecPlan> codecs, Func<string?> audioOutput)
     {
@@ -28,8 +30,11 @@ public sealed class PlaybackController : IDisposable
     public TimeSpan Duration => _engine?.Duration ?? TimeSpan.Zero;
     public double Volume => _volume;
     public bool Muted => _muted;
+    public int VideoWidth => _videoWidth;
+    public int VideoHeight => _videoHeight;
     public event Action? Changed;
     public event Action<VideoFrame>? FrameArrived;
+    public event Action? VideoSizeChanged;
     public event Action<bool>? PlaybackActiveChanged;
 
     public void SetVolume(double volume)
@@ -92,6 +97,7 @@ public sealed class PlaybackController : IDisposable
     {
         _token++;
         DisposeEngine();
+        ClearVideoSize();
         Status = "已停止";
         EngineLabel = "未播放";
         Notify();
@@ -210,6 +216,7 @@ public sealed class PlaybackController : IDisposable
                             ? "正在播放，音频没有接上"
                             : "正在播放";
                         EngineLabel = engine.Name;
+                        CaptureVideoSize(engine);
                         Notify();
                     }
                     catch (Exception ex)
@@ -320,6 +327,7 @@ public sealed class PlaybackController : IDisposable
 
     private void OnFrame(VideoFrame frame)
     {
+        RememberVideoSize(frame.Width, frame.Height, true);
         var handler = FrameArrived;
         if (handler == null)
         {
@@ -372,6 +380,40 @@ public sealed class PlaybackController : IDisposable
         catch
         {
         }
+    }
+
+    private void CaptureVideoSize(IPlaybackEngine engine)
+    {
+        try
+        {
+            var info = engine.GetPipeline();
+            if (info.Width is int width && info.Height is int height)
+                RememberVideoSize(width, height, false);
+        }
+        catch
+        {
+        }
+    }
+
+    private void RememberVideoSize(int width, int height, bool post)
+    {
+        if (width < 1 || height < 1 || (width == _videoWidth && height == _videoHeight))
+            return;
+        _videoWidth = width;
+        _videoHeight = height;
+        if (post)
+            _post(() => VideoSizeChanged?.Invoke());
+        else
+            VideoSizeChanged?.Invoke();
+    }
+
+    private void ClearVideoSize()
+    {
+        if (_videoWidth == 0 && _videoHeight == 0)
+            return;
+        _videoWidth = 0;
+        _videoHeight = 0;
+        VideoSizeChanged?.Invoke();
     }
 
     private void Notify() => Changed?.Invoke();

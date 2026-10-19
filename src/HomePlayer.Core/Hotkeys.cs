@@ -19,6 +19,7 @@ public static class HotkeyCatalog
     public const string PlayWithFfmpeg = "PlayWithFfmpeg";
     public const string ToggleShuffle = "ToggleShuffle";
     public const string CycleRepeat = "CycleRepeat";
+    public const string FitWindow = "FitWindow";
 
     public static readonly HotkeyAction[] Actions =
     [
@@ -38,7 +39,8 @@ public static class HotkeyCatalog
         new(OpenFiles, "打开文件", ""),
         new(PlayWithFfmpeg, "用 FFmpeg 打开", ""),
         new(ToggleShuffle, "随机", ""),
-        new(CycleRepeat, "循环模式", "")
+        new(CycleRepeat, "循环模式", ""),
+        new(FitWindow, "自适应窗口", "")
     ];
 
     public static Dictionary<string, string> Defaults()
