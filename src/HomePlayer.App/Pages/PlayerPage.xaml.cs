@@ -2,6 +2,7 @@ using HomePlayer.Core;
 using HomePlayer.Playback;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -12,6 +13,16 @@ namespace HomePlayer;
 
 public sealed partial class PlayerPage : Page
 {
+    private const string GlyphPlay = "\uE768";
+    private const string GlyphPause = "\uE769";
+    private const string GlyphMute = "\uE74F";
+    private const string GlyphVolume0 = "\uE992";
+    private const string GlyphVolume1 = "\uE993";
+    private const string GlyphVolume2 = "\uE994";
+    private const string GlyphVolume3 = "\uE995";
+    private const string GlyphFullscreen = "\uE740";
+    private const string GlyphExitFullscreen = "\uE73F";
+
     private readonly VideoPresenter _presenter;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
@@ -142,6 +153,7 @@ public sealed partial class PlayerPage : Page
             _playlistBeforeFullscreen = PlaylistPane.Visibility == Visibility.Visible;
             SetPlaylist(false);
             PipelinePanel.Visibility = Visibility.Collapsed;
+            PipelineButton.IsChecked = false;
         }
         else if (!fullscreen && _fullscreenChrome)
         {
@@ -216,7 +228,7 @@ public sealed partial class PlayerPage : Page
 
     private void UpdateChrome()
     {
-        PlayButton.Content = Playback.IsPlaying ? "暂停" : "播放";
+        PlayIcon.Glyph = Playback.IsPlaying ? GlyphPause : GlyphPlay;
         var name = Playback.Playlist.Current?.DisplayName;
         StatusText.Text = string.IsNullOrEmpty(name)
             ? $"{Playback.EngineLabel} · {Playback.Status}"
@@ -228,6 +240,9 @@ public sealed partial class PlayerPage : Page
                 PlaylistView.ScrollIntoView(PlaylistView.SelectedItem);
         }
         MuteButton.IsChecked = Playback.Muted;
+        UpdateVolumeIcon();
+        FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
+        PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
     }
 
     private void Play_Click(object sender, RoutedEventArgs e) => Playback.TogglePlay();
@@ -364,7 +379,8 @@ public sealed partial class PlayerPage : Page
             var left = width > 0 ? Math.Clamp(fill - thumb / 2, 0, Math.Max(0, width - thumb)) : 0;
             PositionThumb.Margin = new Thickness(left, 0, 0, 0);
             var shown = TimeSpan.FromSeconds(Math.Max(0, maximum > 0 ? seconds : 0));
-            TimeText.Text = $"{ClockText.Format(shown)} / {ClockText.Format(duration)}";
+            CurrentTimeText.Text = ClockText.Format(shown);
+            DurationTimeText.Text = ClockText.Format(duration);
         }
         finally
         {
@@ -374,11 +390,30 @@ public sealed partial class PlayerPage : Page
 
     private void Volume_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
+        UpdateVolumeIcon();
         if (_updatingVolume)
             return;
         Playback.SetVolume(VolumeSlider.Value / 100);
         _saveSettingsTimer.Stop();
         _saveSettingsTimer.Start();
+    }
+
+    private void UpdateVolumeIcon()
+    {
+        MuteIcon.Glyph = VolumeGlyph(Playback.Muted, VolumeSlider.Value);
+    }
+
+    private static string VolumeGlyph(bool muted, double volume)
+    {
+        if (muted)
+            return GlyphMute;
+        if (volume <= 0)
+            return GlyphVolume0;
+        if (volume < 34)
+            return GlyphVolume1;
+        if (volume < 67)
+            return GlyphVolume2;
+        return GlyphVolume3;
     }
 
     private void Mute_Click(object sender, RoutedEventArgs e)
@@ -398,10 +433,20 @@ public sealed partial class PlayerPage : Page
     private void Fullscreen_Click(object sender, RoutedEventArgs e) =>
         App.Window.SetFullscreen(!App.Window.IsFullscreen);
 
-    private void SyncFullscreenButton() =>
-        FullscreenButton.Content = App.Window.IsFullscreen ? "退出全屏" : "全屏";
+    private void SyncFullscreenButton()
+    {
+        var exit = App.Window.IsFullscreen;
+        FullscreenIcon.Glyph = exit ? GlyphExitFullscreen : GlyphFullscreen;
+        ApplyTip(FullscreenButton, exit ? "退出全屏" : "全屏", HotkeyCatalog.Fullscreen);
+    }
 
-    private void FitWindow_Click(object sender, RoutedEventArgs e) => FitWindow(true);
+    private void FitWindow_Click(object sender, RoutedEventArgs e)
+    {
+        App.Host.Settings.FitWindow = FitWindowButton.IsChecked == true;
+        App.Host.SaveSettings();
+        if (FitWindowButton.IsChecked == true)
+            FitWindow(true);
+    }
 
     private void FitWindow(bool force)
     {
@@ -506,6 +551,35 @@ public sealed partial class PlayerPage : Page
             };
             KeyboardAccelerators.Add(accel);
         }
+
+        ApplyControlTips();
+    }
+
+    private void ApplyControlTips()
+    {
+        ApplyTip(OpenButton, "打开", HotkeyCatalog.OpenFiles);
+        ApplyTip(StopButton, "停止", HotkeyCatalog.Stop);
+        ApplyTip(PreviousButton, "上一个", HotkeyCatalog.Previous);
+        ApplyTip(PlayButton, "播放/暂停", HotkeyCatalog.PlayPause);
+        ApplyTip(NextButton, "下一个", HotkeyCatalog.Next);
+        ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
+        ApplyTip(FitWindowButton, "自适应窗口", HotkeyCatalog.FitWindow);
+        ApplyTip(PlaylistButton, "播放列表", HotkeyCatalog.TogglePlaylist);
+        ApplyTip(PipelineButton, "管线信息", HotkeyCatalog.TogglePipeline);
+        SyncFullscreenButton();
+    }
+
+    private static void ApplyTip(FrameworkElement element, string title, string id)
+    {
+        AutomationProperties.SetName(element, title);
+        ToolTipService.SetToolTip(element, HotkeyTip(title, id));
+    }
+
+    private static string HotkeyTip(string title, string id)
+    {
+        if (!App.Host.Settings.Hotkeys.TryGetValue(id, out var chord) || string.IsNullOrWhiteSpace(chord))
+            return title;
+        return $"{title} ({chord})";
     }
 
     private void RunHotkey(string action)
@@ -547,7 +621,7 @@ public sealed partial class PlayerPage : Page
                 if (App.Window.IsFullscreen)
                     App.Window.SetFullscreen(false);
                 else if (PipelinePanel.Visibility == Visibility.Visible)
-                    PipelinePanel.Visibility = Visibility.Collapsed;
+                    TogglePipeline();
                 break;
             case HotkeyCatalog.TogglePlaylist:
                 SetPlaylist(PlaylistPane.Visibility != Visibility.Visible);
@@ -577,6 +651,7 @@ public sealed partial class PlayerPage : Page
     {
         var open = PipelinePanel.Visibility != Visibility.Visible;
         PipelinePanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        PipelineButton.IsChecked = open;
         if (open)
             UpdatePipelineText();
     }

@@ -13,6 +13,24 @@
             <Thickness x:Key="TopNavigationViewContentGridBorderThickness">0</Thickness>
             <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
             <CornerRadius x:Key="NavigationViewMinimalContentGridCornerRadius">0</CornerRadius>
+            <Style x:Key="PlayerIconButton" TargetType="Button">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="PlayerPlayButton" TargetType="Button" BasedOn="{StaticResource PlayerIconButton}">
+                <Setter Property="Width" Value="44" />
+                <Setter Property="Height" Value="44" />
+            </Style>
+            <Style x:Key="PlayerIconToggleButton" TargetType="ToggleButton">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
