@@ -21,6 +21,8 @@ public static class HotkeyCatalog
     public const string CycleRepeat = "CycleRepeat";
     public const string CycleSpeed = "CycleSpeed";
     public const string CycleAudioTrack = "CycleAudioTrack";
+    public const string CycleSubtitle = "CycleSubtitle";
+    public const string ToggleSubtitle = "ToggleSubtitle";
     public const string FitWindow = "FitWindow";
     public const string CycleAspect = "CycleAspect";
     public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
@@ -49,6 +51,8 @@ public static class HotkeyCatalog
         new(CycleRepeat, "循环模式", ""),
         new(CycleSpeed, "循环倍速", ""),
         new(CycleAudioTrack, "循环音轨", ""),
+        new(CycleSubtitle, "循环字幕", "S"),
+        new(ToggleSubtitle, "字幕开/关", ""),
         new(FitWindow, "自适应窗口", ""),
         new(CycleAspect, "循环画面比例", ""),
         new(ToggleAlwaysOnTop, "置顶", ""),

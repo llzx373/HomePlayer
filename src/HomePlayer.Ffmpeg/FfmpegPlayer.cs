@@ -17,6 +17,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private int _videoIndex = -1;
     private int _audioIndex = -1;
     private List<MediaTrack> _audioTracks = [];
+    private List<MediaTrack> _subtitleTracks = [];
+    private int _subtitleIndex = -1;
     private int? _requestedAudioIndex;
     private AVRational _videoTimeBase;
     private int _width;
@@ -96,6 +98,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             if (_audioIndex >= 0 && audioDecoder != null)
                 OpenAudioDecoder(_audioIndex);
             LoadAudioTracks();
+            LoadSubtitleTracks();
 
             IsOpen = true;
             _cancel = new CancellationTokenSource();
@@ -149,6 +152,31 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     }
 
     public int AudioTrackIndex => Volatile.Read(ref _audioIndex);
+
+    public IReadOnlyList<MediaTrack> GetSubtitleTracks()
+    {
+        lock (_gate)
+            return [.. _subtitleTracks];
+    }
+
+    public int SubtitleTrackIndex => Volatile.Read(ref _subtitleIndex);
+
+    public void SetSubtitleTrack(int index)
+    {
+        if (!IsOpen)
+            return;
+        lock (_gate)
+        {
+            if (index >= 0 && _subtitleTracks.All(track => track.Index != index))
+                return;
+            _subtitleIndex = index;
+            for (var i = 0; i < _subtitleTracks.Count; i++)
+            {
+                var track = _subtitleTracks[i];
+                _subtitleTracks[i] = track with { Selected = track.Index == index };
+            }
+        }
+    }
 
     public void SetAudioTrack(int index)
     {
@@ -211,7 +239,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             Channels = HasAudio ? 2 : null,
             SampleRate = HasAudio ? 48000 : null,
             AudioTracks = FormatAudioTracks(),
-            SubtitleTracks = [],
+            SubtitleTracks = FormatSubtitleTracks(),
             Filters = ["FFmpeg demuxer", "FFmpeg video decoder", "swscale → BGRA", HasAudio ? "FFmpeg audio decoder → WASAPI" : "无音频"],
             Connections = [$"视频 {_videoCodecName} {_width}×{_height}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz stereo s16" : "无音频"]
         };
@@ -250,9 +278,11 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _endedRaised = false;
         _videoIndex = -1;
         Volatile.Write(ref _audioIndex, -1);
+        Volatile.Write(ref _subtitleIndex, -1);
         lock (_gate)
         {
             _audioTracks = [];
+            _subtitleTracks = [];
             _requestedAudioIndex = null;
         }
     }
@@ -567,6 +597,29 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             _audioTracks = tracks;
     }
 
+    private void LoadSubtitleTracks()
+    {
+        var tracks = new List<MediaTrack>();
+        if (_format != null)
+        {
+            for (var i = 0; i < (int)_format->nb_streams; i++)
+            {
+                var stream = _format->streams[i];
+                if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_SUBTITLE)
+                    continue;
+                tracks.Add(new MediaTrack(
+                    i,
+                    MediaTrackKind.Subtitle,
+                    DictGet(stream->metadata, "title") ?? "",
+                    DictLanguage(stream->metadata),
+                    i == Volatile.Read(ref _subtitleIndex)));
+            }
+        }
+
+        lock (_gate)
+            _subtitleTracks = tracks;
+    }
+
     private void MarkSelected()
     {
         var selected = Volatile.Read(ref _audioIndex);
@@ -592,6 +645,19 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var name = string.IsNullOrWhiteSpace(track.Title) ? $"流 {track.Index}" : track.Title;
                 var language = string.IsNullOrWhiteSpace(track.Language) ? "" : $"，{track.Language}";
                 return $"{mark}：{name}{language}";
+            }).ToList();
+        }
+    }
+
+    private IReadOnlyList<string> FormatSubtitleTracks()
+    {
+        lock (_gate)
+        {
+            return _subtitleTracks.Select(track =>
+            {
+                var name = string.IsNullOrWhiteSpace(track.Title) ? $"流 {track.Index}" : track.Title;
+                var language = string.IsNullOrWhiteSpace(track.Language) ? "" : $"，{track.Language}";
+                return $"{name}{language}";
             }).ToList();
         }
     }

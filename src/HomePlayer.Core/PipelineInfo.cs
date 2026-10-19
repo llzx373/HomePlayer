@@ -79,12 +79,11 @@ public sealed class PipelineInfo
         text.AppendLine();
         text.AppendLine("字幕");
         if (SubtitleTracks.Count == 0)
-            text.AppendLine("无（第一版只列出，不渲染）");
+            text.AppendLine("无");
         else
         {
             foreach (var track in SubtitleTracks)
                 text.AppendLine($"  {track}");
-            text.AppendLine("第一版只列出，不渲染。");
         }
 
         text.AppendLine();

@@ -16,6 +16,25 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="VideoHost" Background="Black" DoubleTapped="VideoHost_DoubleTapped">
                 <SwapChainPanel x:Name="VideoSurface" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" DoubleTapped="VideoHost_DoubleTapped" />
+                <Grid x:Name="SubtitleLayer" IsHitTestVisible="False" Visibility="Collapsed">
+                    <Border
+                        x:Name="SubtitlePill"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,48"
+                        Padding="18,8"
+                        CornerRadius="8"
+                        MaxWidth="640"
+                        Background="#99000000">
+                        <TextBlock
+                            x:Name="SubtitleText"
+                            FontFamily="Segoe UI"
+                            FontSize="28"
+                            Foreground="White"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </Border>
+                </Grid>
                 <Border
                     x:Name="PipelinePanel"
                     HorizontalAlignment="Right"
@@ -325,6 +344,16 @@
                         <FontIcon x:Name="AudioIcon" Glyph="&#xE8D6;" FontSize="16" />
                         <Button.Flyout>
                             <MenuFlyout x:Name="AudioFlyout" Placement="Bottom" Opening="AudioFlyout_Opening" />
+                        </Button.Flyout>
+                    </Button>
+                    <Button
+                        x:Name="SubtitleButton"
+                        Style="{StaticResource PlayerIconButton}"
+                        AutomationProperties.Name="字幕"
+                        ToolTipService.ToolTip="字幕">
+                        <FontIcon x:Name="SubtitleIcon" Glyph="&#xED1E;" FontSize="16" Opacity="0.45" />
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="SubtitleFlyout" Placement="Bottom" Opening="SubtitleFlyout_Opening" />
                         </Button.Flyout>
                     </Button>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />

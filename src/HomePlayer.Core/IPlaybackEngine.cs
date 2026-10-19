@@ -20,6 +20,9 @@ public interface IPlaybackEngine : IDisposable
     IReadOnlyList<MediaTrack> GetAudioTracks();
     int AudioTrackIndex { get; }
     void SetAudioTrack(int index);
+    IReadOnlyList<MediaTrack> GetSubtitleTracks();
+    int SubtitleTrackIndex { get; }
+    void SetSubtitleTrack(int index);
     PipelineInfo GetPipeline();
     event Action<VideoFrame>? FrameArrived;
     event Action? Ended;

@@ -172,6 +172,16 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
+    public IReadOnlyList<MediaTrack> GetSubtitleTracks() => _engine?.GetSubtitleTracks() ?? [];
+
+    public int SubtitleTrackIndex => _engine?.SubtitleTrackIndex ?? -1;
+
+    public void SetSubtitleTrack(int index)
+    {
+        _engine?.SetSubtitleTrack(index);
+        Notify();
+    }
+
     public PipelineInfo? Pipeline()
     {
         var info = _engine?.GetPipeline();

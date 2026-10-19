@@ -128,6 +128,12 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
 
     public void SetAudioTrack(int index) => _sta.Invoke(() => EnableAudio(index));
 
+    public IReadOnlyList<MediaTrack> GetSubtitleTracks() => _sta.Invoke(ReadSubtitleTracks);
+
+    public int SubtitleTrackIndex => -1;
+
+    public void SetSubtitleTrack(int index) => _ = index;
+
     public void Dispose()
     {
         try
@@ -844,6 +850,18 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             if (major != DsGuid.Audio)
                 return;
             tracks.Add(new MediaTrack(index, MediaTrackKind.Audio, name, LanguageFromLcid(lcid), (flags & 1) != 0));
+        });
+        return tracks;
+    }
+
+    private List<MediaTrack> ReadSubtitleTracks()
+    {
+        var tracks = new List<MediaTrack>();
+        ForEachStream((index, flags, lcid, name, major) =>
+        {
+            if (major == DsGuid.Audio || major == DsGuid.Video)
+                return;
+            tracks.Add(new MediaTrack(index, MediaTrackKind.Subtitle, name, LanguageFromLcid(lcid), false));
         });
         return tracks;
     }

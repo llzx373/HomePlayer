@@ -1,5 +1,6 @@
 using System.Globalization;
 using HomePlayer.Core;
+using HomePlayer.Ffmpeg;
 using HomePlayer.Playback;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -29,7 +30,8 @@ public sealed partial class PlayerPage : Page
     private const string GlyphRepeatOne = "\uE8ED";
 
     private readonly VideoPresenter _presenter;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly SubtitleSession _subtitles = new();
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
     private int _pipelineTicks;
     private bool _scrubbing;
@@ -52,6 +54,11 @@ public sealed partial class PlayerPage : Page
     private string? _statusHold;
     private DateTime _statusHoldUntil;
     private int _snapshotArmed;
+    private string? _subtitlePath;
+    private bool _subtitleOpen;
+    private int _subtitleScan;
+    private int _subtitleEmbed;
+    private string? _shownSubtitle;
 
     public PlayerPage()
     {
@@ -59,7 +66,11 @@ public sealed partial class PlayerPage : Page
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         _presenter = new VideoPresenter(VideoSurface);
-        VideoHost.SizeChanged += (_, _) => _presenter.Refresh();
+        VideoHost.SizeChanged += (_, _) =>
+        {
+            _presenter.Refresh();
+            LayoutSubtitle();
+        };
         var playback = App.Host.Playback;
         playback.FrameArrived += OnVideoFrame;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
@@ -92,9 +103,10 @@ public sealed partial class PlayerPage : Page
         {
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
             SyncSnapshotButton();
+            UpdateSubtitleOverlay();
             if (_statusHold != null)
                 ApplyStatusText();
-            if (++_pipelineTicks % 5 == 0 && PipelinePanel.Visibility == Visibility.Visible)
+            if (++_pipelineTicks % 10 == 0 && PipelinePanel.Visibility == Visibility.Visible)
                 UpdatePipelineText();
         };
         Loaded += (_, _) =>
@@ -257,6 +269,9 @@ public sealed partial class PlayerPage : Page
         UpdateVolumeIcon();
         UpdateSpeedChrome();
         UpdateAudioChrome();
+        SyncSubtitleSource();
+        UpdateSubtitleChrome();
+        UpdateSubtitleOverlay();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
         SyncAlwaysOnTopButton();
         SyncSnapshotButton();
@@ -653,6 +668,240 @@ public sealed partial class PlayerPage : Page
         return string.IsNullOrWhiteSpace(track.Language) ? title : $"{track.Language} · {title}";
     }
 
+    private void SubtitleFlyout_Opening(object sender, object e) => RebuildSubtitleMenu();
+
+    private void RebuildSubtitleMenu()
+    {
+        if (SubtitleFlyout == null)
+            return;
+        SubtitleFlyout.Items.Clear();
+        SubtitleFlyout.Items.Add(SubtitleRadio("关闭", "off", _subtitles.OffChecked));
+        SubtitleFlyout.Items.Add(SubtitleRadio("自动", "auto", _subtitles.AutoChecked));
+        foreach (var path in _subtitles.MenuSidecars)
+        {
+            var name = Path.GetFileName(path);
+            if (_subtitles.Unreadable(path))
+                name += "（无法读取）";
+            SubtitleFlyout.Items.Add(SubtitleRadio(name, "sidecar|" + path, _subtitles.SidecarChecked(path)));
+        }
+
+        for (var i = 0; i < _subtitles.Embedded.Count; i++)
+        {
+            var track = _subtitles.Embedded[i];
+            var item = SubtitleRadio(SubtitleTrackText(track, i + 1), "embed|" + track.Index, _subtitles.EmbeddedChecked(track.Index));
+            item.IsEnabled = track.IsText;
+            SubtitleFlyout.Items.Add(item);
+        }
+
+        SubtitleFlyout.Items.Add(new MenuFlyoutSeparator());
+        var open = new MenuFlyoutItem { Text = "打开字幕文件…" };
+        open.Click += OpenSubtitleFile_Click;
+        SubtitleFlyout.Items.Add(open);
+    }
+
+    private RadioMenuFlyoutItem SubtitleRadio(string text, string tag, bool selected)
+    {
+        var item = new RadioMenuFlyoutItem
+        {
+            Text = text,
+            GroupName = "Subtitle",
+            Tag = tag,
+            IsChecked = selected
+        };
+        item.Click += SubtitleItem_Click;
+        return item;
+    }
+
+    private void SubtitleItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string tag })
+            return;
+        if (tag == "off")
+            _subtitles.Off();
+        else if (tag == "auto")
+            _subtitles.Auto();
+        else if (tag.StartsWith("sidecar|", StringComparison.Ordinal))
+            _subtitles.UseSidecar(tag["sidecar|".Length..]);
+        else if (tag.StartsWith("embed|", StringComparison.Ordinal)
+            && int.TryParse(tag["embed|".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
+        {
+            if (!_subtitles.UseEmbedded(index))
+                return;
+        }
+        else
+            return;
+        FinishSubtitleChoice();
+    }
+
+    private async void OpenSubtitleFile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker();
+            foreach (var extension in SubtitleFiles.Extensions)
+                picker.FileTypeFilter.Add(extension);
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
+            var file = await picker.PickSingleFileAsync();
+            if (file == null)
+                return;
+            _subtitles.UseSidecar(file.Path);
+            FinishSubtitleChoice();
+        }
+        catch (Exception ex)
+        {
+            ShowStatusHold("无法打开字幕文件：" + ex.Message);
+        }
+    }
+
+    private void CycleSubtitle()
+    {
+        _subtitles.Cycle();
+        FinishSubtitleChoice();
+    }
+
+    private void ToggleSubtitle()
+    {
+        _subtitles.Toggle();
+        FinishSubtitleChoice();
+    }
+
+    private void FinishSubtitleChoice()
+    {
+        if (!string.IsNullOrEmpty(_subtitles.Error) && !_subtitles.IsOff)
+            ShowStatusHold(_subtitles.Error);
+        UpdateSubtitleChrome();
+        UpdateSubtitleOverlay();
+        if (_subtitles.Mode == SubtitleSession.Choice.Embedded || _subtitles.AutoEmbedded != null)
+            _ = LoadEmbeddedCues(_subtitles.EmbeddedIndex >= 0 ? _subtitles.EmbeddedIndex : _subtitles.AutoEmbedded!.Index);
+    }
+
+    private void SyncSubtitleSource()
+    {
+        var path = Playback.Playlist.Current?.Path;
+        var open = Playback.IsOpen;
+        if (path != _subtitlePath || open && !_subtitleOpen)
+        {
+            _subtitlePath = path;
+            _subtitles.Load(path);
+            _ = ScanEmbedded();
+        }
+
+        _subtitleOpen = open;
+    }
+
+    private async Task ScanEmbedded()
+    {
+        var token = ++_subtitleScan;
+        var path = _subtitles.VideoPath;
+        IReadOnlyList<FfmpegSubtitleStream> tracks = [];
+        if (!string.IsNullOrEmpty(path))
+        {
+            try
+            {
+                tracks = await Task.Run(() => FfmpegSubtitles.List(path));
+            }
+            catch
+            {
+                tracks = [];
+            }
+        }
+
+        if (token != _subtitleScan)
+            return;
+        _subtitles.SetEmbeddedList(tracks);
+        if (_subtitles.AutoEmbedded != null)
+            await LoadEmbeddedCues(_subtitles.AutoEmbedded.Index, token);
+        UpdateSubtitleChrome();
+        UpdateSubtitleOverlay();
+    }
+
+    private async Task LoadEmbeddedCues(int index, int? scanToken = null)
+    {
+        var path = _subtitles.VideoPath;
+        if (string.IsNullOrEmpty(path))
+            return;
+        var embed = ++_subtitleEmbed;
+        var scan = scanToken ?? _subtitleScan;
+        try
+        {
+            var cues = await Task.Run(() => FfmpegSubtitles.ReadCues(path, index));
+            if (embed != _subtitleEmbed || scan != _subtitleScan)
+                return;
+            if (_subtitles.EmbeddedIndex != index && _subtitles.AutoEmbedded?.Index != index)
+                return;
+            _subtitles.SetCues(cues, cues.Count == 0 ? "没有可显示的字幕" : null);
+            if (_subtitles.Error != null)
+                ShowStatusHold(_subtitles.Error);
+        }
+        catch (Exception ex)
+        {
+            if (embed != _subtitleEmbed || scan != _subtitleScan)
+                return;
+            _subtitles.SetCues([], "无法读取字幕：" + ex.Message);
+            ShowStatusHold(_subtitles.Error ?? ex.Message);
+        }
+
+        UpdateSubtitleOverlay();
+    }
+
+    private void UpdateSubtitleChrome()
+    {
+        if (SubtitleButton == null)
+            return;
+        if (SubtitleIcon != null)
+            SubtitleIcon.Opacity = _subtitles.IsOff ? 0.45 : 1;
+        ApplyTip(SubtitleButton, "字幕", HotkeyCatalog.CycleSubtitle);
+    }
+
+    private void LayoutSubtitle()
+    {
+        if (SubtitlePill == null || SubtitleText == null || VideoHost == null)
+            return;
+        var height = VideoHost.ActualHeight;
+        var width = VideoHost.ActualWidth;
+        if (height < 1 || width < 1)
+            return;
+        SubtitleText.FontSize = Math.Clamp(28 * (height / 720.0), 18, 44);
+        SubtitlePill.MaxWidth = Math.Max(160, width * 0.8);
+        SubtitlePill.Margin = new Thickness(0, 0, 0, Math.Clamp(height * 0.06, 24, 80));
+    }
+
+    private void UpdateSubtitleOverlay()
+    {
+        if (SubtitleLayer == null || SubtitleText == null)
+            return;
+        LayoutSubtitle();
+        string? text = null;
+        if (Playback.IsOpen && !_subtitles.IsOff)
+            text = _subtitles.TextAt(Playback.Position);
+        if (string.IsNullOrEmpty(text))
+        {
+            if (SubtitleLayer.Visibility != Visibility.Collapsed)
+                SubtitleLayer.Visibility = Visibility.Collapsed;
+            if (SubtitleText.Text.Length > 0)
+                SubtitleText.Text = "";
+            _shownSubtitle = null;
+            return;
+        }
+
+        if (text != _shownSubtitle)
+        {
+            _shownSubtitle = text;
+            SubtitleText.Text = text;
+        }
+
+        if (SubtitleLayer.Visibility != Visibility.Visible)
+            SubtitleLayer.Visibility = Visibility.Visible;
+    }
+
+    private static string SubtitleTrackText(FfmpegSubtitleStream track, int number)
+    {
+        var title = string.IsNullOrWhiteSpace(track.Title) ? $"字幕 {number}" : track.Title;
+        if (!track.IsText)
+            title += "（位图）";
+        return string.IsNullOrWhiteSpace(track.Language) ? title : $"{track.Language} · {title}";
+    }
+
     private void SpeedFlyout_Opening(object sender, object e) => SyncSpeedMenu();
 
     private void SpeedItem_Click(object sender, RoutedEventArgs e)
@@ -934,6 +1183,7 @@ public sealed partial class PlayerPage : Page
         ApplyTip(MuteButton, "静音", HotkeyCatalog.Mute);
         UpdateSpeedChrome();
         UpdateAudioChrome();
+        UpdateSubtitleChrome();
         UpdateRepeatButton();
         ApplyTip(ShuffleButton, "随机", HotkeyCatalog.ToggleShuffle);
         ApplyTip(SnapshotButton, "截图", HotkeyCatalog.Snapshot);
@@ -1025,6 +1275,12 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.CycleAudioTrack:
                 CycleAudioTrack();
+                break;
+            case HotkeyCatalog.CycleSubtitle:
+                CycleSubtitle();
+                break;
+            case HotkeyCatalog.ToggleSubtitle:
+                ToggleSubtitle();
                 break;
             case HotkeyCatalog.FitWindow:
                 FitWindow(true);

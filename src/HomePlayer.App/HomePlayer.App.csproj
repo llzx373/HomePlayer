@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HomePlayer.Core\HomePlayer.Core.csproj" />
     <ProjectReference Include="..\HomePlayer.Data\HomePlayer.Data.csproj" />
+    <ProjectReference Include="..\HomePlayer.Ffmpeg\HomePlayer.Ffmpeg.csproj" />
     <ProjectReference Include="..\HomePlayer.Library\HomePlayer.Library.csproj" />
     <ProjectReference Include="..\HomePlayer.Playback\HomePlayer.Playback.csproj" />
   </ItemGroup>
