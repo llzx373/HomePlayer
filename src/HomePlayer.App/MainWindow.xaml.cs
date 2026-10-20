@@ -2,13 +2,14 @@ using System.Runtime.InteropServices;
 using System.Windows.Input;
 using HomePlayer.Core;
 using H.NotifyIcon;
+using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
 using WinRT.Interop;
 
 namespace HomePlayer;
@@ -23,7 +24,18 @@ public sealed partial class MainWindow : Window
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
     private string _pageTag = "library";
+    private bool _captionSourceHooked;
+    private uint _captionClickTime;
+    private int _captionClickX;
+    private int _captionClickY;
     private const double PlayerTitleHeight = 40;
+    private const uint WmNcLButtonDown = 0x00A1;
+    private const uint WmSysCommand = 0x0112;
+    private const int HtCaption = 2;
+    private const int SmCxDoubleClk = 36;
+    private const int SmCyDoubleClk = 37;
+    private const uint TpmReturnCmd = 0x0100;
+    private const uint TpmRightButton = 0x0002;
 
     public bool IsFullscreen => _fullscreen;
 
@@ -45,7 +57,9 @@ public sealed partial class MainWindow : Window
             height));
         AppWindow.Closing += OnClosing;
         AppWindow.Changed += OnAppWindowChanged;
-        Root.SizeChanged += (_, _) => OverlayTitleBar.Width = Root.ActualWidth;
+        Root.SizeChanged += (_, _) => UpdateCaptionRegions();
+        OverlayTitleBar.SizeChanged += (_, _) => UpdateCaptionRegions();
+        OverlayDrag.SizeChanged += (_, _) => UpdateCaptionRegions();
         _overlayTimer.Tick += (_, _) =>
         {
             UpdateOverlay();
@@ -99,6 +113,7 @@ public sealed partial class MainWindow : Window
     private void OnRootLoaded(object sender, RoutedEventArgs e)
     {
         Root.Loaded -= OnRootLoaded;
+        HookCaptionSource();
         ApplyTitleBar();
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         UpdateOverlayTimer();
@@ -206,6 +221,8 @@ public sealed partial class MainWindow : Window
             }
 
             UpdateOverlayTimer();
+            UpdateMaximizeIcon();
+            UpdateCaptionRegions();
             return;
         }
 
@@ -223,6 +240,8 @@ public sealed partial class MainWindow : Window
         }
 
         UpdateOverlayTimer();
+        UpdateMaximizeIcon();
+        UpdateCaptionRegions();
     }
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -405,28 +424,26 @@ public sealed partial class MainWindow : Window
 
     private void SetOverlayOpen(bool open)
     {
-        if (_overlayVisible == open && TitlePopup.IsOpen == open)
-            return;
-        _overlayVisible = open;
-        if (open)
+        var visible = open ? Visibility.Visible : Visibility.Collapsed;
+        if (_overlayVisible == open && OverlayTitleBar.Visibility == visible)
         {
-            OverlayTitleBar.Width = Root.ActualWidth;
-            UpdateMaximizeIcon();
+            if (open)
+                UpdateCaptionRegions();
+            return;
         }
 
-        OpenPopup(TitlePopup, open);
-    }
-
-    private void OpenPopup(Popup popup, bool open)
-    {
-        popup.XamlRoot ??= Root.XamlRoot ?? Content?.XamlRoot;
-        if (open && popup.XamlRoot == null)
-            return;
-        popup.IsOpen = open;
+        _overlayVisible = open;
+        OverlayTitleBar.Visibility = visible;
+        OverlayTitleBar.IsHitTestVisible = open;
+        if (open)
+            UpdateMaximizeIcon();
+        UpdateCaptionRegions();
     }
 
     private void UpdateMaximizeIcon()
     {
+        if (MaximizeIcon == null)
+            return;
         var maximized = AppWindow.Presenter is OverlappedPresenter presenter
             && presenter.State == OverlappedPresenterState.Maximized;
         MaximizeIcon.Glyph = maximized ? "\uE923" : "\uE922";
@@ -435,18 +452,120 @@ public sealed partial class MainWindow : Window
     private void OverlayDrag_Pressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(OverlayDrag);
+        var hwnd = WindowNative.GetWindowHandle(this);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            ShowSystemMenu(hwnd);
+            e.Handled = true;
+            return;
+        }
+
         if (!point.Properties.IsLeftButtonPressed)
             return;
-        var hwnd = WindowNative.GetWindowHandle(this);
+
+        HoldOverlayForCaption();
+        if (!GetCursorPos(out var pos))
+            return;
+
+        var now = (uint)Environment.TickCount;
+        var isDouble = now - _captionClickTime <= GetDoubleClickTime()
+            && Math.Abs(pos.X - _captionClickX) <= GetSystemMetrics(SmCxDoubleClk) / 2
+            && Math.Abs(pos.Y - _captionClickY) <= GetSystemMetrics(SmCyDoubleClk) / 2;
+        if (isDouble)
+        {
+            _captionClickTime = 0;
+            ToggleMaximize();
+            e.Handled = true;
+            return;
+        }
+
+        _captionClickTime = now;
+        _captionClickX = pos.X;
+        _captionClickY = pos.Y;
         ReleaseCapture();
-        SendMessage(hwnd, 0xA1, (IntPtr)2, IntPtr.Zero);
+        SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
         e.Handled = true;
     }
 
-    private void OverlayDrag_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void HookCaptionSource()
     {
-        ToggleMaximize();
-        e.Handled = true;
+        if (_captionSourceHooked)
+            return;
+        _captionSourceHooked = true;
+        var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+        source.EnteringMoveSize += (_, _) =>
+        {
+            if (!WantsCustomTitleBar())
+                return;
+            HoldOverlayForCaption();
+            SetOverlayOpen(true);
+        };
+        source.ExitedMoveSize += (_, _) =>
+        {
+            if (WantsPlayerOverlay())
+                _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+            UpdateMaximizeIcon();
+            UpdateCaptionRegions();
+        };
+        UpdateCaptionRegions();
+    }
+
+    private void UpdateCaptionRegions()
+    {
+        if (!_captionSourceHooked)
+            return;
+        try
+        {
+            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            if (!_overlayVisible || _fullscreen || OverlayTitleBar.Visibility != Visibility.Visible
+                || OverlayDrag.ActualWidth < 1 || OverlayTitleBar.ActualHeight < 1)
+            {
+                source.ClearRegionRects(NonClientRegionKind.Caption);
+                return;
+            }
+
+            var rect = ToPixelRect(OverlayDrag);
+            if (rect.Width < 1 || rect.Height < 1)
+            {
+                source.ClearRegionRects(NonClientRegionKind.Caption);
+                return;
+            }
+
+            source.SetRegionRects(NonClientRegionKind.Caption, [rect]);
+        }
+        catch
+        {
+        }
+    }
+
+    private RectInt32 ToPixelRect(FrameworkElement element)
+    {
+        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
+        if (scale < 0.1)
+            scale = 1;
+        var bounds = element.TransformToVisual(Root).TransformBounds(
+            new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+        return new RectInt32(
+            Math.Max(0, (int)Math.Round(bounds.X * scale)),
+            Math.Max(0, (int)Math.Round(bounds.Y * scale)),
+            Math.Max(0, (int)Math.Round(bounds.Width * scale)),
+            Math.Max(0, (int)Math.Round(bounds.Height * scale)));
+    }
+
+    private void HoldOverlayForCaption()
+    {
+        if (WantsPlayerOverlay())
+            _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
+    }
+
+    private void ShowSystemMenu(IntPtr hwnd)
+    {
+        var menu = GetSystemMenu(hwnd, false);
+        if (menu == IntPtr.Zero || !GetCursorPos(out var pos))
+            return;
+        var command = TrackPopupMenu(menu, TpmReturnCmd | TpmRightButton, pos.X, pos.Y, 0, hwnd, IntPtr.Zero);
+        if (command != 0)
+            SendMessage(hwnd, WmSysCommand, (IntPtr)command, IntPtr.Zero);
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e)
@@ -547,6 +666,18 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetSystemMenu(IntPtr hwnd, bool revert);
+
+    [DllImport("user32.dll")]
+    private static extern int TrackPopupMenu(IntPtr menu, uint flags, int x, int y, int reserved, IntPtr hwnd, IntPtr rect);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PointNative
