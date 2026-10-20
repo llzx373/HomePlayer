@@ -29,6 +29,20 @@ internal static class CrashGuard
 
     public static void StopSession() => CrashLog.EndSession();
 
+    public static void ReportHang(string details)
+    {
+        try
+        {
+            var log = CrashLog.Write(CrashLog.HangKind, details);
+            if (string.IsNullOrWhiteSpace(log))
+                return;
+            WriteDump(Path.ChangeExtension(log, ".dmp"), IntPtr.Zero, MiniDumpHang);
+        }
+        catch
+        {
+        }
+    }
+
     private static void OnXamlException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         var details = e.Exception?.ToString() ?? "";
@@ -73,7 +87,7 @@ internal static class CrashGuard
 
             var log = CrashLog.Write(CrashLog.NativeKind, NativeDetails(code, exceptionPointers));
             if (!string.IsNullOrWhiteSpace(log) && code != StackOverflow)
-                WriteDump(Path.ChangeExtension(log, ".dmp"), exceptionPointers);
+                WriteDump(Path.ChangeExtension(log, ".dmp"), exceptionPointers, MiniDumpSmall);
             CrashLog.EndSession();
         }
         catch
@@ -138,18 +152,24 @@ internal static class CrashGuard
         _ => "UNKNOWN"
     };
 
-    private static void WriteDump(string path, IntPtr exceptionPointers)
+    private static void WriteDump(string path, IntPtr exceptionPointers, int dumpType)
     {
         try
         {
             using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            if (exceptionPointers == IntPtr.Zero)
+            {
+                MiniDumpWriteDump(GetCurrentProcess(), (uint)Environment.ProcessId, stream.SafeFileHandle, dumpType, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                return;
+            }
+
             var info = new MiniDumpExceptionInformation
             {
                 ThreadId = GetCurrentThreadId(),
                 ExceptionPointers = exceptionPointers,
                 ClientPointers = 0
             };
-            MiniDumpWriteDump(GetCurrentProcess(), (uint)Environment.ProcessId, stream.SafeFileHandle, MiniDumpSmall, ref info, IntPtr.Zero, IntPtr.Zero);
+            MiniDumpWriteDump(GetCurrentProcess(), (uint)Environment.ProcessId, stream.SafeFileHandle, dumpType, ref info, IntPtr.Zero, IntPtr.Zero);
         }
         catch
         {
@@ -160,6 +180,7 @@ internal static class CrashGuard
     private const uint StackOverflow = 0xC00000FD;
     private const int ExceptionContinueSearch = 0;
     private const int MiniDumpSmall = 0x00000020 | 0x00001000;
+    private const int MiniDumpHang = 0x00000020 | 0x00000100 | 0x00000200 | 0x00001000;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int UnhandledExceptionFilter(IntPtr exceptionPointers);
@@ -205,6 +226,16 @@ internal static class CrashGuard
         SafeFileHandle file,
         int dumpType,
         ref MiniDumpExceptionInformation exceptionParam,
+        IntPtr userStreamParam,
+        IntPtr callbackParam);
+
+    [DllImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", SetLastError = true)]
+    private static extern bool MiniDumpWriteDump(
+        IntPtr process,
+        uint processId,
+        SafeFileHandle file,
+        int dumpType,
+        IntPtr exceptionParam,
         IntPtr userStreamParam,
         IntPtr callbackParam);
 }

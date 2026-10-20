@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
     private bool _captionMoved;
     private bool _chromeReady;
     private int _exitWatchdog;
+    private readonly ExitTrace _exitTrace = new();
     private const double PlayerTitleHeight = 40;
     private const int SmCxDoubleClk = 36;
     private const int SmCyDoubleClk = 37;
@@ -97,7 +98,9 @@ public sealed partial class MainWindow : Window
         menu.Items.Add(Item("播放/暂停", () => App.Host.Playback.TogglePlay()));
         menu.Items.Add(Item("下一个", () => _ = App.Host.Playback.NextAsync()));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("退出", QueueExit));
+        var exit = new MenuFlyoutItem { Text = "退出" };
+        exit.Click += (_, _) => RequestExit();
+        menu.Items.Add(exit);
         _tray.ContextFlyout = menu;
         var show = new TrayCommand(ShowFromTray);
         _tray.LeftClickCommand = show;
@@ -291,27 +294,26 @@ public sealed partial class MainWindow : Window
         if (plan.Action == AppExitAction.AllowClose)
             return;
         args.Cancel = true;
-        var queue = Root.DispatcherQueue;
+        if (plan.Action == AppExitAction.BeginExit)
+        {
+            RequestExit();
+            return;
+        }
+
+        var queue = Root?.DispatcherQueue;
         if (queue == null)
-            ApplyExitPlan(plan);
+            HideToTray();
         else
-            queue.TryEnqueue(() => ApplyExitPlan(plan));
+            queue.TryEnqueue(HideToTray);
     }
 
-    private void RequestClose() =>
-        ApplyExitPlan(AppExit.Plan(App.Host.Settings.CloseToTray, App.Host.Exiting));
-
-    private void ApplyExitPlan(AppExitPlan plan)
+    private void RequestClose()
     {
-        switch (plan.Action)
-        {
-            case AppExitAction.HideToTray:
-                HideToTray();
-                return;
-            case AppExitAction.BeginExit:
-                BeginExit();
-                return;
-        }
+        var plan = AppExit.Plan(App.Host.Settings.CloseToTray, App.Host.Exiting);
+        if (plan.Action == AppExitAction.BeginExit)
+            RequestExit();
+        else if (plan.Action == AppExitAction.HideToTray)
+            HideToTray();
     }
 
     private void HideToTray()
@@ -391,17 +393,10 @@ public sealed partial class MainWindow : Window
         e.AcceptedOperation = DataPackageOperation.Copy;
     }
 
-    private void QueueExit()
+    private void RequestExit()
     {
         ArmExitWatchdog();
-        var queue = Root?.DispatcherQueue;
-        if (queue == null)
-        {
-            BeginExit();
-            return;
-        }
-
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, BeginExit);
+        BeginExit();
     }
 
     private void ArmExitWatchdog()
@@ -418,120 +413,29 @@ public sealed partial class MainWindow : Window
             {
             }
 
+            try
+            {
+                CrashGuard.ReportHang(ThreadSnapshot.Format(
+                    ThreadSnapshot.Capture(),
+                    Environment.StackTrace,
+                    _exitTrace.Steps));
+            }
+            catch
+            {
+            }
+
             KillProcess();
         });
     }
 
     private void BeginExit()
     {
-        ArmExitWatchdog();
         if (App.Host.Exiting)
             return;
         App.Host.Exiting = true;
-        try
-        {
-            App.Host.SaveSettings();
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            CrashGuard.StopSession();
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            SuspendRendering?.Invoke();
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            if (AppWindow.IsVisible)
-                AppWindow.Hide();
-        }
-        catch
-        {
-        }
-
-        Task shutdown;
-        try
-        {
-            shutdown = App.Host.Playback.ShutdownAsync();
-        }
-        catch
-        {
-            shutdown = Task.CompletedTask;
-        }
-
-        var tray = _tray;
-        var queue = Root?.DispatcherQueue;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(50);
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                tray.Dispose();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                await Task.WhenAny(shutdown, Task.Delay(AppExit.GraphShutdownTimeoutMs));
-            }
-            catch
-            {
-            }
-
-            if (queue == null || !queue.TryEnqueue(FinishExit))
-                KillProcess();
-        });
-    }
-
-    private void FinishExit()
-    {
-        try
-        {
-            AppWindow.Closing -= OnClosing;
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            Close();
-        }
-        catch
-        {
-            KillProcess();
-            return;
-        }
-
-        try
-        {
-            Environment.Exit(0);
-        }
-        catch
-        {
-            KillProcess();
-        }
+        _exitTrace.Run("SaveSettings", App.Host.SaveSettings);
+        _exitTrace.Run("StopSession", CrashGuard.StopSession);
+        _exitTrace.Run("Kill", KillProcess);
     }
 
     private static void KillProcess()

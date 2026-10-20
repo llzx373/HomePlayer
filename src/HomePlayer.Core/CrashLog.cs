@@ -56,6 +56,7 @@ public static class CrashLog
     public const string TaskKind = "后台任务异常";
     public const string NativeKind = "原生崩溃";
     public const string AbnormalExitKind = "上次异常退出";
+    public const string HangKind = "退出卡住";
     public const string LegacyKind = "历史记录";
 
     private static readonly object Gate = new();
