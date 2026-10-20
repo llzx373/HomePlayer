@@ -63,31 +63,40 @@ internal sealed class NativeTray : IDisposable
 
     private void Loop()
     {
-        _threadId = GetCurrentThreadId();
-        _proc = WindowProc;
-        var className = "HomePlayerTray" + Environment.ProcessId;
-        var window = new WndClass
+        try
         {
-            lpfnWndProc = _proc,
-            hInstance = GetModuleHandle(null),
-            lpszClassName = className
-        };
-        RegisterClass(ref window);
-        _hwnd = CreateWindowEx(0, className, "HomePlayerTray", 0, 0, 0, 0, 0, MessageWindowParent, IntPtr.Zero, window.hInstance, IntPtr.Zero);
-        LoadIcon();
-        AddIcon();
-        _ready.Set();
-        while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
-        {
-            TranslateMessage(ref message);
-            DispatchMessage(ref message);
+            _threadId = GetCurrentThreadId();
+            _proc = WindowProc;
+            var className = "HomePlayerTray" + Environment.ProcessId;
+            var window = new WndClass
+            {
+                lpfnWndProc = _proc,
+                hInstance = GetModuleHandle(null),
+                lpszClassName = className
+            };
+            RegisterClass(ref window);
+            _hwnd = CreateWindowEx(0, className, "HomePlayerTray", 0, 0, 0, 0, 0, MessageWindowParent, IntPtr.Zero, window.hInstance, IntPtr.Zero);
+            LoadIcon();
+            AddIcon();
+            _ready.Set();
+            while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
+            {
+                TranslateMessage(ref message);
+                DispatchMessage(ref message);
+            }
         }
-
-        RemoveIcon();
-        if (_icon != IntPtr.Zero)
+        catch
         {
-            DestroyIcon(_icon);
-            _icon = IntPtr.Zero;
+        }
+        finally
+        {
+            _ready.Set();
+            RemoveIcon();
+            if (_icon != IntPtr.Zero)
+            {
+                DestroyIcon(_icon);
+                _icon = IntPtr.Zero;
+            }
         }
     }
 
@@ -252,7 +261,7 @@ internal sealed class NativeTray : IDisposable
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll")]
+    [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
