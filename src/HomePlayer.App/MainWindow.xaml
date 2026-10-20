@@ -48,7 +48,6 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition x:Name="CaptionPad" Width="138" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal">
                 <Button
@@ -79,23 +78,52 @@
             <Grid
                 x:Name="LibraryDrag"
                 Grid.Column="1"
-                Background="Transparent">
+                Background="Transparent"
+                PointerPressed="CaptionDrag_Pressed">
                 <TextBlock
                     Text="HomePlayer"
                     Margin="8,0,12,0"
                     VerticalAlignment="Center" />
             </Grid>
-            <Button
-                x:Name="BarSettingsButton"
-                Grid.Column="2"
-                Style="{StaticResource TitleIconButtonStyle}"
-                Height="40"
-                Width="46"
-                AutomationProperties.Name="设置"
-                ToolTipService.ToolTip="设置"
-                Click="TitleSettings_Click">
-                <FontIcon Glyph="&#xE713;" FontSize="14" />
-            </Button>
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button
+                    x:Name="BarSettingsButton"
+                    Style="{StaticResource TitleIconButtonStyle}"
+                    Height="40"
+                    Width="46"
+                    AutomationProperties.Name="设置"
+                    ToolTipService.ToolTip="设置"
+                    Click="TitleSettings_Click">
+                    <FontIcon Glyph="&#xE713;" FontSize="14" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="最小化"
+                    ToolTipService.ToolTip="最小化"
+                    Style="{StaticResource TitleIconButtonStyle}"
+                    Height="40"
+                    Width="46"
+                    Click="Minimize_Click">
+                    <FontIcon Glyph="&#xE921;" FontSize="12" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="最大化"
+                    ToolTipService.ToolTip="最大化"
+                    Style="{StaticResource TitleIconButtonStyle}"
+                    Height="40"
+                    Width="46"
+                    Click="Maximize_Click">
+                    <FontIcon x:Name="BarMaximizeIcon" Glyph="&#xE922;" FontSize="12" />
+                </Button>
+                <Button
+                    AutomationProperties.Name="关闭"
+                    ToolTipService.ToolTip="关闭"
+                    Style="{StaticResource TitleIconButtonStyle}"
+                    Height="40"
+                    Width="46"
+                    Click="Close_Click">
+                    <FontIcon Glyph="&#xE8BB;" FontSize="12" />
+                </Button>
+            </StackPanel>
         </Grid>
         <NavigationView
             x:Name="Nav"
@@ -180,7 +208,7 @@
                 x:Name="OverlayDrag"
                 Grid.Column="1"
                 Background="Transparent"
-                PointerPressed="OverlayDrag_Pressed">
+                PointerPressed="CaptionDrag_Pressed">
                 <TextBlock
                     Text="HomePlayer"
                     Margin="8,0,12,0"
@@ -210,7 +238,7 @@
                     ToolTipService.ToolTip="最大化"
                     Style="{StaticResource CaptionButtonStyle}"
                     Click="Maximize_Click">
-                    <FontIcon x:Name="MaximizeIcon" Glyph="&#xE922;" FontSize="12" />
+                    <FontIcon x:Name="OverlayMaximizeIcon" Glyph="&#xE922;" FontSize="12" />
                 </Button>
                 <Button
                     x:Name="CloseButton"

@@ -35,7 +35,7 @@ internal static class CrashGuard
         if (!string.IsNullOrWhiteSpace(e.Message) && !details.Contains(e.Message, StringComparison.Ordinal))
             details = string.IsNullOrWhiteSpace(details) ? e.Message : e.Message + Environment.NewLine + details;
         CrashLog.Write(CrashLog.UnhandledKind, details);
-        CrashLog.EndSession();
+        e.Handled = true;
     }
 
     private static void OnDomainException(object sender, System.UnhandledExceptionEventArgs e)

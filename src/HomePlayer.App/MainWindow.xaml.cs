@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using System.Windows.Input;
 using HomePlayer.Core;
 using H.NotifyIcon;
-using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,7 +9,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
-using Windows.Graphics;
 using WinRT.Interop;
 
 namespace HomePlayer;
@@ -25,7 +23,6 @@ public sealed partial class MainWindow : Window
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
     private string _pageTag = "library";
-    private bool _captionSourceHooked;
     private uint _captionClickTime;
     private int _captionClickX;
     private int _captionClickY;
@@ -49,6 +46,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ApplyWindowChrome();
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var width = Math.Clamp(work.Width * 3 / 4, 1100, work.Width);
         var height = Math.Clamp(work.Height * 3 / 4, 720, work.Height);
@@ -59,15 +57,18 @@ public sealed partial class MainWindow : Window
             height));
         AppWindow.Closing += OnClosing;
         AppWindow.Changed += OnAppWindowChanged;
-        Root.SizeChanged += (_, _) => UpdateCaptionRegions();
-        OverlayTitleBar.SizeChanged += (_, _) => UpdateCaptionRegions();
-        OverlayDrag.SizeChanged += (_, _) => UpdateCaptionRegions();
-        AppTitleBar.SizeChanged += (_, _) => BindLibraryTitleBar();
-        LibraryDrag.SizeChanged += (_, _) => BindLibraryTitleBar();
         _overlayTimer.Tick += (_, _) =>
         {
-            UpdateOverlay();
-            OverlayTick?.Invoke();
+            try
+            {
+                UpdateOverlay();
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write(CrashLog.UnhandledKind, ex.ToString());
+            }
+
+            RaiseOverlayTick();
         };
         Root.Loaded += OnRootLoaded;
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
@@ -125,7 +126,6 @@ public sealed partial class MainWindow : Window
     private void OnRootLoaded(object sender, RoutedEventArgs e)
     {
         Root.Loaded -= OnRootLoaded;
-        HookCaptionSource();
         ApplyTitleBar();
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         UpdateOverlayTimer();
@@ -153,43 +153,50 @@ public sealed partial class MainWindow : Window
     public void ApplyTitleBar()
     {
         var player = _pageTag == "player";
-        if (player)
-        {
-            SetTitleBar(null);
-            ExtendsContentIntoTitleBar = false;
-            AppTitleBar.Visibility = Visibility.Collapsed;
-            if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
-                && (!presenter.HasBorder || presenter.HasTitleBar))
-                presenter.SetBorderAndTitleBar(true, false);
-            ClearNonClientRegions();
-        }
-        else
-        {
-            AppTitleBar.Visibility = Visibility.Visible;
-            ExtendsContentIntoTitleBar = true;
-            if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
-                && (!presenter.HasBorder || !presenter.HasTitleBar))
-                presenter.SetBorderAndTitleBar(true, true);
-            ClearOverlayCaption();
-            BindLibraryTitleBar();
-        }
+        ApplyWindowChrome();
+        AppTitleBar.Visibility = player ? Visibility.Collapsed : Visibility.Visible;
         ApplyNavPane();
         SyncChromeButtons();
         if (_fullscreen || !player)
         {
             _overlayHoldUntil = DateTime.MinValue;
             SetOverlayOpen(false);
-            OverlayTick?.Invoke();
+            RaiseOverlayTick();
             UpdateOverlayTimer();
-            if (!player)
-                BindLibraryTitleBar();
             return;
         }
 
         _overlayHoldUntil = WantsPlayerOverlay() ? DateTime.UtcNow.AddSeconds(2.5) : DateTime.MaxValue;
         SetOverlayOpen(true);
-        OverlayTick?.Invoke();
+        RaiseOverlayTick();
         UpdateOverlayTimer();
+    }
+
+    private void RaiseOverlayTick()
+    {
+        try
+        {
+            OverlayTick?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write(CrashLog.UnhandledKind, ex.ToString());
+        }
+    }
+
+    private void ApplyWindowChrome()
+    {
+        if (_fullscreen)
+            return;
+        try
+        {
+            if (AppWindow.Presenter is OverlappedPresenter presenter
+                && (!presenter.HasBorder || presenter.HasTitleBar))
+                presenter.SetBorderAndTitleBar(true, false);
+        }
+        catch
+        {
+        }
     }
 
     private bool WantsPlayerOverlay() =>
@@ -253,8 +260,6 @@ public sealed partial class MainWindow : Window
 
             UpdateOverlayTimer();
             UpdateMaximizeIcon();
-            UpdateCaptionRegions();
-            BindLibraryTitleBar();
             return;
         }
 
@@ -271,10 +276,9 @@ public sealed partial class MainWindow : Window
             }
         }
 
+        ApplyWindowChrome();
         UpdateOverlayTimer();
         UpdateMaximizeIcon();
-        UpdateCaptionRegions();
-        BindLibraryTitleBar();
     }
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -495,30 +499,25 @@ public sealed partial class MainWindow : Window
     {
         var visible = open ? Visibility.Visible : Visibility.Collapsed;
         if (_overlayVisible == open && OverlayTitleBar.Visibility == visible)
-        {
-            if (open)
-                UpdateCaptionRegions();
             return;
-        }
 
         _overlayVisible = open;
         OverlayTitleBar.Visibility = visible;
         OverlayTitleBar.IsHitTestVisible = open;
         if (open)
             UpdateMaximizeIcon();
-        UpdateCaptionRegions();
     }
 
     private void UpdateMaximizeIcon()
     {
-        if (MaximizeIcon == null)
-            return;
         var maximized = AppWindow.Presenter is OverlappedPresenter presenter
             && presenter.State == OverlappedPresenterState.Maximized;
-        MaximizeIcon.Glyph = maximized ? "\uE923" : "\uE922";
+        var glyph = maximized ? "\uE923" : "\uE922";
+        OverlayMaximizeIcon.Glyph = glyph;
+        BarMaximizeIcon.Glyph = glyph;
     }
 
-    private void OverlayDrag_Pressed(object sender, PointerRoutedEventArgs e)
+    private void CaptionDrag_Pressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint((UIElement)sender);
         var hwnd = WindowNative.GetWindowHandle(this);
@@ -554,132 +553,6 @@ public sealed partial class MainWindow : Window
         ReleaseCapture();
         SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
         e.Handled = true;
-    }
-
-    private void HookCaptionSource()
-    {
-        if (_captionSourceHooked)
-            return;
-        _captionSourceHooked = true;
-        var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-        source.EnteringMoveSize += (_, _) =>
-        {
-            if (!WantsCustomTitleBar())
-                return;
-            HoldOverlayForCaption();
-            SetOverlayOpen(true);
-        };
-        source.ExitedMoveSize += (_, _) =>
-        {
-            if (WantsPlayerOverlay())
-                _overlayHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
-            UpdateMaximizeIcon();
-            UpdateCaptionRegions();
-        };
-        UpdateCaptionRegions();
-    }
-
-    private void BindLibraryTitleBar()
-    {
-        if (_pageTag == "player" || _fullscreen || AppTitleBar.Visibility != Visibility.Visible)
-            return;
-        if (LibraryDrag.ActualWidth < 2 || LibraryDrag.ActualHeight < 2)
-        {
-            AppTitleBar.UpdateLayout();
-            if (LibraryDrag.ActualWidth < 2 || LibraryDrag.ActualHeight < 2)
-                return;
-        }
-
-        SetTitleBar(LibraryDrag);
-        UpdateCaptionPad();
-    }
-
-    private void UpdateCaptionPad()
-    {
-        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
-        if (scale < 0.1)
-            scale = 1;
-        var inset = AppWindow.TitleBar.RightInset;
-        if (inset <= 0)
-            inset = (int)Math.Round(138 * scale);
-        CaptionPad.Width = new GridLength(inset / scale);
-    }
-
-    private void ClearOverlayCaption()
-    {
-        if (!_captionSourceHooked)
-            return;
-        try
-        {
-            InputNonClientPointerSource.GetForWindowId(AppWindow.Id)
-                .ClearRegionRects(NonClientRegionKind.Caption);
-        }
-        catch
-        {
-        }
-    }
-
-    private void ClearNonClientRegions()
-    {
-        if (!_captionSourceHooked)
-            return;
-        try
-        {
-            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-            source.ClearRegionRects(NonClientRegionKind.Caption);
-            source.ClearRegionRects(NonClientRegionKind.Passthrough);
-        }
-        catch
-        {
-        }
-    }
-
-    private void UpdateCaptionRegions()
-    {
-        if (!_captionSourceHooked)
-            return;
-        try
-        {
-            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-            if (WantsCustomTitleBar() && _overlayVisible && !_fullscreen
-                && OverlayTitleBar.Visibility == Visibility.Visible
-                && OverlayDrag.ActualWidth >= 1 && OverlayTitleBar.ActualHeight >= 1)
-            {
-                var rect = ToPixelRect(OverlayDrag);
-                if (rect.Width >= 1 && rect.Height >= 1)
-                {
-                    source.SetRegionRects(NonClientRegionKind.Caption, [rect]);
-                    source.ClearRegionRects(NonClientRegionKind.Passthrough);
-                    return;
-                }
-            }
-
-            if (WantsCustomTitleBar() || _pageTag == "player")
-            {
-                source.ClearRegionRects(NonClientRegionKind.Caption);
-                source.ClearRegionRects(NonClientRegionKind.Passthrough);
-                return;
-            }
-
-            source.ClearRegionRects(NonClientRegionKind.Passthrough);
-        }
-        catch
-        {
-        }
-    }
-
-    private RectInt32 ToPixelRect(FrameworkElement element)
-    {
-        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
-        if (scale < 0.1)
-            scale = 1;
-        var bounds = element.TransformToVisual(Root).TransformBounds(
-            new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
-        return new RectInt32(
-            Math.Max(0, (int)Math.Round(bounds.X * scale)),
-            Math.Max(0, (int)Math.Round(bounds.Y * scale)),
-            Math.Max(0, (int)Math.Round(bounds.Width * scale)),
-            Math.Max(0, (int)Math.Round(bounds.Height * scale)));
     }
 
     private void HoldOverlayForCaption()
