@@ -1,15 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows.Input;
 using HomePlayer.Core;
-using H.NotifyIcon;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using WinRT.Interop;
@@ -18,7 +15,7 @@ namespace HomePlayer;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly TaskbarIcon _tray;
+    private readonly NativeTray _tray;
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private bool _fullscreen;
     private bool _alwaysOnTop;
@@ -86,29 +83,11 @@ public sealed partial class MainWindow : Window
         Root.Loaded += OnRootLoaded;
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         Nav.SelectedItem = Nav.MenuItems[0];
-        _tray = new TaskbarIcon
-        {
-            ToolTipText = "HomePlayer",
-            ContextMenuMode = ContextMenuMode.PopupMenu,
-            NoLeftClickDelay = true
-        };
-        TrySetTrayIcon();
-        var menu = new MenuFlyout();
-        menu.Items.Add(Item("打开主窗口", ShowFromTray));
-        menu.Items.Add(Item("播放/暂停", () => App.Host.Playback.TogglePlay()));
-        menu.Items.Add(Item("下一个", () => _ = App.Host.Playback.NextAsync()));
-        menu.Items.Add(new MenuFlyoutSeparator());
-        var exit = new MenuFlyoutItem { Text = "退出" };
-        exit.Click += (_, _) => RequestExit();
-        menu.Items.Add(exit);
-        _tray.ContextFlyout = menu;
-        var show = new TrayCommand(ShowFromTray);
-        _tray.LeftClickCommand = show;
-        _tray.DoubleClickCommand = show;
-        _tray.ForceCreate();
-        _tray.IsHitTestVisible = false;
-        Grid.SetRowSpan(_tray, 2);
-        Root.Children.Add(_tray);
+        _tray = new NativeTray(
+            () => RunOnUi(ShowFromTray),
+            () => App.Host.Playback.TogglePlay(),
+            () => _ = App.Host.Playback.NextAsync(),
+            RequestExit);
     }
 
     public void SelectPlayer() => Nav.SelectedItem = Nav.MenuItems[1];
@@ -318,10 +297,22 @@ public sealed partial class MainWindow : Window
 
     private void HideToTray()
     {
-        SuspendRendering?.Invoke();
+        try
+        {
+            ShowWindow(WindowNative.GetWindowHandle(this), 0);
+        }
+        catch
+        {
+        }
+
         App.Host.Playback.Pause();
-        if (AppWindow.IsVisible)
-            AppWindow.Hide();
+        try
+        {
+            SuspendRendering?.Invoke();
+        }
+        catch
+        {
+        }
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
@@ -433,9 +424,12 @@ public sealed partial class MainWindow : Window
         if (App.Host.Exiting)
             return;
         App.Host.Exiting = true;
-        _exitTrace.Run("SaveSettings", App.Host.SaveSettings);
-        _exitTrace.Run("StopSession", CrashGuard.StopSession);
-        _exitTrace.Run("Kill", KillProcess);
+        _ = Task.Run(() =>
+        {
+            _exitTrace.Run("SaveSettings", App.Host.SaveSettings);
+            _exitTrace.Run("StopSession", CrashGuard.StopSession);
+            _exitTrace.Run("Kill", KillProcess);
+        });
     }
 
     private static void KillProcess()
@@ -447,18 +441,6 @@ public sealed partial class MainWindow : Window
         catch
         {
         }
-    }
-
-    private sealed class TrayCommand(Action action) : ICommand
-    {
-        public event EventHandler? CanExecuteChanged
-        {
-            add { }
-            remove { }
-        }
-
-        public bool CanExecute(object? parameter) => true;
-        public void Execute(object? parameter) => action();
     }
 
     private void QueueResumeRendering()
@@ -474,13 +456,6 @@ public sealed partial class MainWindow : Window
             if (IsWindowInteractive())
                 ResumeRendering?.Invoke();
         });
-    }
-
-    private MenuFlyoutItem Item(string text, Action action)
-    {
-        var item = new MenuFlyoutItem { Text = text };
-        item.Click += (_, _) => RunOnUi(action);
-        return item;
     }
 
     private void RunOnUi(Action action)
@@ -892,6 +867,9 @@ public sealed partial class MainWindow : Window
     }
 
     [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hwnd, int command);
+
+    [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out PointNative point);
 
     [DllImport("user32.dll")]
@@ -940,17 +918,4 @@ public sealed partial class MainWindow : Window
         public int Bottom;
     }
 
-    private void TrySetTrayIcon()
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "App.ico");
-        if (!File.Exists(path))
-            return;
-        try
-        {
-            _tray.IconSource = new BitmapImage(new Uri(path));
-        }
-        catch
-        {
-        }
-    }
 }

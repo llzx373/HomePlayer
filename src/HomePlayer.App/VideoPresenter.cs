@@ -111,6 +111,8 @@ public sealed class VideoPresenter : IDisposable
     public void Suspend()
     {
         _suspended = true;
+        if (_drawing)
+            return;
         ReleaseSwapChain();
     }
 
@@ -434,6 +436,8 @@ public sealed class VideoPresenter : IDisposable
         {
             frame?.ReturnBuffer();
             _drawing = false;
+            if (_suspended)
+                ReleaseSwapChain();
             var newer = false;
             lock (_gate)
                 newer = _pending != null;
