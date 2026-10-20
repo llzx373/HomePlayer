@@ -9,6 +9,8 @@ public sealed class PlaybackController : IDisposable
     private readonly Func<string?> _audioOutput;
     private IPlaybackEngine? _engine;
     private string? _reason;
+    private string? _playingPath;
+    private readonly Dictionary<string, TimeSpan> _resumeByPath = new(StringComparer.OrdinalIgnoreCase);
     private int _token;
     private double _volume = 0.8;
     private double _rate = 1.0;
@@ -72,7 +74,22 @@ public sealed class PlaybackController : IDisposable
 
     public Task PlayPathsAsync(IReadOnlyList<string> paths, int start, bool forceFfmpeg = false)
     {
+        RememberPosition();
+        var playing = _playingPath;
         Playlist.Replace(paths, start);
+        var next = Playlist.Current?.Path;
+        if (!forceFfmpeg
+            && IsOpen
+            && next != null
+            && string.Equals(playing, next, StringComparison.OrdinalIgnoreCase)
+            && PlaybackResume.Position(Position, Duration) != null)
+        {
+            if (_engine is { IsPlaying: false })
+                _engine.Play();
+            Notify();
+            return Task.CompletedTask;
+        }
+
         return PlayCurrentAsync(forceFfmpeg);
     }
 
@@ -114,7 +131,9 @@ public sealed class PlaybackController : IDisposable
 
     public void Stop()
     {
+        RememberPosition();
         _token++;
+        _playingPath = null;
         DisposeEngine();
         ClearVideoSize();
         Status = "已停止";
@@ -206,6 +225,8 @@ public sealed class PlaybackController : IDisposable
 
     private async Task PlayCurrentAsync(bool forceFfmpeg)
     {
+        RememberPosition();
+        _playingPath = null;
         _rate = 1.0;
         Notify();
         var token = ++_token;
@@ -254,6 +275,7 @@ public sealed class PlaybackController : IDisposable
 
                     _engine = engine;
                     _reason = reason;
+                    _playingPath = item.Path;
                     PlaybackActiveChanged?.Invoke(true);
                     try
                     {
@@ -261,6 +283,7 @@ public sealed class PlaybackController : IDisposable
                         engine.SetVolume(_volume);
                         engine.SetMuted(_muted);
                         engine.SetRate(_rate);
+                        ApplyResume(engine, item.Path);
                         engine.Play();
                         Status = Math.Abs(engine.Rate - _rate) > 0.01
                             ? "当前滤镜不支持倍速"
@@ -407,6 +430,8 @@ public sealed class PlaybackController : IDisposable
 
             if (next == Playlist.CurrentIndex)
             {
+                if (_playingPath != null)
+                    _resumeByPath.Remove(_playingPath);
                 _engine?.Seek(TimeSpan.Zero);
                 _engine?.Play();
                 return;
@@ -421,6 +446,7 @@ public sealed class PlaybackController : IDisposable
     {
         var engine = _engine;
         _engine = null;
+        _playingPath = null;
         if (engine == null)
             return;
         Detach(engine);
@@ -466,6 +492,27 @@ public sealed class PlaybackController : IDisposable
         _videoWidth = 0;
         _videoHeight = 0;
         VideoSizeChanged?.Invoke();
+    }
+
+    private void RememberPosition()
+    {
+        if (_engine == null || string.IsNullOrEmpty(_playingPath))
+            return;
+        var resume = PlaybackResume.Position(_engine.Position, _engine.Duration);
+        if (resume == null)
+            _resumeByPath.Remove(_playingPath);
+        else
+            _resumeByPath[_playingPath] = resume.Value;
+    }
+
+    private void ApplyResume(IPlaybackEngine engine, string path)
+    {
+        if (!_resumeByPath.TryGetValue(path, out var saved))
+            return;
+        var resume = PlaybackResume.Position(saved, engine.Duration);
+        if (resume == null)
+            return;
+        engine.Seek(resume.Value);
     }
 
     private void Notify() => Changed?.Invoke();

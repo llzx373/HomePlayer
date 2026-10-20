@@ -42,6 +42,8 @@ public sealed partial class PlayerPage : Page
     private bool _anchorPlaying;
     private TimeSpan _anchor;
     private long _anchorStamp;
+    private string? _progressMedia;
+    private bool _progressOpen;
     private bool _updatingVolume;
     private bool _playlistSync;
     private bool _alwaysOnTopSync;
@@ -382,6 +384,7 @@ public sealed partial class PlayerPage : Page
 
     private double ShownSeconds()
     {
+        SyncProgressMedia();
         var duration = Playback.Duration;
         var engine = Playback.Position;
         var playing = Playback.IsPlaying;
@@ -407,6 +410,23 @@ public sealed partial class PlayerPage : Page
         }
 
         return Predicted().TotalSeconds;
+    }
+
+    private void SyncProgressMedia()
+    {
+        var path = Playback.Playlist.Current?.Path;
+        var open = Playback.IsOpen;
+        if (!string.Equals(path, _progressMedia, StringComparison.OrdinalIgnoreCase))
+        {
+            _progressMedia = path;
+            _haveAnchor = false;
+        }
+
+        if (open == _progressOpen)
+            return;
+        _progressOpen = open;
+        if (open)
+            _haveAnchor = false;
     }
 
     private void Anchor(TimeSpan position, bool playing)

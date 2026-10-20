@@ -137,10 +137,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     public void Seek(TimeSpan position)
     {
+        var seconds = Math.Max(0, position.TotalSeconds);
         Interlocked.Increment(ref _audioEpoch);
         Interlocked.Exchange(ref _audioWritten, 0);
         lock (_gate)
-            _seekSeconds = Math.Max(0, position.TotalSeconds);
+            _seekSeconds = seconds;
+        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
         if (!IsPlaying)
             _resume.Set();
     }
