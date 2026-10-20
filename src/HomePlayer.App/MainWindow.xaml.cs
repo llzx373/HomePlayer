@@ -7,6 +7,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
@@ -36,6 +37,7 @@ public sealed partial class MainWindow : Window
     private const int SmCyDoubleClk = 37;
     private const uint TpmReturnCmd = 0x0100;
     private const uint TpmRightButton = 0x0002;
+    private const int SwRestore = 9;
 
     public bool IsFullscreen => _fullscreen;
 
@@ -60,6 +62,8 @@ public sealed partial class MainWindow : Window
         Root.SizeChanged += (_, _) => UpdateCaptionRegions();
         OverlayTitleBar.SizeChanged += (_, _) => UpdateCaptionRegions();
         OverlayDrag.SizeChanged += (_, _) => UpdateCaptionRegions();
+        AppTitleBar.SizeChanged += (_, _) => BindLibraryTitleBar();
+        LibraryDrag.SizeChanged += (_, _) => BindLibraryTitleBar();
         _overlayTimer.Tick += (_, _) =>
         {
             UpdateOverlay();
@@ -71,7 +75,8 @@ public sealed partial class MainWindow : Window
         _tray = new TaskbarIcon
         {
             ToolTipText = "HomePlayer",
-            ContextMenuMode = ContextMenuMode.SecondWindow
+            ContextMenuMode = ContextMenuMode.SecondWindow,
+            NoLeftClickDelay = true
         };
         TrySetTrayIcon();
         var menu = new MenuFlyout();
@@ -81,8 +86,12 @@ public sealed partial class MainWindow : Window
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("退出", () => _ = ExitAsync()));
         _tray.ContextFlyout = menu;
-        _tray.LeftClickCommand = new TrayCommand(ShowFromTray);
+        var show = new TrayCommand(ShowFromTray);
+        _tray.LeftClickCommand = show;
+        _tray.DoubleClickCommand = show;
         _tray.ForceCreate();
+        _tray.IsHitTestVisible = false;
+        Grid.SetRowSpan(_tray, 2);
         Root.Children.Add(_tray);
     }
 
@@ -97,6 +106,9 @@ public sealed partial class MainWindow : Window
             presenter.Restore();
         AppWindow.Show();
         Activate();
+        var hwnd = WindowNative.GetWindowHandle(this);
+        ShowWindow(hwnd, SwRestore);
+        SetForegroundWindow(hwnd);
     }
 
     public async Task PlayIncomingFilesAsync(IReadOnlyList<string> paths, bool replace)
@@ -141,17 +153,36 @@ public sealed partial class MainWindow : Window
     public void ApplyTitleBar()
     {
         var player = _pageTag == "player";
-        ExtendsContentIntoTitleBar = false;
-        if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
-            && (!presenter.HasBorder || presenter.HasTitleBar == player))
-            presenter.SetBorderAndTitleBar(true, !player);
+        if (player)
+        {
+            SetTitleBar(null);
+            ExtendsContentIntoTitleBar = false;
+            AppTitleBar.Visibility = Visibility.Collapsed;
+            if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
+                && (!presenter.HasBorder || presenter.HasTitleBar))
+                presenter.SetBorderAndTitleBar(true, false);
+            ClearNonClientRegions();
+        }
+        else
+        {
+            AppTitleBar.Visibility = Visibility.Visible;
+            ExtendsContentIntoTitleBar = true;
+            if (!_fullscreen && AppWindow.Presenter is OverlappedPresenter presenter
+                && (!presenter.HasBorder || !presenter.HasTitleBar))
+                presenter.SetBorderAndTitleBar(true, true);
+            ClearOverlayCaption();
+            BindLibraryTitleBar();
+        }
         ApplyNavPane();
+        SyncChromeButtons();
         if (_fullscreen || !player)
         {
             _overlayHoldUntil = DateTime.MinValue;
             SetOverlayOpen(false);
             OverlayTick?.Invoke();
             UpdateOverlayTimer();
+            if (!player)
+                BindLibraryTitleBar();
             return;
         }
 
@@ -223,6 +254,7 @@ public sealed partial class MainWindow : Window
             UpdateOverlayTimer();
             UpdateMaximizeIcon();
             UpdateCaptionRegions();
+            BindLibraryTitleBar();
             return;
         }
 
@@ -242,6 +274,7 @@ public sealed partial class MainWindow : Window
         UpdateOverlayTimer();
         UpdateMaximizeIcon();
         UpdateCaptionRegions();
+        BindLibraryTitleBar();
     }
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -260,12 +293,11 @@ public sealed partial class MainWindow : Window
 
     private void ApplyNavPane()
     {
-        var player = _pageTag == "player";
-        Nav.IsPaneVisible = !player && !_fullscreen;
-        Nav.IsPaneOpen = !player && !_fullscreen;
-        Nav.IsPaneToggleButtonVisible = !player && !_fullscreen;
+        Nav.IsPaneVisible = false;
+        Nav.IsPaneOpen = false;
+        Nav.IsPaneToggleButtonVisible = false;
         Nav.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
-        Nav.Margin = player && !_fullscreen && !WantsPlayerOverlay()
+        Nav.Margin = _pageTag == "player" && !_fullscreen && !WantsPlayerOverlay()
             ? new Thickness(0, PlayerTitleHeight, 0, 0)
             : new Thickness(0);
     }
@@ -420,8 +452,44 @@ public sealed partial class MainWindow : Window
     private void TitleLibrary_Click(object sender, RoutedEventArgs e) =>
         Nav.SelectedItem = Nav.MenuItems[0];
 
+    private void TitlePlayer_Click(object sender, RoutedEventArgs e) => SelectPlayer();
+
     private void TitleSettings_Click(object sender, RoutedEventArgs e) =>
         Nav.SelectedItem = Nav.FooterMenuItems[0];
+
+    private void SyncChromeButtons()
+    {
+        SetChromeSelected(BarLibraryButton, _pageTag == "library", false);
+        SetChromeSelected(BarPlayerButton, _pageTag == "player", false);
+        SetChromeSelected(BarSettingsButton, _pageTag == "settings", false);
+        SetChromeSelected(TitleLibraryButton, _pageTag == "library", true);
+        SetChromeSelected(TitlePlayerButton, _pageTag == "player", true);
+        SetChromeSelected(TitleSettingsButton, _pageTag == "settings", true);
+    }
+
+    private static void SetChromeSelected(Button button, bool selected, bool overlay)
+    {
+        if (selected)
+        {
+            if (overlay)
+            {
+                button.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 255, 255, 255));
+                return;
+            }
+
+            if (Application.Current.Resources.TryGetValue("SubtleFillColorSecondaryBrush", out var resource)
+                && resource is Brush brush)
+            {
+                button.Background = brush;
+                return;
+            }
+
+            button.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x22, 0, 0, 0));
+            return;
+        }
+
+        button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
 
     private void SetOverlayOpen(bool open)
     {
@@ -452,7 +520,7 @@ public sealed partial class MainWindow : Window
 
     private void OverlayDrag_Pressed(object sender, PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(OverlayDrag);
+        var point = e.GetCurrentPoint((UIElement)sender);
         var hwnd = WindowNative.GetWindowHandle(this);
         if (point.Properties.IsRightButtonPressed)
         {
@@ -511,6 +579,61 @@ public sealed partial class MainWindow : Window
         UpdateCaptionRegions();
     }
 
+    private void BindLibraryTitleBar()
+    {
+        if (_pageTag == "player" || _fullscreen || AppTitleBar.Visibility != Visibility.Visible)
+            return;
+        if (LibraryDrag.ActualWidth < 2 || LibraryDrag.ActualHeight < 2)
+        {
+            AppTitleBar.UpdateLayout();
+            if (LibraryDrag.ActualWidth < 2 || LibraryDrag.ActualHeight < 2)
+                return;
+        }
+
+        SetTitleBar(LibraryDrag);
+        UpdateCaptionPad();
+    }
+
+    private void UpdateCaptionPad()
+    {
+        var scale = Root.XamlRoot?.RasterizationScale ?? 1;
+        if (scale < 0.1)
+            scale = 1;
+        var inset = AppWindow.TitleBar.RightInset;
+        if (inset <= 0)
+            inset = (int)Math.Round(138 * scale);
+        CaptionPad.Width = new GridLength(inset / scale);
+    }
+
+    private void ClearOverlayCaption()
+    {
+        if (!_captionSourceHooked)
+            return;
+        try
+        {
+            InputNonClientPointerSource.GetForWindowId(AppWindow.Id)
+                .ClearRegionRects(NonClientRegionKind.Caption);
+        }
+        catch
+        {
+        }
+    }
+
+    private void ClearNonClientRegions()
+    {
+        if (!_captionSourceHooked)
+            return;
+        try
+        {
+            var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            source.ClearRegionRects(NonClientRegionKind.Caption);
+            source.ClearRegionRects(NonClientRegionKind.Passthrough);
+        }
+        catch
+        {
+        }
+    }
+
     private void UpdateCaptionRegions()
     {
         if (!_captionSourceHooked)
@@ -518,21 +641,27 @@ public sealed partial class MainWindow : Window
         try
         {
             var source = InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-            if (!_overlayVisible || _fullscreen || OverlayTitleBar.Visibility != Visibility.Visible
-                || OverlayDrag.ActualWidth < 1 || OverlayTitleBar.ActualHeight < 1)
+            if (WantsCustomTitleBar() && _overlayVisible && !_fullscreen
+                && OverlayTitleBar.Visibility == Visibility.Visible
+                && OverlayDrag.ActualWidth >= 1 && OverlayTitleBar.ActualHeight >= 1)
+            {
+                var rect = ToPixelRect(OverlayDrag);
+                if (rect.Width >= 1 && rect.Height >= 1)
+                {
+                    source.SetRegionRects(NonClientRegionKind.Caption, [rect]);
+                    source.ClearRegionRects(NonClientRegionKind.Passthrough);
+                    return;
+                }
+            }
+
+            if (WantsCustomTitleBar() || _pageTag == "player")
             {
                 source.ClearRegionRects(NonClientRegionKind.Caption);
+                source.ClearRegionRects(NonClientRegionKind.Passthrough);
                 return;
             }
 
-            var rect = ToPixelRect(OverlayDrag);
-            if (rect.Width < 1 || rect.Height < 1)
-            {
-                source.ClearRegionRects(NonClientRegionKind.Caption);
-                return;
-            }
-
-            source.SetRegionRects(NonClientRegionKind.Caption, [rect]);
+            source.ClearRegionRects(NonClientRegionKind.Passthrough);
         }
         catch
         {
@@ -667,6 +796,12 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
 
     [DllImport("user32.dll")]
     private static extern uint GetDoubleClickTime();
