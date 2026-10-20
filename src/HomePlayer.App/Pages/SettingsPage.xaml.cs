@@ -49,6 +49,7 @@ public sealed partial class SettingsPage : Page
         Loaded += (_, _) =>
         {
             _loading = true;
+            TraySwitch.IsOn = App.Host.Settings.CloseToTray;
             AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
             LoadAudioDevices(App.Host.Settings.AudioOutputId);
             _loading = false;
@@ -88,6 +89,14 @@ public sealed partial class SettingsPage : Page
         App.Host.SaveSettings();
         App.Window.ApplyTitleBar();
         App.Window.SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
+    }
+
+    private void Tray_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.CloseToTray = TraySwitch.IsOn;
+        App.Host.SaveSettings();
     }
 
     private void TitleBar_Changed(object sender, SelectionChangedEventArgs e)

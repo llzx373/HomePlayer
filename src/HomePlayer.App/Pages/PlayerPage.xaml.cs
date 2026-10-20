@@ -62,13 +62,17 @@ public sealed partial class PlayerPage : Page
     private int _subtitleScan;
     private int _subtitleEmbed;
     private string? _shownSubtitle;
+    private bool _windowEvents;
 
     public PlayerPage()
     {
         InitializeComponent();
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
-        _presenter = new VideoPresenter(VideoSurface);
+        _presenter = new VideoPresenter(VideoSurface)
+        {
+            CanRender = () => App.Window.IsInteractive
+        };
         VideoHost.SizeChanged += (_, _) =>
         {
             _presenter.Refresh();
@@ -78,15 +82,6 @@ public sealed partial class PlayerPage : Page
         playback.FrameArrived += OnVideoFrame;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
-        App.Window.FullscreenChanged += () => DispatcherQueue.TryEnqueue(() =>
-        {
-            ApplyChromeLayout();
-            SyncFullscreenButton();
-            SyncAlwaysOnTopButton();
-        });
-        App.Window.OverlayTick += UpdateControlsOverlay;
-        App.Window.SuspendRendering += _presenter.Suspend;
-        App.Window.ResumeRendering += _presenter.Resume;
         PlaylistView.ItemsSource = playback.Playlist.Items;
         RepeatBox.SelectedIndex = (int)playback.Playlist.Repeat;
         UpdateRepeatButton();
@@ -116,6 +111,7 @@ public sealed partial class PlayerPage : Page
         };
         Loaded += (_, _) =>
         {
+            AttachWindowEvents();
             ApplyHotkeys();
             SetPlaylist(PlaylistButton.IsChecked == true);
             ApplyChromeLayout();
@@ -138,6 +134,7 @@ public sealed partial class PlayerPage : Page
         {
             _timer.Stop();
             _presenter.Suspend();
+            DetachWindowEvents();
         };
     }
 
@@ -145,13 +142,53 @@ public sealed partial class PlayerPage : Page
     {
         _timer.Stop();
         _presenter.Suspend();
+        DetachWindowEvents();
         base.OnNavigatedFrom(e);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        AttachWindowEvents();
         _presenter.Resume();
+    }
+
+    private void AttachWindowEvents()
+    {
+        if (_windowEvents)
+            return;
+        App.Window.FullscreenChanged += OnWindowFullscreenChanged;
+        App.Window.OverlayTick += UpdateControlsOverlay;
+        App.Window.SuspendRendering += _presenter.Suspend;
+        App.Window.ResumeRendering += OnWindowResumeRendering;
+        _windowEvents = true;
+    }
+
+    private void DetachWindowEvents()
+    {
+        if (!_windowEvents)
+            return;
+        App.Window.FullscreenChanged -= OnWindowFullscreenChanged;
+        App.Window.OverlayTick -= UpdateControlsOverlay;
+        App.Window.SuspendRendering -= _presenter.Suspend;
+        App.Window.ResumeRendering -= OnWindowResumeRendering;
+        _windowEvents = false;
+    }
+
+    private void OnWindowFullscreenChanged()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyChromeLayout();
+            SyncFullscreenButton();
+            SyncAlwaysOnTopButton();
+        });
+    }
+
+    private void OnWindowResumeRendering()
+    {
+        if (IsLoaded)
+            _presenter.Resume();
     }
 
     private PlaybackController Playback => App.Host.Playback;
@@ -1043,7 +1080,7 @@ public sealed partial class PlayerPage : Page
     {
         if (!force && !App.Host.Settings.FitWindow)
             return;
-        if (!IsLoaded || Visibility != Visibility.Visible)
+        if (!IsLoaded || Visibility != Visibility.Visible || !App.Window.IsInteractive)
             return;
         App.Window.FitToVideo(Playback.VideoWidth, Playback.VideoHeight, VideoHost);
     }

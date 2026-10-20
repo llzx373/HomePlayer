@@ -77,6 +77,8 @@ public sealed class VideoPresenter : IDisposable
     private long _lastRecoveryMs;
     private volatile bool _suspended = true;
 
+    public Func<bool>? CanRender { get; set; }
+
     public VideoPresenter(SwapChainPanel panel)
     {
         _panel = panel;
@@ -100,7 +102,7 @@ public sealed class VideoPresenter : IDisposable
 
     public void Refresh()
     {
-        if (_suspended || !_panel.IsLoaded)
+        if (!CanDraw())
             return;
         TryResize();
         PostDraw();
@@ -114,7 +116,7 @@ public sealed class VideoPresenter : IDisposable
 
     public void Resume()
     {
-        if (!_panel.IsLoaded)
+        if (!_panel.IsLoaded || CanRender?.Invoke() == false)
             return;
         var wasSuspended = _suspended;
         _suspended = false;
@@ -123,6 +125,9 @@ public sealed class VideoPresenter : IDisposable
         TryResize();
         PostDraw();
     }
+
+    private bool CanDraw() =>
+        !_suspended && _panel.IsLoaded && CanRender?.Invoke() != false;
 
     public bool HasLastFrame
     {
@@ -260,7 +265,7 @@ public sealed class VideoPresenter : IDisposable
 
     private void Resize()
     {
-        if (_resizing || _suspended || !_panel.IsLoaded)
+        if (_resizing || !CanDraw())
             return;
         var scaleX = ScaleOf(_panel.CompositionScaleX);
         var scaleY = ScaleOf(_panel.CompositionScaleY);
@@ -355,7 +360,7 @@ public sealed class VideoPresenter : IDisposable
     private unsafe void Draw()
     {
         Interlocked.Exchange(ref _posted, 0);
-        if (_suspended || !_panel.IsLoaded)
+        if (!CanDraw())
             return;
         if (_drawing)
         {
@@ -477,7 +482,7 @@ public sealed class VideoPresenter : IDisposable
         try
         {
             ReleaseDeviceResources();
-            if (_suspended || !_panel.IsLoaded)
+            if (!CanDraw())
                 return;
             Resize();
             PostDraw();

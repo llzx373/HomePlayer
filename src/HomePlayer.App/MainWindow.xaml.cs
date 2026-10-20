@@ -31,8 +31,8 @@ public sealed partial class MainWindow : Window
     private int _captionGrabY;
     private bool _captionArmed;
     private bool _captionMoved;
+    private bool _chromeReady;
     private const double PlayerTitleHeight = 40;
-    private const uint WmSysCommand = 0x0112;
     private const int SmCxDoubleClk = 36;
     private const int SmCyDoubleClk = 37;
     private const int SmCxDrag = 68;
@@ -41,9 +41,10 @@ public sealed partial class MainWindow : Window
     private const long WsSysMenu = 0x00080000;
     private const uint TpmReturnCmd = 0x0100;
     private const uint TpmRightButton = 0x0002;
-    private const int SwRestore = 9;
 
     public bool IsFullscreen => _fullscreen;
+
+    public bool IsInteractive => IsWindowInteractive();
 
     public event Action? FullscreenChanged;
     public event Action? OverlayTick;
@@ -84,7 +85,7 @@ public sealed partial class MainWindow : Window
         _tray = new TaskbarIcon
         {
             ToolTipText = "HomePlayer",
-            ContextMenuMode = ContextMenuMode.SecondWindow,
+            ContextMenuMode = ContextMenuMode.PopupMenu,
             NoLeftClickDelay = true
         };
         TrySetTrayIcon();
@@ -110,14 +111,22 @@ public sealed partial class MainWindow : Window
     {
         if (!TryRunOnUi(ShowFromTray))
             return;
-        if (AppWindow.Presenter is OverlappedPresenter presenter
-            && presenter.State == OverlappedPresenterState.Minimized)
-            presenter.Restore();
-        AppWindow.Show();
-        Activate();
-        var hwnd = WindowNative.GetWindowHandle(this);
-        ShowWindow(hwnd, SwRestore);
-        SetForegroundWindow(hwnd);
+        try
+        {
+            if (!AppWindow.IsVisible)
+                AppWindow.Show();
+            if (AppWindow.Presenter is OverlappedPresenter presenter
+                && presenter.State == OverlappedPresenterState.Minimized)
+                presenter.Restore();
+            ApplyWindowChrome();
+            Activate();
+            SetForegroundWindow(WindowNative.GetWindowHandle(this));
+            QueueResumeRendering();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write(CrashLog.UnhandledKind, ex.ToString());
+        }
     }
 
     public async Task PlayIncomingFilesAsync(IReadOnlyList<string> paths, bool replace)
@@ -141,10 +150,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdateOverlayTimer()
     {
-        var minimized = AppWindow.Presenter is OverlappedPresenter presenter
-            && presenter.State == OverlappedPresenterState.Minimized;
         var needs = AppWindow.IsVisible
-            && !minimized
+            && !IsMinimized()
             && _pageTag == "player"
             && (_fullscreen || App.Host.Settings.TitleBar == TitleBarMode.Overlay);
         if (needs)
@@ -194,7 +201,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyWindowChrome()
     {
-        if (_fullscreen)
+        if (_fullscreen || !CanUseWindowChrome())
             return;
         try
         {
@@ -202,11 +209,26 @@ public sealed partial class MainWindow : Window
                 && (!presenter.HasBorder || presenter.HasTitleBar))
                 presenter.SetBorderAndTitleBar(true, false);
             EnsureSystemMenu();
+            _chromeReady = true;
         }
         catch
         {
         }
     }
+
+    private bool CanUseWindowChrome()
+    {
+        if (IsMinimized())
+            return false;
+        return !_chromeReady || AppWindow.IsVisible;
+    }
+
+    private bool IsMinimized() =>
+        AppWindow.Presenter is OverlappedPresenter presenter
+        && presenter.State == OverlappedPresenterState.Minimized;
+
+    private bool IsWindowInteractive() =>
+        WindowSafety.IsInteractive(AppWindow.IsVisible, IsMinimized());
 
     private void EnsureSystemMenu()
     {
@@ -239,15 +261,21 @@ public sealed partial class MainWindow : Window
             return;
         if (enabled && AppWindow.Presenter is OverlappedPresenter overlapped)
             _alwaysOnTop = overlapped.IsAlwaysOnTop;
-        _fullscreen = enabled;
         SetOverlayOpen(false);
-        AppWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
-        ApplyNavPane();
-        if (!enabled)
+        if (enabled)
         {
+            _fullscreen = true;
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        }
+        else
+        {
+            AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+            _fullscreen = false;
             ApplyTitleBar();
             SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         }
+
+        ApplyNavPane();
         UpdateOverlayTimer();
         FullscreenChanged?.Invoke();
     }
@@ -258,49 +286,50 @@ public sealed partial class MainWindow : Window
         if (App.Host.Exiting)
             return;
         args.Cancel = true;
-        if (App.Host.Settings.CloseToTray)
+        var queue = Root.DispatcherQueue;
+        if (queue == null)
+            RequestClose();
+        else
+            queue.TryEnqueue(RequestClose);
+    }
+
+    private void RequestClose()
+    {
+        if (App.Host.Exiting)
+            return;
+        if (WindowSafety.ShouldHideToTray(App.Host.Settings.CloseToTray, App.Host.Exiting))
         {
-            SuspendRendering?.Invoke();
-            AppWindow.Hide();
+            HideToTray();
             return;
         }
 
         _ = ExitAsync();
     }
 
+    private void HideToTray()
+    {
+        App.Host.Playback.Pause();
+        SuspendRendering?.Invoke();
+        if (AppWindow.IsVisible)
+            AppWindow.Hide();
+    }
+
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (args.DidVisibilityChange)
-        {
-            if (!sender.IsVisible)
-            {
-                App.Host.Playback.Pause();
-                SuspendRendering?.Invoke();
-            }
-            else
-            {
-                QueueResumeRendering();
-            }
-
-            UpdateOverlayTimer();
-            UpdateMaximizeIcon();
+        if (!args.DidVisibilityChange && !args.DidPresenterChange)
             return;
-        }
 
-        if (args.DidPresenterChange && sender.Presenter is OverlappedPresenter presenter)
+        if (!IsWindowInteractive())
         {
-            if (presenter.State == OverlappedPresenterState.Minimized)
-            {
-                App.Host.Playback.Pause();
-                SuspendRendering?.Invoke();
-            }
-            else
-            {
-                QueueResumeRendering();
-            }
+            App.Host.Playback.Pause();
+            SuspendRendering?.Invoke();
+        }
+        else if (WindowSafety.ShouldApplyChrome(args.DidVisibilityChange, args.DidPresenterChange, true))
+        {
+            ApplyWindowChrome();
+            QueueResumeRendering();
         }
 
-        ApplyWindowChrome();
         UpdateOverlayTimer();
         UpdateMaximizeIcon();
     }
@@ -370,7 +399,8 @@ public sealed partial class MainWindow : Window
             CrashGuard.StopSession();
             try
             {
-                Close();
+                if (WindowSafety.ShouldCloseWindow(AppWindow.IsVisible, IsMinimized()))
+                    Close();
             }
             catch
             {
@@ -394,14 +424,17 @@ public sealed partial class MainWindow : Window
 
     private void QueueResumeRendering()
     {
+        if (!IsWindowInteractive())
+            return;
         var queue = Root.DispatcherQueue;
         if (queue == null)
-        {
-            ResumeRendering?.Invoke();
             return;
-        }
 
-        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ResumeRendering?.Invoke());
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (IsWindowInteractive())
+                ResumeRendering?.Invoke();
+        });
     }
 
     private MenuFlyoutItem Item(string text, Action action)
@@ -420,7 +453,9 @@ public sealed partial class MainWindow : Window
     private bool TryRunOnUi(Action action)
     {
         var queue = Root.DispatcherQueue;
-        if (queue == null || queue.HasThreadAccess)
+        if (queue == null)
+            return false;
+        if (queue.HasThreadAccess)
             return true;
         queue.TryEnqueue(() => action());
         return false;
@@ -710,11 +745,34 @@ public sealed partial class MainWindow : Window
         if (menu == IntPtr.Zero || !GetCursorPos(out var pos))
             return;
         var command = TrackPopupMenu(menu, TpmReturnCmd | TpmRightButton, pos.X, pos.Y, 0, hwnd, IntPtr.Zero);
-        if (command != 0)
-            SendMessage(hwnd, WmSysCommand, (IntPtr)command, IntPtr.Zero);
+        if (command == 0)
+            return;
+        switch (WindowSafety.ActionForSysCommand(command))
+        {
+            case SysCommandAction.Close:
+                RequestClose();
+                return;
+            case SysCommandAction.Minimize:
+                MinimizeWindow();
+                return;
+            case SysCommandAction.Maximize:
+                if (AppWindow.Presenter is OverlappedPresenter maximize
+                    && maximize.State != OverlappedPresenterState.Maximized)
+                    maximize.Maximize();
+                UpdateMaximizeIcon();
+                return;
+            case SysCommandAction.Restore:
+                if (AppWindow.Presenter is OverlappedPresenter restore
+                    && restore.State != OverlappedPresenterState.Restored)
+                    restore.Restore();
+                UpdateMaximizeIcon();
+                return;
+        }
     }
 
-    private void Minimize_Click(object sender, RoutedEventArgs e)
+    private void Minimize_Click(object sender, RoutedEventArgs e) => MinimizeWindow();
+
+    private void MinimizeWindow()
     {
         App.Host.Playback.Pause();
         SuspendRendering?.Invoke();
@@ -724,7 +782,7 @@ public sealed partial class MainWindow : Window
 
     private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Close_Click(object sender, RoutedEventArgs e) => RequestClose();
 
     private void ToggleMaximize()
     {
@@ -739,11 +797,10 @@ public sealed partial class MainWindow : Window
 
     public void FitToVideo(int videoWidth, int videoHeight, FrameworkElement area)
     {
-        if (_fullscreen || videoWidth < 1 || videoHeight < 1 || area.ActualWidth < 2 || area.ActualHeight < 2)
+        if (!WindowSafety.CanFitWindow(AppWindow.IsVisible, IsMinimized(), _fullscreen)
+            || videoWidth < 1 || videoHeight < 1 || area.ActualWidth < 2 || area.ActualHeight < 2)
             return;
         if (AppWindow.Presenter is not OverlappedPresenter presenter)
-            return;
-        if (presenter.State == OverlappedPresenterState.Minimized)
             return;
         if (presenter.State == OverlappedPresenterState.Maximized)
         {
@@ -808,13 +865,7 @@ public sealed partial class MainWindow : Window
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
 
     [DllImport("user32.dll")]
     private static extern uint GetDoubleClickTime();

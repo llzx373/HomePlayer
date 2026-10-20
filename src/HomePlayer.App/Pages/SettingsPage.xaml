@@ -8,7 +8,13 @@
         <StackPanel Padding="24" Spacing="16" MaxWidth="760">
             <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
             <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机" />
-            <ToggleSwitch x:Name="TraySwitch" Header="关闭窗口时留在系统托盘" />
+            <ToggleSwitch
+                x:Name="TraySwitch"
+                Header="点击关闭时"
+                OnContent="最小化到系统托盘"
+                OffContent="退出程序"
+                Toggled="Tray_Toggled" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="打开后，点标题栏关闭只把窗口藏到托盘，程序继续运行。托盘图标左键打开窗口，右键可以真正退出。关掉此项后，关闭窗口会退出程序。" />
             <ComboBox x:Name="TitleBarBox" Header="窗口外观" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="经典标题栏" />
                 <ComboBoxItem Content="无边框播放" />
