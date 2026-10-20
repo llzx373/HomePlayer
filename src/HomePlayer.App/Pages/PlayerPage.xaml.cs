@@ -101,6 +101,8 @@ public sealed partial class PlayerPage : Page
         };
         _timer.Tick += (_, _) =>
         {
+            if (App.Host.Exiting)
+                return;
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
             SyncSnapshotButton();
             UpdateSubtitleOverlay();

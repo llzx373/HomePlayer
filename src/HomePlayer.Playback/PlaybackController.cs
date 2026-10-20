@@ -143,7 +143,6 @@ public sealed class PlaybackController : IDisposable
 
     public Task ShutdownAsync()
     {
-        RememberPosition();
         _token++;
         _playingPath = null;
         var engine = TakeEngine();

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Input;
 using HomePlayer.Core;
 using H.NotifyIcon;
@@ -33,6 +34,7 @@ public sealed partial class MainWindow : Window
     private bool _captionArmed;
     private bool _captionMoved;
     private bool _chromeReady;
+    private int _exitWatchdog;
     private const double PlayerTitleHeight = 40;
     private const int SmCxDoubleClk = 36;
     private const int SmCyDoubleClk = 37;
@@ -391,21 +393,38 @@ public sealed partial class MainWindow : Window
 
     private void QueueExit()
     {
-        var queue = Root.DispatcherQueue;
+        ArmExitWatchdog();
+        var queue = Root?.DispatcherQueue;
         if (queue == null)
         {
             BeginExit();
             return;
         }
 
-        if (queue.HasThreadAccess)
-            BeginExit();
-        else
-            queue.TryEnqueue(BeginExit);
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, BeginExit);
+    }
+
+    private void ArmExitWatchdog()
+    {
+        if (Interlocked.Exchange(ref _exitWatchdog, 1) != 0)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(AppExit.FallbackKillMs);
+            }
+            catch
+            {
+            }
+
+            KillProcess();
+        });
     }
 
     private void BeginExit()
     {
+        ArmExitWatchdog();
         if (App.Host.Exiting)
             return;
         App.Host.Exiting = true;
@@ -425,22 +444,53 @@ public sealed partial class MainWindow : Window
         {
         }
 
-        SuspendRendering?.Invoke();
-        if (AppWindow.IsVisible)
-            AppWindow.Hide();
-
-        var shutdown = App.Host.Playback.ShutdownAsync();
         try
         {
-            _tray.Dispose();
+            SuspendRendering?.Invoke();
         }
         catch
         {
         }
 
-        var queue = Root.DispatcherQueue;
+        try
+        {
+            if (AppWindow.IsVisible)
+                AppWindow.Hide();
+        }
+        catch
+        {
+        }
+
+        Task shutdown;
+        try
+        {
+            shutdown = App.Host.Playback.ShutdownAsync();
+        }
+        catch
+        {
+            shutdown = Task.CompletedTask;
+        }
+
+        var tray = _tray;
+        var queue = Root?.DispatcherQueue;
         _ = Task.Run(async () =>
         {
+            try
+            {
+                await Task.Delay(50);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                tray.Dispose();
+            }
+            catch
+            {
+            }
+
             try
             {
                 await Task.WhenAny(shutdown, Task.Delay(AppExit.GraphShutdownTimeoutMs));
@@ -450,20 +500,7 @@ public sealed partial class MainWindow : Window
             }
 
             if (queue == null || !queue.TryEnqueue(FinishExit))
-            {
                 KillProcess();
-                return;
-            }
-
-            try
-            {
-                await Task.Delay(AppExit.FallbackKillMs - AppExit.GraphShutdownTimeoutMs);
-            }
-            catch
-            {
-            }
-
-            KillProcess();
         });
     }
 

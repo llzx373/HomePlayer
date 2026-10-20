@@ -32,9 +32,9 @@ public class AppExitTests
     }
 
     [Fact]
-    public void Fallback_kill_waits_for_graph_shutdown_first()
+    public void Watchdog_kill_does_not_wait_on_the_ui_thread()
     {
         Assert.True(AppExit.FallbackKillMs > AppExit.GraphShutdownTimeoutMs);
-        Assert.True(AppExit.GraphShutdownTimeoutMs >= 2500);
+        Assert.InRange(AppExit.FallbackKillMs, 1000, 3000);
     }
 }

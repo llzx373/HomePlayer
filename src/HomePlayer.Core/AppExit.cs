@@ -2,8 +2,8 @@ namespace HomePlayer.Core;
 
 public static class AppExit
 {
-    public const int GraphShutdownTimeoutMs = 3000;
-    public const int FallbackKillMs = 4000;
+    public const int GraphShutdownTimeoutMs = 1000;
+    public const int FallbackKillMs = 2000;
 
     public static AppExitPlan Plan(bool closeToTray, bool exiting)
     {
