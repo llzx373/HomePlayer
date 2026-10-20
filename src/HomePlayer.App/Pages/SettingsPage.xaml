@@ -126,6 +126,15 @@
                 <Button Content="清除缩略图缓存" Click="Clear_Click" />
             </StackPanel>
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="分离器、视频解码和音频解码都失败时，会改用程序自带的 FFmpeg。缩略图始终用 FFmpeg 抽取。同一套 LAV 的 x86 和 x64 使用相同的 CLSID，64 位进程只会加载 x64 那一份。" />
+
+            <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="未处理异常、后台任务异常、FFmpeg / DirectShow 原生崩溃，以及上次没有正常退出，都会写到本机数据目录。从源码运行和安装后的软件共用这一份，随时可以在这里查看。" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="查看崩溃日志" Click="ViewCrashes_Click" />
+                <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
+                <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </Page>

@@ -307,6 +307,7 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            CrashGuard.StopSession();
             try
             {
                 Close();

@@ -53,10 +53,13 @@ public sealed partial class SettingsPage : Page
             LoadAudioDevices(App.Host.Settings.AudioOutputId);
             _loading = false;
             _ = RefreshCacheTextAsync();
+            RefreshCrashSummary();
         };
         _loading = false;
         CacheText.Text = "缓存占用计算中…";
+        CrashSummary.Text = "正在读取崩溃日志…";
         _ = RefreshCacheTextAsync();
+        RefreshCrashSummary();
     }
 
     private async Task RefreshCacheTextAsync()
@@ -361,6 +364,137 @@ public sealed partial class SettingsPage : Page
 
     private static bool Down(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    private void RefreshCrashSummary()
+    {
+        try
+        {
+            var items = CrashLog.List();
+            if (items.Count == 0)
+            {
+                CrashSummary.Text = "还没有崩溃记录。";
+                return;
+            }
+
+            CrashSummary.Text = $"共 {items.Count} 条，最近：{items[0].Title}";
+        }
+        catch (Exception)
+        {
+            CrashSummary.Text = "崩溃日志读取失败。";
+        }
+    }
+
+    private async void ViewCrashes_Click(object sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<CrashLogItem> items;
+        try
+        {
+            items = CrashLog.List();
+        }
+        catch (Exception ex)
+        {
+            await Message("读取崩溃日志失败：" + ex.Message);
+            return;
+        }
+
+        if (items.Count == 0)
+        {
+            await Message("还没有崩溃记录。");
+            RefreshCrashSummary();
+            return;
+        }
+
+        var list = new ListView
+        {
+            ItemsSource = items,
+            SelectedIndex = 0,
+            MaxHeight = 180,
+            DisplayMemberPath = nameof(CrashLogItem.Title)
+        };
+        var hint = new TextBlock { Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+        var body = new TextBox
+        {
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 260,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+            FontSize = 12
+        };
+        void ShowSelected()
+        {
+            if (list.SelectedItem is not CrashLogItem item)
+            {
+                hint.Text = "";
+                body.Text = "";
+                return;
+            }
+
+            hint.Text = item.Detail;
+            try
+            {
+                body.Text = CrashLog.Read(item.Path);
+            }
+            catch (Exception ex)
+            {
+                body.Text = "无法读取：" + ex.Message;
+            }
+        }
+
+        list.SelectionChanged += (_, _) => ShowSelected();
+        ShowSelected();
+        var panel = new StackPanel { Spacing = 8, Width = 520 };
+        panel.Children.Add(hint);
+        panel.Children.Add(list);
+        panel.Children.Add(body);
+        await new ContentDialog
+        {
+            Title = "崩溃日志",
+            Content = new ScrollViewer { Content = panel, HorizontalScrollMode = ScrollMode.Disabled },
+            CloseButtonText = "关闭",
+            XamlRoot = XamlRoot
+        }.ShowAsync();
+        RefreshCrashSummary();
+    }
+
+    private async void OpenCrashes_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            AppPaths.Ensure();
+            await Launcher.LaunchFolderPathAsync(CrashLog.DirectoryPath);
+        }
+        catch (Exception ex)
+        {
+            await Message("无法打开日志文件夹：" + ex.Message);
+        }
+    }
+
+    private async void ClearCrashes_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "清除崩溃日志",
+            Content = "删除本机保存的全部崩溃记录和转储文件。不影响媒体库和设置。",
+            PrimaryButtonText = "清除",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        try
+        {
+            CrashLog.Clear();
+            RefreshCrashSummary();
+        }
+        catch (Exception ex)
+        {
+            await Message("清除失败：" + ex.Message);
+        }
+    }
+
+    private async Task Message(string text) =>
+        await new ContentDialog { Title = "HomePlayer", Content = text, CloseButtonText = "确定", XamlRoot = XamlRoot }.ShowAsync();
 
     private async void Clear_Click(object sender, RoutedEventArgs e)
     {

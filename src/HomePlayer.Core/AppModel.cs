@@ -154,12 +154,16 @@ public static class AppPaths
     public static string Cache => Path.Combine(Root, "cache");
     public static string Thumbs => Path.Combine(Cache, "thumbs");
     public static string Posters => Path.Combine(Cache, "posters");
+    public static string Crashes => Path.Combine(Root, "crashes");
+    public static string SessionLock => Path.Combine(Root, "session.lock");
+    public static string LegacyCrashLog => Path.Combine(Root, "crash.log");
 
     public static void Ensure()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(Thumbs);
         Directory.CreateDirectory(Posters);
+        Directory.CreateDirectory(Crashes);
     }
 }
 

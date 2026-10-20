@@ -65,11 +65,15 @@ Name: "assoc\webm"; Description: "WebM (.webm)"; Flags: checkedonce
 Name: "assoc\rmvb"; Description: "RealMedia (.rmvb)"; Flags: checkedonce
 Name: "context"; Description: "右键菜单添加「用 HomePlayer 播放」（即使不是默认播放器）"; GroupDescription: "文件关联:"; Flags: checkedonce
 
+[Dirs]
+Name: "{localappdata}\HomePlayer\crashes"; Flags: uninsneveruninstall
+
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; IconFilename: "{app}\{#AppExe}"
+Name: "{group}\崩溃日志"; Filename: "{localappdata}\HomePlayer\crashes"
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
@@ -135,6 +139,6 @@ begin
     Exit;
   if UninstallSilent then
     Exit;
-  if MsgBox('是否同时删除媒体库、设置和缓存？' + #13#10 + '选「否」则保留，下次安装后仍可使用。', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+  if MsgBox('是否同时删除媒体库、设置、缓存和崩溃日志？' + #13#10 + '选「否」则保留，下次安装后仍可使用。', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
     DelTree(ExpandConstant('{localappdata}\HomePlayer'), True, True, True);
 end;

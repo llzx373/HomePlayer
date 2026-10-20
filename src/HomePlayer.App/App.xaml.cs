@@ -18,18 +18,7 @@ public partial class App : Application
 
     public App()
     {
-        UnhandledException += (_, e) =>
-        {
-            try
-            {
-                var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
-                Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "crash.log"), DateTime.Now.ToString("O") + Environment.NewLine + e.Exception + Environment.NewLine + Environment.NewLine);
-            }
-            catch
-            {
-            }
-        };
+        CrashGuard.Attach(this);
         InitializeComponent();
     }
 
@@ -39,6 +28,7 @@ public partial class App : Application
             return;
 
         AppPaths.Ensure();
+        CrashGuard.StartSession();
         var queue = DispatcherQueue.GetForCurrentThread();
         Host = AppHost.Create(action => queue.TryEnqueue(() => action()));
         _window = new MainWindow();
