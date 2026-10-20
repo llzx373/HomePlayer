@@ -188,10 +188,21 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
     internal bool WaitUntil(long streamTime)
     {
-        if (_state != 2 || streamTime <= 0)
-            return true;
-        while (_state == 2 && !_pin.Flushing)
+        while (true)
         {
+            var decision = RendererGate.Decide(_state, _pin.Flushing, streamTime);
+            if (decision == true)
+                return true;
+            if (decision == false)
+                return false;
+
+            if (_state == RendererGate.Paused)
+            {
+                if (_pin.FlushGate.Wait(20))
+                    return false;
+                continue;
+            }
+
             var delay = TimeSpan.FromTicks(streamTime) - CurrentStreamTime();
             if (delay <= TimeSpan.FromMilliseconds(2))
             {
@@ -208,8 +219,6 @@ public sealed class BgraSinkFilter : IBaseFilterSink
             if (_pin.FlushGate.Wait(slice))
                 return false;
         }
-
-        return _state == 2 && !_pin.Flushing;
     }
 
     private TimeSpan CurrentStreamTime()

@@ -121,7 +121,6 @@ public sealed partial class MainWindow : Window
             ApplyWindowChrome();
             Activate();
             SetForegroundWindow(WindowNative.GetWindowHandle(this));
-            App.Host.Playback.RestoreFromBackground();
             QueueResumeRendering();
         }
         catch (Exception ex)
@@ -283,7 +282,7 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        App.Host.Playback.HoldForBackground();
+        App.Host.Playback.Pause();
         if (App.Host.Exiting)
             return;
         args.Cancel = true;
@@ -309,7 +308,7 @@ public sealed partial class MainWindow : Window
 
     private void HideToTray()
     {
-        App.Host.Playback.HoldForBackground();
+        App.Host.Playback.Pause();
         SuspendRendering?.Invoke();
         if (AppWindow.IsVisible)
             AppWindow.Hide();
@@ -322,13 +321,12 @@ public sealed partial class MainWindow : Window
 
         if (!IsWindowInteractive())
         {
-            App.Host.Playback.HoldForBackground();
+            App.Host.Playback.Pause();
             SuspendRendering?.Invoke();
         }
         else if (WindowSafety.ShouldApplyChrome(args.DidVisibilityChange, args.DidPresenterChange, true))
         {
             ApplyWindowChrome();
-            App.Host.Playback.RestoreFromBackground();
             QueueResumeRendering();
         }
 
@@ -771,7 +769,7 @@ public sealed partial class MainWindow : Window
 
     private void MinimizeWindow()
     {
-        App.Host.Playback.HoldForBackground();
+        App.Host.Playback.Pause();
         SuspendRendering?.Invoke();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Minimize();

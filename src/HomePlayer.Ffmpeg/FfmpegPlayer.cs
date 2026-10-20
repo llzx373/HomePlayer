@@ -124,6 +124,11 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     {
         _isPlaying = false;
         _resume.Reset();
+        lock (_gate)
+        {
+            if (_clock.IsRunning)
+                _clock.Stop();
+        }
     }
 
     public void StepFrame()
