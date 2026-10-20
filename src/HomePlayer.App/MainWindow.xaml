@@ -18,10 +18,80 @@
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="CornerRadius" Value="0" />
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="AllowFocusOnInteraction" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="RootGrid" Background="{TemplateBinding Background}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Content="{TemplateBinding Content}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <Style x:Key="CaptionCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
-                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="RootGrid" Background="{TemplateBinding Background}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background" Value="#C42B1C" />
+                                                <Setter Target="Content.Foreground" Value="White" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Background" Value="#B4161B" />
+                                                <Setter Target="Content.Foreground" Value="White" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootGrid.Opacity" Value="0.4" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    x:Name="Content"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Content="{TemplateBinding Content}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
             <Style x:Key="TitleNavButtonStyle" TargetType="Button">
                 <Setter Property="MinWidth" Value="0" />
@@ -79,7 +149,11 @@
                 x:Name="LibraryDrag"
                 Grid.Column="1"
                 Background="Transparent"
-                PointerPressed="CaptionDrag_Pressed">
+                PointerPressed="CaptionDrag_Pressed"
+                PointerMoved="CaptionDrag_Moved"
+                PointerReleased="CaptionDrag_Released"
+                PointerCanceled="CaptionDrag_Canceled"
+                PointerCaptureLost="CaptionDrag_CaptureLost">
                 <TextBlock
                     Text="HomePlayer"
                     Margin="8,0,12,0"
@@ -99,27 +173,21 @@
                 <Button
                     AutomationProperties.Name="最小化"
                     ToolTipService.ToolTip="最小化"
-                    Style="{StaticResource TitleIconButtonStyle}"
-                    Height="40"
-                    Width="46"
+                    Style="{StaticResource CaptionButtonStyle}"
                     Click="Minimize_Click">
                     <FontIcon Glyph="&#xE921;" FontSize="12" />
                 </Button>
                 <Button
                     AutomationProperties.Name="最大化"
                     ToolTipService.ToolTip="最大化"
-                    Style="{StaticResource TitleIconButtonStyle}"
-                    Height="40"
-                    Width="46"
+                    Style="{StaticResource CaptionButtonStyle}"
                     Click="Maximize_Click">
                     <FontIcon x:Name="BarMaximizeIcon" Glyph="&#xE922;" FontSize="12" />
                 </Button>
                 <Button
                     AutomationProperties.Name="关闭"
                     ToolTipService.ToolTip="关闭"
-                    Style="{StaticResource TitleIconButtonStyle}"
-                    Height="40"
-                    Width="46"
+                    Style="{StaticResource CaptionCloseButtonStyle}"
                     Click="Close_Click">
                     <FontIcon Glyph="&#xE8BB;" FontSize="12" />
                 </Button>
@@ -208,7 +276,11 @@
                 x:Name="OverlayDrag"
                 Grid.Column="1"
                 Background="Transparent"
-                PointerPressed="CaptionDrag_Pressed">
+                PointerPressed="CaptionDrag_Pressed"
+                PointerMoved="CaptionDrag_Moved"
+                PointerReleased="CaptionDrag_Released"
+                PointerCanceled="CaptionDrag_Canceled"
+                PointerCaptureLost="CaptionDrag_CaptureLost">
                 <TextBlock
                     Text="HomePlayer"
                     Margin="8,0,12,0"

@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
 using WinRT.Interop;
 
 namespace HomePlayer;
@@ -26,12 +27,18 @@ public sealed partial class MainWindow : Window
     private uint _captionClickTime;
     private int _captionClickX;
     private int _captionClickY;
+    private int _captionGrabX;
+    private int _captionGrabY;
+    private bool _captionArmed;
+    private bool _captionMoved;
     private const double PlayerTitleHeight = 40;
-    private const uint WmNcLButtonDown = 0x00A1;
     private const uint WmSysCommand = 0x0112;
-    private const int HtCaption = 2;
     private const int SmCxDoubleClk = 36;
     private const int SmCyDoubleClk = 37;
+    private const int SmCxDrag = 68;
+    private const int SmCyDrag = 69;
+    private const int GwlStyle = -16;
+    private const long WsSysMenu = 0x00080000;
     private const uint TpmReturnCmd = 0x0100;
     private const uint TpmRightButton = 0x0002;
     private const int SwRestore = 9;
@@ -57,6 +64,7 @@ public sealed partial class MainWindow : Window
             height));
         AppWindow.Closing += OnClosing;
         AppWindow.Changed += OnAppWindowChanged;
+        Activated += OnWindowActivated;
         _overlayTimer.Tick += (_, _) =>
         {
             try
@@ -193,10 +201,26 @@ public sealed partial class MainWindow : Window
             if (AppWindow.Presenter is OverlappedPresenter presenter
                 && (!presenter.HasBorder || presenter.HasTitleBar))
                 presenter.SetBorderAndTitleBar(true, false);
+            EnsureSystemMenu();
         }
         catch
         {
         }
+    }
+
+    private void EnsureSystemMenu()
+    {
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var style = GetWindowLongPtr(hwnd, GwlStyle).ToInt64();
+        if ((style & WsSysMenu) == 0)
+            SetWindowLongPtr(hwnd, GwlStyle, (IntPtr)(style | WsSysMenu));
+    }
+
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs e)
+    {
+        var opacity = e.WindowActivationState == WindowActivationState.Deactivated ? 0.55 : 1;
+        AppTitleBar.Opacity = opacity;
+        OverlayTitleBar.Opacity = opacity;
     }
 
     private bool WantsPlayerOverlay() =>
@@ -426,6 +450,12 @@ public sealed partial class MainWindow : Window
 
     private void UpdateOverlay()
     {
+        if (_captionArmed)
+        {
+            SetOverlayOpen(true);
+            return;
+        }
+
         if (!WantsCustomTitleBar() || !AppWindow.IsVisible)
         {
             SetOverlayOpen(false);
@@ -519,10 +549,12 @@ public sealed partial class MainWindow : Window
 
     private void CaptionDrag_Pressed(object sender, PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint((UIElement)sender);
+        var element = (UIElement)sender;
+        var point = e.GetCurrentPoint(element);
         var hwnd = WindowNative.GetWindowHandle(this);
         if (point.Properties.IsRightButtonPressed)
         {
+            EndCaptionGesture(element, e.Pointer);
             ShowSystemMenu(hwnd);
             e.Handled = true;
             return;
@@ -536,23 +568,134 @@ public sealed partial class MainWindow : Window
             return;
 
         var now = (uint)Environment.TickCount;
-        var isDouble = now - _captionClickTime <= GetDoubleClickTime()
+        var isDouble = _captionClickTime != 0
+            && !_captionMoved
+            && now - _captionClickTime <= GetDoubleClickTime()
             && Math.Abs(pos.X - _captionClickX) <= GetSystemMetrics(SmCxDoubleClk) / 2
             && Math.Abs(pos.Y - _captionClickY) <= GetSystemMetrics(SmCyDoubleClk) / 2;
         if (isDouble)
         {
+            EndCaptionGesture(element, e.Pointer);
             _captionClickTime = 0;
             ToggleMaximize();
             e.Handled = true;
             return;
         }
 
-        _captionClickTime = now;
+        _captionArmed = true;
+        _captionMoved = false;
         _captionClickX = pos.X;
         _captionClickY = pos.Y;
-        ReleaseCapture();
-        SendMessage(hwnd, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
+        _captionGrabX = pos.X - AppWindow.Position.X;
+        _captionGrabY = pos.Y - AppWindow.Position.Y;
+        element.CapturePointer(e.Pointer);
         e.Handled = true;
+    }
+
+    private void CaptionDrag_Moved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_captionArmed)
+            return;
+        if (!e.GetCurrentPoint((UIElement)sender).Properties.IsLeftButtonPressed)
+            return;
+        if (!GetCursorPos(out var pos))
+            return;
+        if (!_captionMoved)
+        {
+            if (Math.Abs(pos.X - _captionClickX) <= GetSystemMetrics(SmCxDrag)
+                && Math.Abs(pos.Y - _captionClickY) <= GetSystemMetrics(SmCyDrag))
+                return;
+            _captionMoved = true;
+            _captionClickTime = 0;
+            RestoreCaptionDrag(pos);
+        }
+
+        HoldOverlayForCaption();
+        MoveCaptionTo(pos);
+        e.Handled = true;
+    }
+
+    private void CaptionDrag_Released(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_captionArmed)
+            return;
+        if (_captionMoved)
+            SnapCaptionFromCursor();
+        else if (GetCursorPos(out var pos))
+        {
+            _captionClickTime = (uint)Environment.TickCount;
+            _captionClickX = pos.X;
+            _captionClickY = pos.Y;
+        }
+
+        EndCaptionGesture((UIElement)sender, e.Pointer);
+        e.Handled = true;
+    }
+
+    private void CaptionDrag_Canceled(object sender, PointerRoutedEventArgs e) =>
+        EndCaptionGesture((UIElement)sender, e.Pointer);
+
+    private void CaptionDrag_CaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _captionArmed = false;
+    }
+
+    private void RestoreCaptionDrag(PointNative pos)
+    {
+        if (AppWindow.Presenter is not OverlappedPresenter presenter
+            || presenter.State != OverlappedPresenterState.Maximized)
+            return;
+        var width = Math.Max(1, AppWindow.Size.Width);
+        var ratio = Math.Clamp((pos.X - AppWindow.Position.X) / (double)width, 0.08, 0.92);
+        presenter.Restore();
+        _captionGrabX = (int)Math.Round(AppWindow.Size.Width * ratio);
+        _captionGrabY = Math.Clamp(_captionGrabY, 0, (int)PlayerTitleHeight);
+        UpdateMaximizeIcon();
+    }
+
+    private void MoveCaptionTo(PointNative pos)
+    {
+        try
+        {
+            AppWindow.Move(new PointInt32(pos.X - _captionGrabX, pos.Y - _captionGrabY));
+        }
+        catch
+        {
+        }
+    }
+
+    private void SnapCaptionFromCursor()
+    {
+        if (!GetCursorPos(out var pos) || AppWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        if (pos.Y <= work.Y + 8)
+        {
+            presenter.Maximize();
+            UpdateMaximizeIcon();
+            return;
+        }
+
+        if (pos.X <= work.X + 8)
+        {
+            AppWindow.MoveAndResize(new RectInt32(work.X, work.Y, work.Width / 2, work.Height));
+            return;
+        }
+
+        if (pos.X >= work.X + work.Width - 8)
+            AppWindow.MoveAndResize(new RectInt32(work.X + work.Width / 2, work.Y, work.Width - work.Width / 2, work.Height));
+    }
+
+    private void EndCaptionGesture(UIElement element, Pointer pointer)
+    {
+        _captionArmed = false;
+        try
+        {
+            element.ReleasePointerCapture(pointer);
+        }
+        catch
+        {
+        }
     }
 
     private void HoldOverlayForCaption()
@@ -665,9 +808,6 @@ public sealed partial class MainWindow : Window
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
-    private static extern bool ReleaseCapture();
-
-    [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -687,6 +827,12 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern int TrackPopupMenu(IntPtr menu, uint flags, int x, int y, int reserved, IntPtr hwnd, IntPtr rect);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PointNative
