@@ -75,7 +75,7 @@ public sealed class AppHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         SaveSettings();
-        Playback.Dispose();
+        await Playback.ShutdownAsync();
         await Libraries.DisposeAsync();
         Repository.Dispose();
     }

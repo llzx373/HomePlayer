@@ -64,14 +64,29 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _isPlaying = true;
     });
 
-    public void Pause() => _sta.Invoke(() =>
+    public void Pause()
     {
-        _control?.Pause();
-        _control?.GetState(400, out _);
         _isPlaying = false;
-    });
+        _sta.Post(() =>
+        {
+            try
+            {
+                _control?.Pause();
+                _control?.GetState(400, out _);
+            }
+            catch
+            {
+            }
 
-    public void Stop() => _sta.Invoke(StopGraph);
+            _isPlaying = false;
+        });
+    }
+
+    public void Stop()
+    {
+        _isPlaying = false;
+        _sta.Post(StopGraph);
+    }
 
     public void Seek(TimeSpan position) => _sta.Invoke(() =>
     {

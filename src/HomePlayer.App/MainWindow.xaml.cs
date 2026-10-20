@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
 using HomePlayer.Core;
@@ -94,7 +95,7 @@ public sealed partial class MainWindow : Window
         menu.Items.Add(Item("播放/暂停", () => App.Host.Playback.TogglePlay()));
         menu.Items.Add(Item("下一个", () => _ = App.Host.Playback.NextAsync()));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("退出", () => _ = ExitAsync()));
+        menu.Items.Add(Item("退出", QueueExit));
         _tray.ContextFlyout = menu;
         var show = new TrayCommand(ShowFromTray);
         _tray.LeftClickCommand = show;
@@ -109,10 +110,12 @@ public sealed partial class MainWindow : Window
 
     public void ShowFromTray()
     {
-        if (!TryRunOnUi(ShowFromTray))
-            return;
         try
         {
+            if (App.Host.Exiting)
+                return;
+            if (!TryRunOnUi(ShowFromTray))
+                return;
             if (!AppWindow.IsVisible)
                 AppWindow.Show();
             if (AppWindow.Presenter is OverlappedPresenter presenter
@@ -282,34 +285,37 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        App.Host.Playback.Pause();
-        if (App.Host.Exiting)
+        var plan = AppExit.Plan(App.Host.Settings.CloseToTray, App.Host.Exiting);
+        if (plan.Action == AppExitAction.AllowClose)
             return;
         args.Cancel = true;
         var queue = Root.DispatcherQueue;
         if (queue == null)
-            RequestClose();
+            ApplyExitPlan(plan);
         else
-            queue.TryEnqueue(RequestClose);
+            queue.TryEnqueue(() => ApplyExitPlan(plan));
     }
 
-    private void RequestClose()
-    {
-        if (App.Host.Exiting)
-            return;
-        if (WindowSafety.ShouldHideToTray(App.Host.Settings.CloseToTray, App.Host.Exiting))
-        {
-            HideToTray();
-            return;
-        }
+    private void RequestClose() =>
+        ApplyExitPlan(AppExit.Plan(App.Host.Settings.CloseToTray, App.Host.Exiting));
 
-        _ = ExitAsync();
+    private void ApplyExitPlan(AppExitPlan plan)
+    {
+        switch (plan.Action)
+        {
+            case AppExitAction.HideToTray:
+                HideToTray();
+                return;
+            case AppExitAction.BeginExit:
+                BeginExit();
+                return;
+        }
     }
 
     private void HideToTray()
     {
-        App.Host.Playback.Pause();
         SuspendRendering?.Invoke();
+        App.Host.Playback.Pause();
         if (AppWindow.IsVisible)
             AppWindow.Hide();
     }
@@ -321,8 +327,8 @@ public sealed partial class MainWindow : Window
 
         if (!IsWindowInteractive())
         {
-            App.Host.Playback.Pause();
             SuspendRendering?.Invoke();
+            App.Host.Playback.Pause();
         }
         else if (WindowSafety.ShouldApplyChrome(args.DidVisibilityChange, args.DidPresenterChange, true))
         {
@@ -383,26 +389,123 @@ public sealed partial class MainWindow : Window
         e.AcceptedOperation = DataPackageOperation.Copy;
     }
 
-    private Task ExitAsync()
+    private void QueueExit()
+    {
+        var queue = Root.DispatcherQueue;
+        if (queue == null)
+        {
+            BeginExit();
+            return;
+        }
+
+        if (queue.HasThreadAccess)
+            BeginExit();
+        else
+            queue.TryEnqueue(BeginExit);
+    }
+
+    private void BeginExit()
     {
         if (App.Host.Exiting)
-            return Task.CompletedTask;
+            return;
         App.Host.Exiting = true;
-        App.Host.Playback.Pause();
-        App.Host.SaveSettings();
-        CrashGuard.StopSession();
-        _ = Task.Run(() =>
+        try
+        {
+            App.Host.SaveSettings();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            CrashGuard.StopSession();
+        }
+        catch
+        {
+        }
+
+        SuspendRendering?.Invoke();
+        if (AppWindow.IsVisible)
+            AppWindow.Hide();
+
+        var shutdown = App.Host.Playback.ShutdownAsync();
+        try
+        {
+            _tray.Dispose();
+        }
+        catch
+        {
+        }
+
+        var queue = Root.DispatcherQueue;
+        _ = Task.Run(async () =>
         {
             try
             {
-                _tray.Dispose();
+                await Task.WhenAny(shutdown, Task.Delay(AppExit.GraphShutdownTimeoutMs));
             }
             catch
             {
             }
+
+            if (queue == null || !queue.TryEnqueue(FinishExit))
+            {
+                KillProcess();
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(AppExit.FallbackKillMs - AppExit.GraphShutdownTimeoutMs);
+            }
+            catch
+            {
+            }
+
+            KillProcess();
         });
-        Environment.Exit(0);
-        return Task.CompletedTask;
+    }
+
+    private void FinishExit()
+    {
+        try
+        {
+            AppWindow.Closing -= OnClosing;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            Close();
+        }
+        catch
+        {
+            KillProcess();
+            return;
+        }
+
+        try
+        {
+            Environment.Exit(0);
+        }
+        catch
+        {
+            KillProcess();
+        }
+    }
+
+    private static void KillProcess()
+    {
+        try
+        {
+            Process.GetCurrentProcess().Kill();
+        }
+        catch
+        {
+        }
     }
 
     private sealed class TrayCommand(Action action) : ICommand
@@ -447,7 +550,7 @@ public sealed partial class MainWindow : Window
 
     private bool TryRunOnUi(Action action)
     {
-        var queue = Root.DispatcherQueue;
+        var queue = Root?.DispatcherQueue;
         if (queue == null)
             return false;
         if (queue.HasThreadAccess)
@@ -769,8 +872,8 @@ public sealed partial class MainWindow : Window
 
     private void MinimizeWindow()
     {
-        App.Host.Playback.Pause();
         SuspendRendering?.Invoke();
+        App.Host.Playback.Pause();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Minimize();
     }

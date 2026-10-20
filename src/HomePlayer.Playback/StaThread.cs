@@ -28,6 +28,31 @@ internal sealed class StaThread : IDisposable
             throw new ObjectDisposedException(nameof(StaThread));
     }
 
+    public void Post(Action action)
+    {
+        if (_stop)
+            return;
+        try
+        {
+            _queue.Add(() =>
+            {
+                try
+                {
+                    action();
+                }
+                catch
+                {
+                }
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        NativeMethods.PostThreadMessageW(_threadId, NativeMethods.WmApp, 0, 0);
+    }
+
     public bool TryInvoke(Action action, int timeoutMs)
     {
         if (_stop)

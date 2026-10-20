@@ -141,6 +141,20 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
+    public Task ShutdownAsync()
+    {
+        RememberPosition();
+        _token++;
+        _playingPath = null;
+        var engine = TakeEngine();
+        ClearVideoSize();
+        Status = "已停止";
+        EngineLabel = "未播放";
+        if (engine == null)
+            return Task.CompletedTask;
+        return Task.Run(() => Discard(engine));
+    }
+
     public Task NextAsync() => MoveAsync(Playlist.NextIndex(false));
 
     public Task PreviousAsync()
@@ -444,20 +458,22 @@ public sealed class PlaybackController : IDisposable
 
     private void DisposeEngine()
     {
+        var engine = TakeEngine();
+        if (engine == null)
+            return;
+        _ = Task.Run(() => Discard(engine));
+    }
+
+    private IPlaybackEngine? TakeEngine()
+    {
         var engine = _engine;
         _engine = null;
         _playingPath = null;
         if (engine == null)
-            return;
+            return null;
         Detach(engine);
         PlaybackActiveChanged?.Invoke(false);
-        try
-        {
-            engine.Dispose();
-        }
-        catch
-        {
-        }
+        return engine;
     }
 
     private void CaptureVideoSize(IPlaybackEngine engine)
