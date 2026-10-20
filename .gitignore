@@ -4,6 +4,8 @@ obj/
 *.user
 TestResults/
 third_party/*.zip
+third_party/ffmpeg/*.dll
+third_party/ffmpeg-extract/
 dist/
 artifacts/
 .commandcode/

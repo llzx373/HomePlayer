@@ -5,6 +5,9 @@ $csproj = Join-Path $root "src\HomePlayer.App\HomePlayer.App.csproj"
 $distExe = Join-Path $root "dist\HomePlayer.exe"
 $version = "0.1.0"
 
+Write-Host "Restoring FFmpeg shared libraries ..."
+& (Join-Path $root "scripts\Restore-Ffmpeg.ps1")
+
 Write-Host "Publishing HomePlayer to dist\ ..."
 dotnet publish $csproj -c Release -p:PublishProfile=FolderProfile
 if ($LASTEXITCODE -ne 0) {
