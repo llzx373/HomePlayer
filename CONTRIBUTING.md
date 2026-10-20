@@ -18,15 +18,20 @@ dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release
 
 `scripts/Restore-Ffmpeg.ps1` 会按固定版本和 SHA256 下载 FFmpeg LGPL 共享库到 `third_party/ffmpeg`。这些 DLL 不进 Git。直接编译应用时，如果 DLL 不存在，工程也会自动调用该脚本。
 
+## 版本号
+
+版本写在 `Directory.Build.props` 的 `<Version>`。
+
+- **正式版**：`主.次.修订`，例如 `0.1.0`。GitHub 上打对应的 `v0.1.0` 标签后，Release 流水线会测试、编安装包并发布。
+- **开发版**：下一个正式版号加上序号 `n`，例如 `0.1.1-1`、`0.1.1-2`。开发版不打正式标签、不发 GitHub Release。
+
 ## 安装包
 
 ```powershell
-pwsh -File installer/build.ps1 -Version 0.1.0
+pwsh -File installer/build.ps1
 ```
 
-生成文件：`artifacts/HomePlayer-Setup-0.1.0.exe`。
-
-GitHub 上打 `v主.次.修订` 标签后，Release 流水线会测试、编安装包并发布。
+不传 `-Version` 时用当前开发版本。生成文件：`artifacts/HomePlayer-Setup-<版本>.exe`。
 
 ## 许可
 

@@ -41,10 +41,10 @@ dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release
 本地打安装包（需 [Inno Setup 6](https://jrsoftware.org/isdl.php)）：
 
 ```powershell
-pwsh -File installer/build.ps1 -Version 0.1.0
+pwsh -File installer/build.ps1
 ```
 
-更完整的说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。公开发布由 GitHub Actions 在 `v*` 标签上构建并上传安装包。
+不传 `-Version` 时用 `Directory.Build.props` 里的当前版本。更完整的说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。公开发布由 GitHub Actions 在 `v主.次.修订` 标签上构建并上传安装包。
 
 ## 协议
 

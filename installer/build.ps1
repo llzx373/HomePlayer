@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.1.0"
+    [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +8,17 @@ $root = Split-Path -Parent $PSScriptRoot
 $iss = Join-Path $PSScriptRoot "HomePlayer.iss"
 $csproj = Join-Path $root "src\HomePlayer.App\HomePlayer.App.csproj"
 $distExe = Join-Path $root "dist\HomePlayer.exe"
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $propsPath = Join-Path $root "Directory.Build.props"
+    [xml]$props = Get-Content -Path $propsPath
+    $Version = @($props.Project.PropertyGroup | ForEach-Object { $_.Version }) |
+        Where-Object { $_ } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        throw "Directory.Build.props 里没有 <Version>。"
+    }
+}
 
 Write-Host "Restoring FFmpeg shared libraries ..."
 & (Join-Path $root "scripts\Restore-Ffmpeg.ps1")
