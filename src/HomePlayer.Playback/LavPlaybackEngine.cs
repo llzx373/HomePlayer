@@ -545,66 +545,44 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             var fetchedSlot = Marshal.AllocCoTaskMem(sizeof(int));
             try
             {
-            while (enumerator.Next(1, filterSlot, fetchedSlot) == Hr.Ok && Marshal.ReadInt32(fetchedSlot) == 1)
-            {
-                var filterPointer = Marshal.ReadIntPtr(filterSlot);
-                var unknown = Marshal.GetObjectForIUnknown(filterPointer);
-                Marshal.Release(filterPointer);
-                var filter = (IBaseFilter)unknown;
-                var filterName = "未命名滤镜";
-                if (filter.QueryFilterInfo(out var info) >= 0)
+                while (enumerator.Next(1, filterSlot, fetchedSlot) == Hr.Ok && Marshal.ReadInt32(fetchedSlot) == 1)
                 {
-                    filterName = string.IsNullOrWhiteSpace(info.Name) ? "未命名滤镜" : info.Name;
-                    filters.Add(filterName);
-                    if (info.Graph != 0)
-                        Marshal.Release(info.Graph);
-                }
-
-                if (!Hr.Failed(filter.EnumPins(out var pins)))
-                {
-                    var pinSlot = Marshal.AllocCoTaskMem(IntPtr.Size);
+                    var filterPointer = Marshal.ReadIntPtr(filterSlot);
+                    object unknown;
                     try
                     {
-                    while (pins.Next(1, pinSlot, fetchedSlot) == Hr.Ok && Marshal.ReadInt32(fetchedSlot) == 1)
-                    {
-                        var pinPointer = Marshal.ReadIntPtr(pinSlot);
-                        var pin = (IPin)Marshal.GetObjectForIUnknown(pinPointer);
-                        Marshal.Release(pinPointer);
-                        if (pin.QueryDirection(out var direction) < 0 || direction != 1)
-                        {
-                            Marshal.ReleaseComObject(pin);
-                            continue;
-                        }
-                        if (pin.ConnectionMediaType(out var type) < 0)
-                        {
-                            Marshal.ReleaseComObject(pin);
-                            continue;
-                        }
-                        connections.Add($"{filterName} → {PeerName(pin)}：{Describe(type, ref videoCodec, ref pixel, ref width, ref height, ref fps, ref audioCodec, ref channels, ref sampleRate)}");
-                        Free(type);
-                        Marshal.ReleaseComObject(pin);
-                    }
+                        unknown = Marshal.GetObjectForIUnknown(filterPointer);
                     }
                     finally
                     {
-                        Marshal.FreeCoTaskMem(pinSlot);
-                        Marshal.ReleaseComObject(pins);
+                        Marshal.Release(filterPointer);
+                    }
+
+                    try
+                    {
+                        CollectFilter(unknown, filters, connections, fetchedSlot, ref videoCodec, ref pixel, ref width, ref height, ref fps, ref audioCodec, ref channels, ref sampleRate);
+                    }
+                    catch
+                    {
                     }
                 }
-
-                Marshal.ReleaseComObject(filter);
-            }
             }
             finally
             {
                 Marshal.FreeCoTaskMem(filterSlot);
                 Marshal.FreeCoTaskMem(fetchedSlot);
-                Marshal.ReleaseComObject(enumerator);
+                ReleaseCom(enumerator);
             }
         }
 
         filters.Reverse();
-        ReadStreams(audioTracks, subtitles);
+        try
+        {
+            ReadStreams(audioTracks, subtitles);
+        }
+        catch
+        {
+        }
         var decoder = QueryString(_video, filter =>
         {
             if (filter is not ILavVideoStatus status)
@@ -657,8 +635,133 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             SubtitleTracks = subtitles,
             Filters = filters,
             Connections = connections,
-            Usage = BuildUsage()
+            Usage = TryBuildUsage()
         };
+    }
+
+    private static void CollectFilter(
+        object unknown,
+        List<string> filters,
+        List<string> connections,
+        IntPtr fetchedSlot,
+        ref string? videoCodec,
+        ref string? pixel,
+        ref int? width,
+        ref int? height,
+        ref double? fps,
+        ref string? audioCodec,
+        ref int? channels,
+        ref int? sampleRate)
+    {
+        if (unknown is IBaseFilter filter)
+        {
+            CollectNativeFilter(filter, filters, connections, fetchedSlot, ref videoCodec, ref pixel, ref width, ref height, ref fps, ref audioCodec, ref channels, ref sampleRate);
+            return;
+        }
+
+        if (unknown is IBaseFilterSink sink)
+            CollectManagedFilter(sink, filters);
+    }
+
+    private static void CollectManagedFilter(IBaseFilterSink sink, List<string> filters)
+    {
+        if (sink.QueryFilterInfo(out var info) < 0)
+        {
+            filters.Add("HomePlayer Video Sink");
+            return;
+        }
+
+        filters.Add(string.IsNullOrWhiteSpace(info.Name) ? "HomePlayer Video Sink" : info.Name);
+        if (info.Graph != 0)
+            Marshal.Release(info.Graph);
+    }
+
+    private static void CollectNativeFilter(
+        IBaseFilter filter,
+        List<string> filters,
+        List<string> connections,
+        IntPtr fetchedSlot,
+        ref string? videoCodec,
+        ref string? pixel,
+        ref int? width,
+        ref int? height,
+        ref double? fps,
+        ref string? audioCodec,
+        ref int? channels,
+        ref int? sampleRate)
+    {
+        var filterName = "未命名滤镜";
+        if (filter.QueryFilterInfo(out var info) >= 0)
+        {
+            filterName = string.IsNullOrWhiteSpace(info.Name) ? "未命名滤镜" : info.Name;
+            filters.Add(filterName);
+            if (info.Graph != 0)
+                Marshal.Release(info.Graph);
+        }
+
+        if (Hr.Failed(filter.EnumPins(out var pins)))
+            return;
+
+        var pinSlot = Marshal.AllocCoTaskMem(IntPtr.Size);
+        try
+        {
+            while (pins.Next(1, pinSlot, fetchedSlot) == Hr.Ok && Marshal.ReadInt32(fetchedSlot) == 1)
+            {
+                var pinPointer = Marshal.ReadIntPtr(pinSlot);
+                object pinObject;
+                try
+                {
+                    pinObject = Marshal.GetObjectForIUnknown(pinPointer);
+                }
+                finally
+                {
+                    Marshal.Release(pinPointer);
+                }
+
+                if (pinObject is not IPin pin)
+                {
+                    ReleaseCom(pinObject);
+                    continue;
+                }
+
+                try
+                {
+                    if (pin.QueryDirection(out var direction) < 0 || direction != 1)
+                        continue;
+                    if (pin.ConnectionMediaType(out var type) < 0)
+                        continue;
+                    try
+                    {
+                        connections.Add($"{filterName} → {PeerName(pin)}：{Describe(type, ref videoCodec, ref pixel, ref width, ref height, ref fps, ref audioCodec, ref channels, ref sampleRate)}");
+                    }
+                    finally
+                    {
+                        Free(type);
+                    }
+                }
+                finally
+                {
+                    ReleaseCom(pin);
+                }
+            }
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(pinSlot);
+            ReleaseCom(pins);
+        }
+    }
+
+    private List<string> TryBuildUsage()
+    {
+        try
+        {
+            return BuildUsage();
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private List<string> BuildUsage()
@@ -817,13 +920,15 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         }
     }
 
-    private static void ReleasePin(IPin? pin)
+    private static void ReleasePin(IPin? pin) => ReleaseCom(pin);
+
+    private static void ReleaseCom(object? com)
     {
-        if (pin == null)
+        if (com == null || !Marshal.IsComObject(com))
             return;
         try
         {
-            Marshal.ReleaseComObject(pin);
+            Marshal.ReleaseComObject(com);
         }
         catch
         {
