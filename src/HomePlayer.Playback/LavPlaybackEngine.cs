@@ -67,6 +67,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     public void Pause() => _sta.Invoke(() =>
     {
         _control?.Pause();
+        _control?.GetState(400, out _);
         _isPlaying = false;
     });
 
@@ -138,7 +139,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     {
         try
         {
-            _sta.Invoke(CloseGraph);
+            _sta.TryInvoke(CloseGraph, 800);
         }
         catch
         {

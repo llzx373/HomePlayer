@@ -54,6 +54,8 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     public int Pause()
     {
         _state = 1;
+        if (_playClock.IsRunning)
+            _playClock.Stop();
         return Hr.Ok;
     }
 

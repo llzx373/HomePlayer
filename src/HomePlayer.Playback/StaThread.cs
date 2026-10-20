@@ -24,22 +24,40 @@ internal sealed class StaThread : IDisposable
 
     public void Invoke(Action action)
     {
-        ObjectDisposedException.ThrowIf(_stop, this);
+        if (!TryInvoke(action, Timeout.Infinite))
+            throw new ObjectDisposedException(nameof(StaThread));
+    }
+
+    public bool TryInvoke(Action action, int timeoutMs)
+    {
+        if (_stop)
+            return false;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _queue.Add(() =>
+        try
         {
-            try
+            _queue.Add(() =>
             {
-                action();
-                done.SetResult();
-            }
-            catch (Exception ex)
-            {
-                done.SetException(ex);
-            }
-        });
+                try
+                {
+                    action();
+                    done.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    done.TrySetException(ex);
+                }
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+
         NativeMethods.PostThreadMessageW(_threadId, NativeMethods.WmApp, 0, 0);
+        if (!done.Task.Wait(timeoutMs))
+            return false;
         done.Task.GetAwaiter().GetResult();
+        return true;
     }
 
     public T Invoke<T>(Func<T> action)

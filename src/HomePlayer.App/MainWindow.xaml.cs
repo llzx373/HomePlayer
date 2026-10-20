@@ -121,6 +121,7 @@ public sealed partial class MainWindow : Window
             ApplyWindowChrome();
             Activate();
             SetForegroundWindow(WindowNative.GetWindowHandle(this));
+            App.Host.Playback.RestoreFromBackground();
             QueueResumeRendering();
         }
         catch (Exception ex)
@@ -282,7 +283,7 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        App.Host.Playback.Pause();
+        App.Host.Playback.HoldForBackground();
         if (App.Host.Exiting)
             return;
         args.Cancel = true;
@@ -308,7 +309,7 @@ public sealed partial class MainWindow : Window
 
     private void HideToTray()
     {
-        App.Host.Playback.Pause();
+        App.Host.Playback.HoldForBackground();
         SuspendRendering?.Invoke();
         if (AppWindow.IsVisible)
             AppWindow.Hide();
@@ -321,12 +322,13 @@ public sealed partial class MainWindow : Window
 
         if (!IsWindowInteractive())
         {
-            App.Host.Playback.Pause();
+            App.Host.Playback.HoldForBackground();
             SuspendRendering?.Invoke();
         }
         else if (WindowSafety.ShouldApplyChrome(args.DidVisibilityChange, args.DidPresenterChange, true))
         {
             ApplyWindowChrome();
+            App.Host.Playback.RestoreFromBackground();
             QueueResumeRendering();
         }
 
@@ -383,31 +385,26 @@ public sealed partial class MainWindow : Window
         e.AcceptedOperation = DataPackageOperation.Copy;
     }
 
-    private async Task ExitAsync()
+    private Task ExitAsync()
     {
+        if (App.Host.Exiting)
+            return Task.CompletedTask;
         App.Host.Exiting = true;
-        try
+        App.Host.Playback.Pause();
+        App.Host.SaveSettings();
+        CrashGuard.StopSession();
+        _ = Task.Run(() =>
         {
-            _tray.Dispose();
-            await App.Host.DisposeAsync();
-        }
-        catch (Exception)
-        {
-        }
-        finally
-        {
-            CrashGuard.StopSession();
             try
             {
-                if (WindowSafety.ShouldCloseWindow(AppWindow.IsVisible, IsMinimized()))
-                    Close();
+                _tray.Dispose();
             }
             catch
             {
             }
-
-            Environment.Exit(0);
-        }
+        });
+        Environment.Exit(0);
+        return Task.CompletedTask;
     }
 
     private sealed class TrayCommand(Action action) : ICommand
@@ -774,7 +771,7 @@ public sealed partial class MainWindow : Window
 
     private void MinimizeWindow()
     {
-        App.Host.Playback.Pause();
+        App.Host.Playback.HoldForBackground();
         SuspendRendering?.Invoke();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Minimize();

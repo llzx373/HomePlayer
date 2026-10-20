@@ -454,7 +454,7 @@ public sealed partial class PlayerPage : Page
         }
         else if (playing != _anchorPlaying)
         {
-            Anchor(Predicted(), playing);
+            Anchor(engine, playing);
         }
         else
         {

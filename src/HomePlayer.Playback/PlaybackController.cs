@@ -17,6 +17,7 @@ public sealed class PlaybackController : IDisposable
     private bool _muted;
     private int _videoWidth;
     private int _videoHeight;
+    private TimeSpan? _holdPosition;
 
     public PlaybackController(Action<Action> post, Func<CodecPlan> codecs, Func<string?> audioOutput)
     {
@@ -107,6 +108,7 @@ public sealed class PlaybackController : IDisposable
 
     public void TogglePlay()
     {
+        _holdPosition = null;
         if (_engine == null)
         {
             if (Playlist.Current != null)
@@ -129,8 +131,29 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
+    public void HoldForBackground()
+    {
+        if (_engine?.IsOpen != true)
+            return;
+        _holdPosition = PlaybackHold.Capture(_engine.IsOpen, _holdPosition, Position);
+        Pause();
+    }
+
+    public void RestoreFromBackground()
+    {
+        if (_engine?.IsOpen != true || _holdPosition is not TimeSpan held)
+            return;
+        if (_engine.IsPlaying)
+            _engine.Pause();
+        if (PlaybackHold.NeedsSeek(held, Position))
+            _engine.Seek(held);
+        _holdPosition = null;
+        Notify();
+    }
+
     public void Stop()
     {
+        _holdPosition = null;
         RememberPosition();
         _token++;
         _playingPath = null;
@@ -165,6 +188,7 @@ public sealed class PlaybackController : IDisposable
 
     public void Seek(TimeSpan position)
     {
+        _holdPosition = null;
         if (position < TimeSpan.Zero)
             position = TimeSpan.Zero;
         if (Duration > TimeSpan.Zero && position > Duration)
@@ -175,6 +199,7 @@ public sealed class PlaybackController : IDisposable
 
     public void StepFrame()
     {
+        _holdPosition = null;
         if (_engine == null)
             return;
         _engine.StepFrame();
@@ -225,6 +250,7 @@ public sealed class PlaybackController : IDisposable
 
     private async Task PlayCurrentAsync(bool forceFfmpeg)
     {
+        _holdPosition = null;
         RememberPosition();
         _playingPath = null;
         _rate = 1.0;
