@@ -7,7 +7,7 @@
 
 #define AppName "HomePlayer"
 #define AppExe "HomePlayer.exe"
-#define AppPublisher "HomePlayer"
+#define AppPublisher "llzx373"
 #define AppId "{{8E3C2A91-4F6B-4D0E-9C51-A1B7E6D4F802}"
 #define DistDir "..\dist"
 #define AppIcon "..\src\HomePlayer.App\Assets\App.ico"
@@ -18,6 +18,11 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
+AppPublisherURL=https://github.com/llzx373/HomePlayer
+AppSupportURL=https://github.com/llzx373/HomePlayer/issues
+AppUpdatesURL=https://github.com/llzx373/HomePlayer/releases
+AppCopyright=Copyright (c) 2026 llzx373
+LicenseFile=license-dialog.txt
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

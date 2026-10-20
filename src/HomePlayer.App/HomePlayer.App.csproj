@@ -31,6 +31,8 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\App.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>
@@ -42,13 +44,17 @@
   <Target Name="CopyFfmpegDlls" AfterTargets="Build">
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
+      <_FfmpegLicense Include="$(FfmpegDir)\LICENSE.txt" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />
   </Target>
   <Target Name="PublishFfmpegDlls" AfterTargets="Publish">
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
+      <_FfmpegLicense Include="$(FfmpegDir)\LICENSE.txt" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />
   </Target>
 </Project>

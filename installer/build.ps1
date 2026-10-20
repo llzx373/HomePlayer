@@ -1,15 +1,19 @@
+[CmdletBinding()]
+param(
+    [string]$Version = "0.1.0"
+)
+
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $iss = Join-Path $PSScriptRoot "HomePlayer.iss"
 $csproj = Join-Path $root "src\HomePlayer.App\HomePlayer.App.csproj"
 $distExe = Join-Path $root "dist\HomePlayer.exe"
-$version = "0.1.0"
 
 Write-Host "Restoring FFmpeg shared libraries ..."
 & (Join-Path $root "scripts\Restore-Ffmpeg.ps1")
 
-Write-Host "Publishing HomePlayer to dist\ ..."
-dotnet publish $csproj -c Release -p:PublishProfile=FolderProfile
+Write-Host "Publishing HomePlayer $Version to dist\ ..."
+dotnet publish $csproj -c Release -p:PublishProfile=FolderProfile -p:Version=$Version -p:InformationalVersion=$Version
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed."
 }
@@ -31,10 +35,13 @@ if (-not $iscc) {
 }
 
 Write-Host "Building installer with $iscc ..."
-& $iscc /DAppVersion=$version $iss
+& $iscc "/DAppVersion=$Version" $iss
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compile failed."
 }
 
-$setup = Join-Path $root "artifacts\HomePlayer-Setup-$version.exe"
+$setup = Join-Path $root "artifacts\HomePlayer-Setup-$Version.exe"
+if (-not (Test-Path $setup)) {
+    throw "Missing installer $setup"
+}
 Write-Host "Installer: $setup"

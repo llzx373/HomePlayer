@@ -1,0 +1,29 @@
+﻿HomePlayer 许可协议
+
+HomePlayer 按 MIT 许可证提供：你可以自由使用、复制、修改、合并、发布、分发、再许可和出售本软件，但必须保留版权声明和许可声明。
+
+本软件按「原样」提供，不附带任何明示或暗示的担保，包括适销性、特定用途适用性和非侵权。作者不对使用本软件产生的任何索赔、损害或其他责任负责。
+
+安装包内的 FFmpeg 共享库按 GNU LGPL 3.0 分发，与 HomePlayer 的 MIT 许可不同。安装完成后，FFmpeg 的许可文本在程序目录的 ffmpeg\LICENSE.txt，其他第三方说明见 NOTICE.md。你可以按 LGPL 的要求替换这些动态库。
+
+MIT License 原文：
+
+Copyright (c) 2026 llzx373
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
