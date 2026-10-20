@@ -75,11 +75,13 @@ public sealed class VideoPresenter : IDisposable
     private bool _drawing;
     private bool _resizing;
     private long _lastRecoveryMs;
+    private volatile bool _suspended = true;
 
     public VideoPresenter(SwapChainPanel panel)
     {
         _panel = panel;
-        panel.Loaded += (_, _) => Refresh();
+        panel.Loaded += (_, _) => Resume();
+        panel.Unloaded += (_, _) => Suspend();
         panel.SizeChanged += (_, _) => Refresh();
         panel.CompositionScaleChanged += (_, _) => Refresh();
     }
@@ -98,6 +100,26 @@ public sealed class VideoPresenter : IDisposable
 
     public void Refresh()
     {
+        if (_suspended || !_panel.IsLoaded)
+            return;
+        TryResize();
+        PostDraw();
+    }
+
+    public void Suspend()
+    {
+        _suspended = true;
+        ReleaseSwapChain();
+    }
+
+    public void Resume()
+    {
+        if (!_panel.IsLoaded)
+            return;
+        var wasSuspended = _suspended;
+        _suspended = false;
+        if (!wasSuspended && _swapChain != null)
+            return;
         TryResize();
         PostDraw();
     }
@@ -122,7 +144,8 @@ public sealed class VideoPresenter : IDisposable
         }
 
         replaced?.ReturnBuffer();
-        PostDraw();
+        if (!_suspended)
+            PostDraw();
     }
 
     public bool TryCopyLastFrame(out int width, out int height, out int stride, out bool bottomUp, out byte[] data)
@@ -160,6 +183,7 @@ public sealed class VideoPresenter : IDisposable
         }
 
         pending?.ReturnBuffer();
+        _suspended = true;
         ReleaseDeviceResources();
     }
 
@@ -182,8 +206,7 @@ public sealed class VideoPresenter : IDisposable
 
     private void ReleaseDeviceResources()
     {
-        _target?.Dispose();
-        _target = null;
+        ReleaseSwapChain();
         _frameView?.Dispose();
         _frameView = null;
         _frameTexture?.Dispose();
@@ -200,18 +223,33 @@ public sealed class VideoPresenter : IDisposable
         _sampler = null;
         _rasterizer?.Dispose();
         _rasterizer = null;
-        _swapChain?.Dispose();
-        _swapChain = null;
         _context?.Dispose();
         _context = null;
         _device?.Dispose();
         _device = null;
         _vertexBytecode = null;
-        _width = 0;
-        _height = 0;
         _frameWidth = 0;
         _frameHeight = 0;
         _frameBottomUp = false;
+    }
+
+    private void ReleaseSwapChain()
+    {
+        UnbindTarget();
+        if (_swapChain == null)
+            return;
+        try
+        {
+            _panel.As<ISwapChainPanelNative>().SetSwapChain(IntPtr.Zero);
+        }
+        catch
+        {
+        }
+
+        _swapChain.Dispose();
+        _swapChain = null;
+        _width = 0;
+        _height = 0;
     }
 
     private void PostDraw()
@@ -222,7 +260,7 @@ public sealed class VideoPresenter : IDisposable
 
     private void Resize()
     {
-        if (_resizing)
+        if (_resizing || _suspended || !_panel.IsLoaded)
             return;
         var scaleX = ScaleOf(_panel.CompositionScaleX);
         var scaleY = ScaleOf(_panel.CompositionScaleY);
@@ -317,6 +355,8 @@ public sealed class VideoPresenter : IDisposable
     private unsafe void Draw()
     {
         Interlocked.Exchange(ref _posted, 0);
+        if (_suspended || !_panel.IsLoaded)
+            return;
         if (_drawing)
         {
             PostDraw();
@@ -437,6 +477,8 @@ public sealed class VideoPresenter : IDisposable
         try
         {
             ReleaseDeviceResources();
+            if (_suspended || !_panel.IsLoaded)
+                return;
             Resize();
             PostDraw();
         }

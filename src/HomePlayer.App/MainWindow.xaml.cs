@@ -29,6 +29,8 @@ public sealed partial class MainWindow : Window
 
     public event Action? FullscreenChanged;
     public event Action? OverlayTick;
+    public event Action? SuspendRendering;
+    public event Action? ResumeRendering;
 
     public MainWindow()
     {
@@ -74,8 +76,24 @@ public sealed partial class MainWindow : Window
 
     public void ShowFromTray()
     {
+        if (!TryRunOnUi(ShowFromTray))
+            return;
+        if (AppWindow.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Minimized)
+            presenter.Restore();
         AppWindow.Show();
         Activate();
+    }
+
+    public async Task PlayIncomingFilesAsync(IReadOnlyList<string> paths, bool replace)
+    {
+        if (paths.Count == 0)
+            return;
+        if (replace)
+            await App.Host.Playback.PlayPathsAsync(paths, 0);
+        else
+            App.Host.Playback.Enqueue(paths);
+        SelectPlayer();
     }
 
     private void OnRootLoaded(object sender, RoutedEventArgs e)
@@ -165,6 +183,7 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         if (App.Host.Settings.CloseToTray)
         {
+            SuspendRendering?.Invoke();
             AppWindow.Hide();
             return;
         }
@@ -174,16 +193,35 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (args.DidVisibilityChange && !sender.IsVisible)
+        if (args.DidVisibilityChange)
         {
-            App.Host.Playback.Pause();
+            if (!sender.IsVisible)
+            {
+                App.Host.Playback.Pause();
+                SuspendRendering?.Invoke();
+            }
+            else
+            {
+                QueueResumeRendering();
+            }
+
             UpdateOverlayTimer();
             return;
         }
 
-        if (args.DidPresenterChange && sender.Presenter is OverlappedPresenter presenter
-            && presenter.State == OverlappedPresenterState.Minimized)
-            App.Host.Playback.Pause();
+        if (args.DidPresenterChange && sender.Presenter is OverlappedPresenter presenter)
+        {
+            if (presenter.State == OverlappedPresenterState.Minimized)
+            {
+                App.Host.Playback.Pause();
+                SuspendRendering?.Invoke();
+            }
+            else
+            {
+                QueueResumeRendering();
+            }
+        }
+
         UpdateOverlayTimer();
     }
 
@@ -274,11 +312,38 @@ public sealed partial class MainWindow : Window
         public void Execute(object? parameter) => action();
     }
 
-    private static MenuFlyoutItem Item(string text, Action action)
+    private void QueueResumeRendering()
+    {
+        var queue = Root.DispatcherQueue;
+        if (queue == null)
+        {
+            ResumeRendering?.Invoke();
+            return;
+        }
+
+        queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ResumeRendering?.Invoke());
+    }
+
+    private MenuFlyoutItem Item(string text, Action action)
     {
         var item = new MenuFlyoutItem { Text = text };
-        item.Click += (_, _) => action();
+        item.Click += (_, _) => RunOnUi(action);
         return item;
+    }
+
+    private void RunOnUi(Action action)
+    {
+        if (TryRunOnUi(action))
+            action();
+    }
+
+    private bool TryRunOnUi(Action action)
+    {
+        var queue = Root.DispatcherQueue;
+        if (queue == null || queue.HasThreadAccess)
+            return true;
+        queue.TryEnqueue(() => action());
+        return false;
     }
 
     public bool TryGetClientCursor(out double x, out double y, out double width, out double height, out bool inside)
@@ -387,6 +452,7 @@ public sealed partial class MainWindow : Window
     private void Minimize_Click(object sender, RoutedEventArgs e)
     {
         App.Host.Playback.Pause();
+        SuspendRendering?.Invoke();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Minimize();
     }

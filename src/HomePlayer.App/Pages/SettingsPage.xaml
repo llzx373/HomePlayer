@@ -18,6 +18,10 @@
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="打开后，换片时只改窗口的宽或高，让画面铺满播放区、不留黑边。播放页也可以随时点「自适应窗口」。全屏时不会改窗口大小；最大化时会先还原再适配。" />
             <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
 
+            <TextBlock Text="文件关联" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="安装程序会把支持的视频类型登记到系统。Windows 11 不会让程序偷偷改成默认播放器，需要在系统设置里确认。右键「用 HomePlayer 播放」在安装时就会出现。" />
+            <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" />
+
             <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
             <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="点一项后面的按钮，再按下要使用的键。可以加 Ctrl、Alt、Shift。点清除表示没有快捷键。同一组键只能给一个功能。" />
             <ItemsControl x:Name="HotkeyList">

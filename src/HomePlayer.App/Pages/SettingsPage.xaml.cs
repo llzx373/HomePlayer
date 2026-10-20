@@ -113,6 +113,17 @@ public sealed partial class SettingsPage : Page
         App.Window.SetAlwaysOnTop(AlwaysOnTopSwitch.IsOn);
     }
 
+    private async void DefaultApps_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps?registeredAppMachine=HomePlayer"));
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     private void AudioDevice_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_loading)

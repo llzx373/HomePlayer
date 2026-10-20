@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -84,6 +85,8 @@ public sealed partial class PlayerPage : Page
             SyncAlwaysOnTopButton();
         });
         App.Window.OverlayTick += UpdateControlsOverlay;
+        App.Window.SuspendRendering += _presenter.Suspend;
+        App.Window.ResumeRendering += _presenter.Resume;
         PlaylistView.ItemsSource = playback.Playlist.Items;
         RepeatBox.SelectedIndex = (int)playback.Playlist.Repeat;
         UpdateRepeatButton();
@@ -126,12 +129,29 @@ public sealed partial class PlayerPage : Page
             SyncAlwaysOnTopButton();
             SyncAspectMenu();
             LayoutProgress(ShownSeconds());
-            _presenter.Refresh();
+            _presenter.Resume();
             FitWindow(false);
             if (!_timer.IsEnabled)
                 _timer.Start();
         };
-        Unloaded += (_, _) => _timer.Stop();
+        Unloaded += (_, _) =>
+        {
+            _timer.Stop();
+            _presenter.Suspend();
+        };
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        _timer.Stop();
+        _presenter.Suspend();
+        base.OnNavigatedFrom(e);
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        _presenter.Resume();
     }
 
     private PlaybackController Playback => App.Host.Playback;
