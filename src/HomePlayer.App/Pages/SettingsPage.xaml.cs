@@ -59,8 +59,6 @@ public sealed partial class SettingsPage : Page
         _loading = false;
         CacheText.Text = "缓存占用计算中…";
         CrashSummary.Text = "正在读取崩溃日志…";
-        _ = RefreshCacheTextAsync();
-        RefreshCrashSummary();
     }
 
     private async Task RefreshCacheTextAsync()

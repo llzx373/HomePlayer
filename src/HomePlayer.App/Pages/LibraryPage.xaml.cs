@@ -14,8 +14,10 @@ namespace HomePlayer;
 public sealed partial class LibraryPage : Page
 {
     private readonly ObservableCollection<MediaLibrary> _libraries = [];
-    private readonly ObservableCollection<MediaCard> _cards = [];
+    private readonly BulkObservableCollection<MediaCard> _cards = [];
     private readonly Dictionary<string, (DateTime Stamp, BitmapImage? Image)> _imageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _imageOrder = [];
+    private const int ImageCacheLimit = 200;
     private readonly DispatcherQueueTimer _reloadTimer;
     private readonly DispatcherQueueTimer _filterTimer;
     private bool _loading;
@@ -141,32 +143,35 @@ public sealed partial class LibraryPage : Page
                 items = [];
             }
 
-            DispatcherQueue.TryEnqueue(() => ApplyCards(library, query, sortIndex, kind, token, items));
+            var stamps = ComputeImageStamps(items, kind);
+            var comparer = Comparer<MediaItem>.Create((left, right) =>
+                MediaItemComparer.Compare(left, right, kind, sortIndex == 1));
+            var sorted = items.OrderBy(item => item, comparer).ToList();
+            DispatcherQueue.TryEnqueue(() => ApplyCards(library, query, kind, token, sorted, stamps));
         });
     }
 
     private void ApplyCards(
         MediaLibrary library,
         string query,
-        int sortIndex,
         LibraryKind kind,
         int token,
-        IReadOnlyList<MediaItem> items)
+        IReadOnlyList<MediaItem> items,
+        IReadOnlyDictionary<string, DateTime> stamps)
     {
         if (token != _bindToken || App.Host.Exiting || _loading)
             return;
         if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
             return;
-        var comparer = Comparer<MediaItem>.Create((left, right) =>
-            MediaItemComparer.Compare(left, right, kind, sortIndex == 1));
-        _cards.Clear();
-        foreach (var item in items.OrderBy(item => item, comparer))
+        var cards = new List<MediaCard>(items.Count);
+        foreach (var item in items)
         {
-            var card = CreateCard(item, library, query);
+            var card = CreateCard(item, library, query, stamps);
             if (card != null)
-                _cards.Add(card);
+                cards.Add(card);
         }
 
+        _cards.ReplaceAll(cards);
         UpdateEmptyText();
     }
 
@@ -179,29 +184,89 @@ public sealed partial class LibraryPage : Page
             return;
         ConfigureSort(library.Kind);
         var query = SearchBox.Text?.Trim() ?? "";
+        var sortIndex = SortBox.SelectedIndex;
+        _ = Task.Run(() =>
+        {
+            IReadOnlyList<MediaItem> items;
+            try
+            {
+                items = App.Host.Repository.GetItems(ids);
+            }
+            catch (Exception)
+            {
+                items = [];
+            }
+
+            var stamps = ComputeImageStamps(items, library.Kind);
+            DispatcherQueue.TryEnqueue(() => ApplyItemUpdatesOnUi(library, query, sortIndex, ids, items, stamps));
+        });
+    }
+
+    private void ApplyItemUpdatesOnUi(
+        MediaLibrary library,
+        string query,
+        int sortIndex,
+        string[] ids,
+        IReadOnlyList<MediaItem> items,
+        IReadOnlyDictionary<string, DateTime> stamps)
+    {
+        if (_loading || App.Host.Exiting)
+            return;
+        if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
+            return;
+        var byId = new Dictionary<string, MediaItem>(items.Count, StringComparer.Ordinal);
+        foreach (var item in items)
+            byId[item.Id] = item;
         foreach (var id in ids)
         {
             var index = IndexOfCard(id);
-            var item = App.Host.Repository.GetItem(id);
-            if (item == null || item.LibraryId != library.Id)
+            if (!byId.TryGetValue(id, out var item) || item.LibraryId != library.Id)
             {
                 if (index >= 0)
                     _cards.RemoveAt(index);
                 continue;
             }
 
-            var card = CreateCard(item, library, query);
+            var card = CreateCard(item, library, query, stamps);
             if (index >= 0)
                 _cards.RemoveAt(index);
             if (card == null)
                 continue;
-            _cards.Insert(FindInsertIndex(item, library.Kind, SortBox.SelectedIndex), card);
+            _cards.Insert(FindInsertIndex(item, library.Kind, sortIndex), card);
         }
 
         UpdateEmptyText();
     }
 
-    private MediaCard? CreateCard(MediaItem item, MediaLibrary library, string query)
+    private static IReadOnlyDictionary<string, DateTime> ComputeImageStamps(
+        IReadOnlyList<MediaItem> items,
+        LibraryKind kind)
+    {
+        var stamps = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
+            var path = kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath;
+            if (string.IsNullOrWhiteSpace(path) || stamps.ContainsKey(path))
+                continue;
+            try
+            {
+                var info = new FileInfo(path);
+                stamps[path] = info.Exists ? info.LastWriteTimeUtc : default;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                stamps[path] = default;
+            }
+        }
+
+        return stamps;
+    }
+
+    private MediaCard? CreateCard(
+        MediaItem item,
+        MediaLibrary library,
+        string query,
+        IReadOnlyDictionary<string, DateTime> stamps)
     {
         var title = library.Kind == LibraryKind.Catalog && !string.IsNullOrWhiteSpace(item.Title) && item.MatchStatus == MatchStatus.Matched
             ? item.Title!
@@ -213,13 +278,15 @@ public sealed partial class LibraryPage : Page
         var subtitle = library.Kind == LibraryKind.Raw
             ? $"{ClockText.FormatSeconds(item.DurationSeconds)} · {Resolution(item)} · {item.VideoCodec ?? item.Status.ToString()}"
             : CatalogSubtitle(item);
+        var imagePath = library.Kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath;
+        var stamp = !string.IsNullOrWhiteSpace(imagePath) && stamps.TryGetValue(imagePath, out var value) ? value : default;
         return new MediaCard
         {
             Item = item,
             Library = library,
             Title = title,
             Subtitle = item.Error ?? subtitle,
-            Image = LoadImage(library.Kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath),
+            Image = LoadImage(imagePath, stamp),
             Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : ""
         };
     }
@@ -605,27 +672,48 @@ public sealed partial class LibraryPage : Page
         return string.Join(" · ", new[] { year, episode, rating, item.OriginalTitle }.Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
-    private BitmapImage? LoadImage(string? path)
+    private BitmapImage? LoadImage(string? path, DateTime stamp)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path) || stamp == default)
             return null;
-        DateTime stamp;
-        try
-        {
-            stamp = File.GetLastWriteTimeUtc(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-
         if (_imageCache.TryGetValue(path, out var cached) && cached.Stamp == stamp)
             return cached.Image;
         var image = new BitmapImage();
         image.DecodePixelWidth = 480;
         image.UriSource = new Uri(path);
-        _imageCache[path] = (stamp, image);
+        RememberImage(path, stamp, image);
         return image;
+    }
+
+    private BitmapImage? LoadImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+                return null;
+            return LoadImage(path, info.LastWriteTimeUtc);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private void RememberImage(string path, DateTime stamp, BitmapImage image)
+    {
+        if (!_imageCache.ContainsKey(path))
+            _imageOrder.Enqueue(path);
+        _imageCache[path] = (stamp, image);
+        while (_imageCache.Count > ImageCacheLimit && _imageOrder.Count > 0)
+        {
+            var oldest = _imageOrder.Dequeue();
+            if (!_imageCache.TryGetValue(oldest, out var entry) || ReferenceEquals(entry.Image, image))
+                continue;
+            _imageCache.Remove(oldest);
+        }
     }
 }
 

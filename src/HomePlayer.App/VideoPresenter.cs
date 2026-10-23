@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -10,19 +11,25 @@ using WinRT;
 
 namespace HomePlayer;
 
+/// <summary>
+/// 把解码线程送来的帧上传成纹理并呈现到 <see cref="SwapChainPanel"/>。
+/// 所有 D3D 调用都在专用渲染线程上串行执行，UI 线程只负责尺寸/挂载这类轻量工作。
+/// 最近一次上传的帧会保留在 <see cref="_lastFrame"/> 里，截图时直接读内存，
+/// 因此热路径上不再有额外的一整帧拷贝。
+/// </summary>
 public sealed class VideoPresenter : IDisposable
 {
     private const string VertexShaderCode = """
-        struct Input {
+        struct VSInput {
             float2 pos : POSITION;
             float2 uv : TEXCOORD;
         };
-        struct Output {
+        struct VSOutput {
             float4 pos : SV_Position;
             float2 uv : TEXCOORD;
         };
-        Output main(Input input) {
-            Output output;
+        VSOutput main(VSInput input) {
+            VSOutput output;
             output.pos = float4(input.pos, 0, 1);
             output.uv = input.uv;
             return output;
@@ -37,8 +44,47 @@ public sealed class VideoPresenter : IDisposable
         }
         """;
 
+    private static readonly ID3D11RenderTargetView[] NoTargets = [];
+    private static readonly ID3D11ShaderResourceView[] NoFrameViews = new ID3D11ShaderResourceView[1];
+
     private readonly SwapChainPanel _panel;
+    private readonly DispatcherQueue _ui;
+    private readonly RenderThread _render;
     private readonly object _gate = new();
+    private ISwapChainPanelNative? _native;
+
+    private VideoFrame? _pending;
+    private VideoFrame? _lastFrame;
+
+    private int _desiredWidth;
+    private int _desiredHeight;
+    private float _desiredScaleX = 1;
+    private float _desiredScaleY = 1;
+    private int _resizeRequested;
+    private int _posted;
+    private int _aspectValue = (int)AspectMode.Fit;
+    private int _attached;
+    private int _disposed;
+    private volatile bool _suspended = true;
+    private volatile bool _allowed;
+
+    private static readonly object TraceGate = new();
+
+    private static void Trace(string message)
+    {
+        try
+        {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
+            Directory.CreateDirectory(directory);
+            lock (TraceGate)
+                File.AppendAllText(Path.Combine(directory, "render.log"), $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
+    // 以下字段只在渲染线程上读写。
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
     private IDXGISwapChain1? _swapChain;
@@ -52,91 +98,103 @@ public sealed class VideoPresenter : IDisposable
     private ID3D11SamplerState? _sampler;
     private ID3D11RasterizerState? _rasterizer;
     private byte[]? _vertexBytecode;
-    private VideoFrame? _pending;
-    private byte[]? _lastSnapshot;
-    private int _snapWidth;
-    private int _snapHeight;
-    private int _snapStride;
-    private bool _snapBottomUp;
     private int _width;
     private int _height;
     private int _frameWidth;
     private int _frameHeight;
     private bool _frameBottomUp;
-    private AspectMode _aspectMode = AspectMode.Fit;
     private float _scaleX = 1;
     private float _scaleY = 1;
+    private long _lastRecoveryMs;
+    private long _lastPipelineTryMs;
     private readonly uint[] _vertexStrides = [16];
     private readonly uint[] _vertexOffsets = [0];
     private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
     private readonly ID3D11ShaderResourceView[] _frameViews = new ID3D11ShaderResourceView[1];
     private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
-    private int _posted;
-    private bool _drawing;
-    private bool _resizing;
-    private long _lastRecoveryMs;
-    private volatile bool _suspended = true;
 
     public Func<bool>? CanRender { get; set; }
 
     public VideoPresenter(SwapChainPanel panel)
     {
         _panel = panel;
+        _ui = panel.DispatcherQueue;
+        _render = new RenderThread();
         panel.Loaded += (_, _) => Resume();
         panel.Unloaded += (_, _) => Suspend();
         panel.SizeChanged += (_, _) => Refresh();
         panel.CompositionScaleChanged += (_, _) => Refresh();
     }
 
+    /// <summary>
+    /// 面板的 WinRT 接口必须在 UI 线程上取，第一次用到时再拿，避免构造阶段过早访问。
+    /// </summary>
+    private ISwapChainPanelNative? Native
+    {
+        get
+        {
+            if (_native != null)
+                return _native;
+            try
+            {
+                _native = _panel.As<ISwapChainPanelNative>();
+            }
+            catch
+            {
+                _native = null;
+            }
+
+            return _native;
+        }
+    }
+
     public AspectMode AspectMode
     {
-        get => _aspectMode;
+        get => (AspectMode)Volatile.Read(ref _aspectValue);
         set
         {
-            if (_aspectMode == value)
+            var next = (int)value;
+            if (Interlocked.Exchange(ref _aspectValue, next) == next)
                 return;
-            _aspectMode = value;
             Refresh();
         }
     }
 
     public void Refresh()
     {
-        if (!CanDraw())
+        UpdateAllowed();
+        if (!_allowed || _suspended)
             return;
-        TryResize();
+        CaptureDesiredSize();
+        Interlocked.Exchange(ref _resizeRequested, 1);
         PostDraw();
     }
 
     public void Suspend()
     {
         _suspended = true;
-        if (_drawing)
-            return;
-        ReleaseSwapChain();
+        _allowed = false;
+        DetachSwapChainOnUiThread();
+        _render.Post(ReleaseSwapChain);
     }
 
     public void Resume()
     {
         if (!_panel.IsLoaded || CanRender?.Invoke() == false)
             return;
-        var wasSuspended = _suspended;
         _suspended = false;
-        if (!wasSuspended && _swapChain != null)
-            return;
-        TryResize();
+        _allowed = true;
+        CaptureDesiredSize();
+        Interlocked.Exchange(ref _resizeRequested, 1);
         PostDraw();
     }
-
-    private bool CanDraw() =>
-        !_suspended && _panel.IsLoaded && CanRender?.Invoke() != false;
 
     public bool HasLastFrame
     {
         get
         {
             lock (_gate)
-                return _lastSnapshot != null;
+                return _lastFrame != null;
         }
     }
 
@@ -147,11 +205,10 @@ public sealed class VideoPresenter : IDisposable
         {
             replaced = _pending;
             _pending = frame;
-            RememberSnapshot(frame);
         }
 
         replaced?.ReturnBuffer();
-        if (!_suspended)
+        if (!_suspended && _allowed)
             PostDraw();
     }
 
@@ -159,7 +216,8 @@ public sealed class VideoPresenter : IDisposable
     {
         lock (_gate)
         {
-            if (_lastSnapshot == null)
+            var frame = _lastFrame;
+            if (frame == null)
             {
                 width = 0;
                 height = 0;
@@ -169,210 +227,184 @@ public sealed class VideoPresenter : IDisposable
                 return false;
             }
 
-            width = _snapWidth;
-            height = _snapHeight;
-            stride = _snapStride;
-            bottomUp = _snapBottomUp;
-            data = new byte[_lastSnapshot.Length];
-            Buffer.BlockCopy(_lastSnapshot, 0, data, 0, _lastSnapshot.Length);
+            var length = Math.Min(frame.Stride * frame.Height, frame.Data.Length);
+            if (length <= 0)
+            {
+                width = 0;
+                height = 0;
+                stride = 0;
+                bottomUp = false;
+                data = [];
+                return false;
+            }
+
+            width = frame.Width;
+            height = frame.Height;
+            stride = frame.Stride;
+            bottomUp = frame.BottomUp;
+            data = new byte[length];
+            Buffer.BlockCopy(frame.Data, 0, data, 0, length);
             return true;
         }
     }
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+        _suspended = true;
+        _allowed = false;
+        DetachSwapChainOnUiThread();
+        _render.Post(ReleaseDeviceResources);
+        _render.Dispose();
+
         VideoFrame? pending;
+        VideoFrame? last;
         lock (_gate)
         {
             pending = _pending;
             _pending = null;
-            _lastSnapshot = null;
+            last = _lastFrame;
+            _lastFrame = null;
         }
 
         pending?.ReturnBuffer();
-        _suspended = true;
-        ReleaseDeviceResources();
+        last?.ReturnBuffer();
     }
 
-    private void RememberSnapshot(VideoFrame frame)
-    {
-        var rowBytes = frame.Width * 4;
-        if (frame.Width < 1 || frame.Height < 1 || frame.Stride < rowBytes)
-            return;
-        var length = frame.Stride * frame.Height;
-        if (length <= 0 || length > frame.Data.Length)
-            return;
-        if (_lastSnapshot == null || _lastSnapshot.Length != length)
-            _lastSnapshot = new byte[length];
-        Buffer.BlockCopy(frame.Data, 0, _lastSnapshot, 0, length);
-        _snapWidth = frame.Width;
-        _snapHeight = frame.Height;
-        _snapStride = frame.Stride;
-        _snapBottomUp = frame.BottomUp;
-    }
+    private void UpdateAllowed() =>
+        _allowed = _panel.IsLoaded && CanRender?.Invoke() != false;
 
-    private void ReleaseDeviceResources()
+    private void CaptureDesiredSize()
     {
-        ReleaseSwapChain();
-        _frameView?.Dispose();
-        _frameView = null;
-        _frameTexture?.Dispose();
-        _frameTexture = null;
-        _vertices?.Dispose();
-        _vertices = null;
-        _layout?.Dispose();
-        _layout = null;
-        _vertexShader?.Dispose();
-        _vertexShader = null;
-        _pixelShader?.Dispose();
-        _pixelShader = null;
-        _sampler?.Dispose();
-        _sampler = null;
-        _rasterizer?.Dispose();
-        _rasterizer = null;
-        _context?.Dispose();
-        _context = null;
-        _device?.Dispose();
-        _device = null;
-        _vertexBytecode = null;
-        _frameWidth = 0;
-        _frameHeight = 0;
-        _frameBottomUp = false;
-    }
-
-    private void ReleaseSwapChain()
-    {
-        UnbindTarget();
-        if (_swapChain == null)
-            return;
-        try
-        {
-            _panel.As<ISwapChainPanelNative>().SetSwapChain(IntPtr.Zero);
-        }
-        catch
-        {
-        }
-
-        _swapChain.Dispose();
-        _swapChain = null;
-        _width = 0;
-        _height = 0;
+        var scaleX = ScaleOf(_panel.CompositionScaleX);
+        var scaleY = ScaleOf(_panel.CompositionScaleY);
+        Volatile.Write(ref _desiredWidth, PixelSize(_panel.ActualWidth, scaleX));
+        Volatile.Write(ref _desiredHeight, PixelSize(_panel.ActualHeight, scaleY));
+        Volatile.Write(ref _desiredScaleX, scaleX);
+        Volatile.Write(ref _desiredScaleY, scaleY);
     }
 
     private void PostDraw()
     {
         if (Interlocked.Exchange(ref _posted, 1) == 0)
-            _panel.DispatcherQueue.TryEnqueue(Draw);
+            _render.Post(Draw);
     }
 
-    private void Resize()
+    private void DetachSwapChainOnUiThread()
     {
-        if (_resizing || !CanDraw())
-            return;
-        var scaleX = ScaleOf(_panel.CompositionScaleX);
-        var scaleY = ScaleOf(_panel.CompositionScaleY);
-        var width = PixelSize(_panel.ActualWidth, scaleX);
-        var height = PixelSize(_panel.ActualHeight, scaleY);
-        if (width < 2 || height < 2)
-            return;
-        if (_swapChain != null
-            && Math.Abs(width - _width) < 2
-            && Math.Abs(height - _height) < 2
-            && Math.Abs(scaleX - _scaleX) < 0.01f
-            && Math.Abs(scaleY - _scaleY) < 0.01f)
-            return;
-
-        _resizing = true;
-        try
-        {
-            EnsureDevice();
-            if (_device == null || _context == null)
-                return;
-            UnbindTarget();
-            if (_swapChain == null)
-            {
-                using var dxgi = _device.QueryInterface<IDXGIDevice>();
-                using var adapter = dxgi.GetAdapter();
-                using var factory = adapter.GetParent<IDXGIFactory2>();
-                var description = new SwapChainDescription1
-                {
-                    Width = (uint)width,
-                    Height = (uint)height,
-                    Format = Format.B8G8R8A8_UNorm,
-                    SampleDescription = new SampleDescription(1, 0),
-                    BufferUsage = Usage.RenderTargetOutput,
-                    BufferCount = 2,
-                    SwapEffect = SwapEffect.FlipDiscard,
-                    AlphaMode = AlphaMode.Ignore,
-                    Scaling = Scaling.Stretch
-                };
-                _swapChain = factory.CreateSwapChainForComposition(_device, description);
-                var native = _panel.As<ISwapChainPanelNative>();
-                native.SetSwapChain(_swapChain.NativePointer);
-            }
-            else
-            {
-                _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
-            }
-
-            _width = width;
-            _height = height;
-            _scaleX = scaleX;
-            _scaleY = scaleY;
-            ApplyPanelTransform();
-            using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
-            _target = _device.CreateRenderTargetView(back);
-            try
-            {
-                EnsurePipeline();
-            }
-            catch
-            {
-            }
-        }
-        finally
-        {
-            _resizing = false;
-        }
-    }
-
-    private void UnbindTarget()
-    {
-        _target?.Dispose();
-        _target = null;
-        if (_context == null)
-            return;
-        _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
-    }
-
-    private void ApplyPanelTransform()
-    {
-        if (_swapChain == null)
+        Interlocked.Exchange(ref _attached, 0);
+        var native = Native;
+        if (native == null)
             return;
         try
         {
-            using var chain = _swapChain.QueryInterface<IDXGISwapChain2>();
-            chain.MatrixTransform = new Matrix3x2(1f / _scaleX, 0, 0, 1f / _scaleY, 0, 0);
+            native.SetSwapChain(IntPtr.Zero);
         }
         catch
         {
         }
     }
 
-    private unsafe void Draw()
+    /// <summary>
+    /// 渲染线程创建交换链后，必须回到 UI 线程把它挂到面板上。
+    /// </summary>
+    private void AttachSwapChainToPanel(IntPtr pointer)
     {
-        Interlocked.Exchange(ref _posted, 0);
-        if (!CanDraw())
+        if (pointer == IntPtr.Zero || _suspended)
             return;
-        if (_drawing)
+
+        Interlocked.Exchange(ref _attached, 1);
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_ui.TryEnqueue(() =>
+            {
+                try
+                {
+                    var native = Native;
+                    if (!_suspended && native != null)
+                        native.SetSwapChain(pointer);
+                }
+                catch (Exception ex)
+                {
+                    Trace("attach error " + ex.Message);
+                }
+                finally
+                {
+                    done.TrySetResult();
+                }
+            }))
         {
-            PostDraw();
+            Trace("attach enqueue failed");
             return;
         }
 
-        TryResize();
-        if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _vertices == null)
+        if (!done.Task.Wait(1000))
+            Trace("attach wait timed out");
+    }
+
+    /// <summary>
+    /// 释放交换链前必须先解绑面板，否则 XAML 合成器可能访问已释放的对象。
+    /// Suspend/Dispose 已经在 UI 线程同步解绑过了，这里只处理设备丢失的情况。
+    /// </summary>
+    private void DetachSwapChainBeforeRelease()
+    {
+        Interlocked.Exchange(ref _attached, 0);
+        if (_suspended)
             return;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_ui.TryEnqueue(() =>
+            {
+                try
+                {
+                    Native?.SetSwapChain(IntPtr.Zero);
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    done.TrySetResult();
+                }
+            }))
+        {
+            return;
+        }
+
+        done.Task.Wait(1000);
+    }
+
+    private void ReleaseSwapChain()
+    {
+        UnbindTarget();
+        var chain = _swapChain;
+        _swapChain = null;
+        _width = 0;
+        _height = 0;
+        if (chain == null)
+            return;
+        DetachSwapChainBeforeRelease();
+        chain.Dispose();
+    }
+
+    private unsafe void Draw()
+    {
+        Interlocked.Exchange(ref _posted, 0);
+        if (_suspended || !_allowed)
+            return;
+
+        if (Interlocked.Exchange(ref _resizeRequested, 0) == 1)
+            TryResize();
+        else if (_swapChain != null && Volatile.Read(ref _attached) == 0)
+            AttachSwapChainToPanel(_swapChain.NativePointer);
+
+        if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _pixelShader == null
+            || _vertices == null || _layout == null || _sampler == null || _rasterizer == null)
+        {
+            if (_device != null && _context != null && _vertexShader == null)
+                TryEnsurePipeline();
+            return;
+        }
+
         VideoFrame? frame;
         lock (_gate)
         {
@@ -390,18 +422,23 @@ public sealed class VideoPresenter : IDisposable
         if (!upload && (_frameTexture == null || _frameView == null || _frameWidth < 1 || _frameHeight < 1))
             return;
 
-        _drawing = true;
         try
         {
-            if (upload)
+            if (upload && frame != null)
             {
-                EnsureFrameTexture(frame!.Width, frame.Height);
+                EnsureFrameTexture(frame.Width, frame.Height);
                 if (_frameTexture == null || _frameView == null)
-                    return;
-                var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
-                CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
-                _context.Unmap(_frameTexture, 0);
-                _frameBottomUp = frame.BottomUp;
+                {
+                    frame.ReturnBuffer();
+                    frame = null;
+                }
+                else
+                {
+                    var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
+                    CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
+                    _context.Unmap(_frameTexture, 0);
+                    _frameBottomUp = frame.BottomUp;
+                }
             }
 
             var frameView = _frameView;
@@ -424,26 +461,42 @@ public sealed class VideoPresenter : IDisposable
             _samplers[0] = _sampler!;
             _context.PSSetSamplers(0, 1, _samplers);
             _context.Draw(4, 0);
-            _context.OMSetRenderTargets(Array.Empty<ID3D11RenderTargetView>(), null);
+            _context.OMSetRenderTargets(NoTargets, null);
             _swapChain.Present(0, PresentFlags.None);
         }
         catch (Exception ex)
         {
+            if (frame != null)
+            {
+                frame.ReturnBuffer();
+                frame = null;
+            }
+
             if (IsDeviceLost(ex) || DeviceIsLost())
                 RecoverDevice();
         }
         finally
         {
-            frame?.ReturnBuffer();
-            _drawing = false;
-            if (_suspended)
-                ReleaseSwapChain();
+            if (frame != null)
+                SwapLastFrame(frame);
             var newer = false;
             lock (_gate)
                 newer = _pending != null;
             if (newer)
                 PostDraw();
         }
+    }
+
+    private void SwapLastFrame(VideoFrame frame)
+    {
+        VideoFrame? previous;
+        lock (_gate)
+        {
+            previous = _lastFrame;
+            _lastFrame = frame;
+        }
+
+        previous?.ReturnBuffer();
     }
 
     private void TryResize()
@@ -456,6 +509,88 @@ public sealed class VideoPresenter : IDisposable
         {
             if (IsDeviceLost(ex) || DeviceIsLost())
                 RecoverDevice();
+        }
+    }
+
+    private void Resize()
+    {
+        var width = Volatile.Read(ref _desiredWidth);
+        var height = Volatile.Read(ref _desiredHeight);
+        var scaleX = Volatile.Read(ref _desiredScaleX);
+        var scaleY = Volatile.Read(ref _desiredScaleY);
+        if (width < 2 || height < 2)
+            return;
+        if (_swapChain != null
+            && Math.Abs(width - _width) < 2
+            && Math.Abs(height - _height) < 2
+            && Math.Abs(scaleX - _scaleX) < 0.01f
+            && Math.Abs(scaleY - _scaleY) < 0.01f)
+            return;
+
+        EnsureDevice();
+        if (_device == null || _context == null)
+            return;
+        UnbindTarget();
+        if (_swapChain == null)
+        {
+            using var dxgi = _device.QueryInterface<IDXGIDevice>();
+            using var adapter = dxgi.GetAdapter();
+            using var factory = adapter.GetParent<IDXGIFactory2>();
+            var description = new SwapChainDescription1
+            {
+                Width = (uint)width,
+                Height = (uint)height,
+                Format = Format.B8G8R8A8_UNorm,
+                SampleDescription = new SampleDescription(1, 0),
+                BufferUsage = Usage.RenderTargetOutput,
+                BufferCount = 2,
+                SwapEffect = SwapEffect.FlipDiscard,
+                AlphaMode = AlphaMode.Ignore,
+                Scaling = Scaling.Stretch
+            };
+            _swapChain = factory.CreateSwapChainForComposition(_device, description);
+            AttachSwapChainToPanel(_swapChain.NativePointer);
+        }
+        else
+        {
+            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
+        }
+
+        _width = width;
+        _height = height;
+        _scaleX = scaleX;
+        _scaleY = scaleY;
+        ApplyPanelTransform();
+        using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+        _target = _device.CreateRenderTargetView(back);
+        try
+        {
+            EnsurePipeline();
+        }
+        catch (Exception ex)
+        {
+            Trace("pipeline error " + ex);
+        }
+    }
+
+    private void UnbindTarget()
+    {
+        _target?.Dispose();
+        _target = null;
+        _context?.OMSetRenderTargets(NoTargets, null);
+    }
+
+    private void ApplyPanelTransform()
+    {
+        if (_swapChain == null)
+            return;
+        try
+        {
+            using var chain = _swapChain.QueryInterface<IDXGISwapChain2>();
+            chain.MatrixTransform = new Matrix3x2(1f / _scaleX, 0, 0, 1f / _scaleY, 0, 0);
+        }
+        catch
+        {
         }
     }
 
@@ -486,9 +621,7 @@ public sealed class VideoPresenter : IDisposable
         try
         {
             ReleaseDeviceResources();
-            if (!CanDraw())
-                return;
-            Resize();
+            Interlocked.Exchange(ref _resizeRequested, 1);
             PostDraw();
         }
         catch
@@ -500,7 +633,7 @@ public sealed class VideoPresenter : IDisposable
     {
         if (_device == null || (_frameTexture != null && width == _frameWidth && height == _frameHeight))
             return;
-        _context?.PSSetShaderResources(0, 1, new ID3D11ShaderResourceView[1]);
+        _context?.PSSetShaderResources(0, 1, NoFrameViews);
 
         _frameView?.Dispose();
         _frameTexture?.Dispose();
@@ -525,7 +658,7 @@ public sealed class VideoPresenter : IDisposable
     {
         if (_context == null || _vertices == null || _width < 2 || _height < 2 || _frameWidth < 1 || _frameHeight < 1)
             return;
-        var q = VideoAspect.Quad(_width, _height, _frameWidth, _frameHeight, _aspectMode, _frameBottomUp);
+        var q = VideoAspect.Quad(_width, _height, _frameWidth, _frameHeight, (AspectMode)Volatile.Read(ref _aspectValue), _frameBottomUp);
         var quad = stackalloc float[16]
         {
             q.Left, q.Top, q.UvLeft, q.UvTop,
@@ -591,6 +724,22 @@ public sealed class VideoPresenter : IDisposable
         _context = context;
     }
 
+    private void TryEnsurePipeline()
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastPipelineTryMs < 1000)
+            return;
+        _lastPipelineTryMs = now;
+        try
+        {
+            EnsurePipeline();
+        }
+        catch (Exception ex)
+        {
+            Trace("pipeline retry error " + ex);
+        }
+    }
+
     private unsafe void EnsurePipeline()
     {
         if (_device == null || _vertexShader != null)
@@ -639,6 +788,35 @@ public sealed class VideoPresenter : IDisposable
         });
     }
 
+    private void ReleaseDeviceResources()
+    {
+        ReleaseSwapChain();
+        _frameView?.Dispose();
+        _frameView = null;
+        _frameTexture?.Dispose();
+        _frameTexture = null;
+        _vertices?.Dispose();
+        _vertices = null;
+        _layout?.Dispose();
+        _layout = null;
+        _vertexShader?.Dispose();
+        _vertexShader = null;
+        _pixelShader?.Dispose();
+        _pixelShader = null;
+        _sampler?.Dispose();
+        _sampler = null;
+        _rasterizer?.Dispose();
+        _rasterizer = null;
+        _context?.Dispose();
+        _context = null;
+        _device?.Dispose();
+        _device = null;
+        _vertexBytecode = null;
+        _frameWidth = 0;
+        _frameHeight = 0;
+        _frameBottomUp = false;
+    }
+
     private static int PixelSize(double dips, float scale) => Math.Max(0, (int)Math.Round(dips * scale));
     private static float ScaleOf(double value) => value < 0.01 ? 1f : (float)value;
 
@@ -655,7 +833,12 @@ public sealed class VideoPresenter : IDisposable
                 {
                     var result = D3DCompile((IntPtr)pointer, (nuint)bytes.Length, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, entry, profile, 0, 0, out var code, out var errors);
                     if (errors != IntPtr.Zero)
+                    {
+                        if (result < 0)
+                            Trace($"d3dcompile {target} hr=0x{result:X8} {ReadBlobText(errors)}");
                         Marshal.Release(errors);
+                    }
+
                     if (result < 0 || code == IntPtr.Zero)
                         return null;
                     return ReadBlob(code);
@@ -666,6 +849,23 @@ public sealed class VideoPresenter : IDisposable
         {
             Marshal.FreeHGlobal(entry);
             Marshal.FreeHGlobal(profile);
+        }
+    }
+
+    private static string ReadBlobText(IntPtr blob)
+    {
+        try
+        {
+            var table = Marshal.ReadIntPtr(blob);
+            var getPointer = Marshal.GetDelegateForFunctionPointer<GetBufferPointerDelegate>(Marshal.ReadIntPtr(table, 3 * IntPtr.Size));
+            var getSize = Marshal.GetDelegateForFunctionPointer<GetBufferSizeDelegate>(Marshal.ReadIntPtr(table, 4 * IntPtr.Size));
+            var pointer = getPointer(blob);
+            var size = (int)getSize(blob).ToUInt64();
+            return size <= 0 ? "" : Marshal.PtrToStringAnsi(pointer, size) ?? "";
+        }
+        catch (Exception ex)
+        {
+            return "<" + ex.Message + ">";
         }
     }
 

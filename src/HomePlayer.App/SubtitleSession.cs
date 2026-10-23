@@ -20,7 +20,7 @@ internal sealed class SubtitleSession
     private string? _sidecar;
     private string? _manualSidecar;
     private int _embedded = -1;
-    private IReadOnlyList<SubtitleCue> _cues = [];
+    private SubtitleTrack _track = SubtitleTrack.Empty;
     private readonly HashSet<string> _unreadable = new(StringComparer.OrdinalIgnoreCase);
 
     public string? VideoPath { get; private set; }
@@ -61,7 +61,7 @@ internal sealed class SubtitleSession
         _sidecar = null;
         _manualSidecar = null;
         _embedded = -1;
-        _cues = [];
+        _track = SubtitleTrack.Empty;
         _unreadable.Clear();
         Error = null;
         Sidecars = string.IsNullOrWhiteSpace(videoPath) ? [] : SubtitleFiles.Find(videoPath);
@@ -83,7 +83,7 @@ internal sealed class SubtitleSession
         _choice = Choice.Off;
         _sidecar = null;
         _embedded = -1;
-        _cues = [];
+        _track = SubtitleTrack.Empty;
         Error = null;
     }
 
@@ -123,7 +123,7 @@ internal sealed class SubtitleSession
         _choice = Choice.Embedded;
         _embedded = index;
         _sidecar = null;
-        _cues = [];
+        _track = SubtitleTrack.Empty;
         Error = null;
         Remember();
         return true;
@@ -131,12 +131,12 @@ internal sealed class SubtitleSession
 
     public void SetCues(IReadOnlyList<SubtitleCue> cues, string? error)
     {
-        _cues = cues;
+        _track = new SubtitleTrack(cues);
         Error = error;
     }
 
     public string? TextAt(TimeSpan position) =>
-        _choice == Choice.Off ? null : SubtitleCues.At(_cues, position)?.Text;
+        _choice == Choice.Off ? null : _track.At(position)?.Text;
 
     public bool OffChecked => _choice == Choice.Off;
     public bool AutoChecked => _choice == Choice.Auto;
@@ -202,7 +202,7 @@ internal sealed class SubtitleSession
         }
 
         _sidecar = null;
-        _cues = [];
+        _track = SubtitleTrack.Empty;
         Error = null;
         foreach (var track in Embedded)
         {
@@ -218,7 +218,7 @@ internal sealed class SubtitleSession
         try
         {
             var cues = SubtitleText.ParseFile(path);
-            _cues = cues;
+            _track = new SubtitleTrack(cues);
             _unreadable.Remove(path);
             Error = cues.Count == 0 ? Path.GetFileName(path) + " 没有可显示的字幕" : null;
             if (cues.Count == 0)
@@ -226,7 +226,7 @@ internal sealed class SubtitleSession
         }
         catch (Exception ex)
         {
-            _cues = [];
+            _track = SubtitleTrack.Empty;
             _unreadable.Add(path);
             Error = Path.GetFileName(path) + " 无法读取：" + ex.Message;
         }

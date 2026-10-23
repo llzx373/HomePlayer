@@ -31,7 +31,7 @@ public sealed partial class PlayerPage : Page
     private const string GlyphRepeatOne = "\uE8ED";
 
     private readonly VideoPresenter _presenter;
-    private readonly SubtitleSession _subtitles = new();
+    private SubtitleSession _subtitles = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
     private int _pipelineTicks;
@@ -61,7 +61,10 @@ public sealed partial class PlayerPage : Page
     private bool _subtitleOpen;
     private int _subtitleScan;
     private int _subtitleEmbed;
+    private int _subtitleLoad;
     private string? _shownSubtitle;
+    private (string? Path, string Engine)? _audioTracksKey;
+    private bool _hasAudioTracks;
     private bool _windowEvents;
 
     public PlayerPage()
@@ -108,8 +111,9 @@ public sealed partial class PlayerPage : Page
             UpdateSubtitleOverlay();
             if (_statusHold != null)
                 ApplyStatusText();
-            if (++_pipelineTicks % 10 == 0 && PipelinePanel.Visibility == Visibility.Visible)
-                UpdatePipelineText();
+            if (++_pipelineTicks % 50 == 0 && PipelinePanel.Visibility == Visibility.Visible)
+                _ = RefreshPipelineAsync();
+            AdjustTimerInterval();
         };
         Loaded += (_, _) =>
         {
@@ -736,9 +740,17 @@ public sealed partial class PlayerPage : Page
     {
         if (AudioButton == null)
             return;
-        var hasTracks = Playback.GetAudioTracks().Count > 0;
-        AudioButton.IsEnabled = hasTracks;
-        ApplyTip(AudioButton, hasTracks ? "音轨" : "没有音轨", HotkeyCatalog.CycleAudioTrack);
+        // GetAudioTracks 在 DirectShow 引擎上要走 STA 线程枚举整张滤镜图。
+        // Changed 在拖动音量时会连续触发，只在换片/换引擎时问一次就够了。
+        var key = (Playback.Playlist.Current?.Path, Playback.EngineLabel);
+        if (key != _audioTracksKey)
+        {
+            _audioTracksKey = key;
+            _hasAudioTracks = Playback.GetAudioTracks().Count > 0;
+        }
+
+        AudioButton.IsEnabled = _hasAudioTracks;
+        ApplyTip(AudioButton, _hasAudioTracks ? "音轨" : "没有音轨", HotkeyCatalog.CycleAudioTrack);
     }
 
     private static string AudioTrackText(MediaTrack track, int number)
@@ -861,11 +873,39 @@ public sealed partial class PlayerPage : Page
         if (path != _subtitlePath || open && !_subtitleOpen)
         {
             _subtitlePath = path;
-            _subtitles.Load(path);
-            _ = ScanEmbedded();
+            _ = LoadSubtitlesAsync(path, ++_subtitleLoad);
         }
 
         _subtitleOpen = open;
+    }
+
+    /// <summary>
+    /// 解析外挂字幕要读文件、跑正则，放在 UI 线程上会让切换视频明显顿一下。
+    /// </summary>
+    private async Task LoadSubtitlesAsync(string? path, int token)
+    {
+        SubtitleSession session;
+        try
+        {
+            session = await Task.Run(() =>
+            {
+                var next = new SubtitleSession();
+                next.Load(path);
+                return next;
+            });
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (token != _subtitleLoad || App.Host.Exiting)
+            return;
+        _subtitles = session;
+        UpdateSubtitleChrome();
+        UpdateSubtitleOverlay();
+        if (session.VideoPath != null)
+            _ = ScanEmbedded();
     }
 
     private async Task ScanEmbedded()
@@ -1382,18 +1422,32 @@ public sealed partial class PlayerPage : Page
         PipelinePanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PipelineButton.IsChecked = open;
         if (open)
-            UpdatePipelineText();
+            _ = RefreshPipelineAsync();
     }
 
-    private void UpdatePipelineText()
+    /// <summary>
+    /// 枚举 DirectShow 滤镜图必须在 STA 线程上做，会阻塞调用线程。
+    /// 放到线程池里调用，UI 线程就不会为了一次读管线信息卡住。
+    /// </summary>
+    private async Task RefreshPipelineAsync()
     {
         try
         {
-            PipelineText.Text = Playback.Pipeline()?.Format() ?? "当前没有播放。";
+            var text = await Task.Run(() => Playback.Pipeline()?.Format() ?? "当前没有播放。");
+            if (!App.Host.Exiting)
+                PipelineText.Text = text;
         }
         catch (Exception ex)
         {
-            PipelineText.Text = "读取管线信息失败：" + ex.Message;
+            if (!App.Host.Exiting)
+                PipelineText.Text = "读取管线信息失败：" + ex.Message;
         }
+    }
+
+    private void AdjustTimerInterval()
+    {
+        var interval = Playback.IsPlaying ? TimeSpan.FromMilliseconds(100) : TimeSpan.FromMilliseconds(250);
+        if (_timer.Interval != interval)
+            _timer.Interval = interval;
     }
 }

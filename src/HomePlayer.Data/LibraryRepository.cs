@@ -137,6 +137,42 @@ public sealed class LibraryRepository : IDisposable
         }
     }
 
+    /// <summary>
+    /// 批量读取条目，避免扫描时对每个刷新项各发一条 SQL。
+    /// </summary>
+    public IReadOnlyList<MediaItem> GetItems(IReadOnlyCollection<string> ids)
+    {
+        if (ids.Count == 0)
+            return [];
+
+        var list = new List<MediaItem>(ids.Count);
+        var values = ids as IList<string> ?? [.. ids];
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            for (var offset = 0; offset < values.Count; offset += MaxQueryIds)
+            {
+                var count = Math.Min(MaxQueryIds, values.Count - offset);
+                command.Parameters.Clear();
+                var names = new string[count];
+                for (var i = 0; i < count; i++)
+                {
+                    names[i] = "$id" + i;
+                    command.Parameters.AddWithValue(names[i], values[offset + i]);
+                }
+
+                command.CommandText = "SELECT * FROM MediaItem WHERE Id IN (" + string.Join(",", names) + ");";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    list.Add(ReadItem(reader));
+            }
+        }
+
+        return list;
+    }
+
+    private const int MaxQueryIds = 400;
+
     public void InsertItem(MediaItem item)
     {
         lock (_gate)

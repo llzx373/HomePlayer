@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Runtime.InteropServices;
 using HomePlayer.Core;
 
@@ -221,13 +220,15 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         }
     }
 
-    private TimeSpan CurrentStreamTime()
+    private unsafe TimeSpan CurrentStreamTime()
     {
         var clock = _clock;
         if (clock != 0)
         {
-            var getTime = VtableGetTime(clock);
-            if (getTime(clock, out var time) >= 0)
+            var table = *(IntPtr**)clock;
+            var getTime = (delegate* unmanaged[Stdcall]<IntPtr, long*, int>)table[3];
+            long time;
+            if (getTime(clock, &time) >= 0)
                 return TimeSpan.FromTicks(Math.Max(0, time - _runStart));
         }
 
@@ -241,15 +242,6 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         if (previous != 0)
             Marshal.Release(previous);
     }
-
-    private static GetTimeDelegate VtableGetTime(IntPtr instance)
-    {
-        var table = Marshal.ReadIntPtr(instance);
-        return Marshal.GetDelegateForFunctionPointer<GetTimeDelegate>(Marshal.ReadIntPtr(table, 3 * IntPtr.Size));
-    }
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate int GetTimeDelegate(IntPtr self, out long time);
 
     internal void NotifyEnd()
     {
@@ -353,6 +345,7 @@ public interface IEnumPinsSink
 public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
 {
     private readonly BgraSinkFilter _filter;
+    private readonly FrameBufferPool _pool = new(4);
     private IntPtr _connected;
 
     public BgraSinkPin(BgraSinkFilter filter) => _filter = filter;
@@ -501,7 +494,7 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         var stride = Width * 4;
         var needed = stride * Height;
         var copyLength = Math.Min(length, needed);
-        var data = ArrayPool<byte>.Shared.Rent(needed);
+        var data = _pool.Rent(needed);
         var frame = new VideoFrame
         {
             Width = Width,
@@ -509,7 +502,7 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
             Stride = stride,
             Data = data,
             BottomUp = BottomUp,
-            ReleaseBuffer = () => ArrayPool<byte>.Shared.Return(data)
+            ReleaseBuffer = () => _pool.Return(data)
         };
         try
         {
@@ -526,37 +519,43 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         }
     }
 
-    private static int SamplePointer(IntPtr sample, out IntPtr buffer) =>
-        Vtable<SamplePointerDelegate>(sample, 3)(sample, out buffer);
-
-    private static int SampleLength(IntPtr sample) => Vtable<SampleLengthDelegate>(sample, 11)(sample);
-
-    private static int SampleTime(IntPtr sample, out long start)
+    private static unsafe int SamplePointer(IntPtr sample, out IntPtr buffer)
     {
-        var result = Vtable<SampleTimeDelegate>(sample, 5)(sample, out start, out _);
+        var table = *(IntPtr**)sample;
+        var call = (delegate* unmanaged[Stdcall]<IntPtr, IntPtr*, int>)table[3];
+        IntPtr value;
+        var result = call(sample, &value);
+        buffer = value;
         return result;
     }
 
-    private static int SampleMediaTime(IntPtr sample, out long start)
+    private static unsafe int SampleLength(IntPtr sample)
     {
-        var result = Vtable<SampleTimeDelegate>(sample, 17)(sample, out start, out _);
+        var table = *(IntPtr**)sample;
+        return ((delegate* unmanaged[Stdcall]<IntPtr, int>)table[11])(sample);
+    }
+
+    private static unsafe int SampleTime(IntPtr sample, out long start)
+    {
+        var table = *(IntPtr**)sample;
+        var call = (delegate* unmanaged[Stdcall]<IntPtr, long*, long*, int>)table[5];
+        long value;
+        long end;
+        var result = call(sample, &value, &end);
+        start = value;
         return result;
     }
 
-    private static T Vtable<T>(IntPtr instance, int slot) where T : Delegate
+    private static unsafe int SampleMediaTime(IntPtr sample, out long start)
     {
-        var table = Marshal.ReadIntPtr(instance);
-        return Marshal.GetDelegateForFunctionPointer<T>(Marshal.ReadIntPtr(table, slot * IntPtr.Size));
+        var table = *(IntPtr**)sample;
+        var call = (delegate* unmanaged[Stdcall]<IntPtr, long*, long*, int>)table[17];
+        long value;
+        long end;
+        var result = call(sample, &value, &end);
+        start = value;
+        return result;
     }
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate int SamplePointerDelegate(IntPtr self, out IntPtr buffer);
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate int SampleLengthDelegate(IntPtr self);
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate int SampleTimeDelegate(IntPtr self, out long start, out long end);
 
     public int ReceiveMultiple(IntPtr samples, int count, out int processed)
     {
@@ -592,16 +591,12 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         BottomUp = height > 0;
     }
 
-    private static IntPtr AddRef(IntPtr pointer)
+    private static unsafe IntPtr AddRef(IntPtr pointer)
     {
-        var table = Marshal.ReadIntPtr(pointer);
-        var addRef = Marshal.GetDelegateForFunctionPointer<AddRefDelegate>(Marshal.ReadIntPtr(table, IntPtr.Size));
-        addRef(pointer);
+        var table = *(IntPtr**)pointer;
+        ((delegate* unmanaged[Stdcall]<IntPtr, int>)table[1])(pointer);
         return pointer;
     }
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate int AddRefDelegate(IntPtr self);
 }
 
 [ComVisible(true)]

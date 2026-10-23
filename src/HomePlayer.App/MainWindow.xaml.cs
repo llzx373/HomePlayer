@@ -16,7 +16,9 @@ namespace HomePlayer;
 public sealed partial class MainWindow : Window
 {
     private readonly NativeTray _tray;
-    private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    // 光标位置用轮询是为了在无边框/全屏时判断控制条该不该出现。
+    // 10 Hz 足够跟手，比原来的 20 Hz 少一半常驻唤醒。
+    private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool _fullscreen;
     private bool _alwaysOnTop;
     private int _fitRestoreTries;

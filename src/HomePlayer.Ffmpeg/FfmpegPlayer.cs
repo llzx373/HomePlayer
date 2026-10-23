@@ -40,6 +40,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private int _channels;
     private int _sampleRate;
     private bool _endedRaised;
+    private readonly FrameBufferPool _framePool = new(4);
+    private int _frameBytes;
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
@@ -283,6 +285,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _clockOrigin = 0;
         Volatile.Write(ref _rate, 1.0);
         _endedRaised = false;
+        _frameBytes = 0;
         _videoIndex = -1;
         Volatile.Write(ref _audioIndex, -1);
         Volatile.Write(ref _subtitleIndex, -1);
@@ -865,8 +868,10 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     private VideoFrame ToBgra(AVFrame* source)
     {
-        var size = ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
-        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        if (_frameBytes <= 0)
+            _frameBytes = Math.Max(1, ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1));
+        var size = _frameBytes;
+        var buffer = _framePool.Rent(size);
         try
         {
             var stride = _width * 4;
@@ -885,12 +890,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 Height = _height,
                 Stride = stride,
                 Data = buffer,
-                ReleaseBuffer = () => ArrayPool<byte>.Shared.Return(buffer)
+                ReleaseBuffer = () => _framePool.Return(buffer)
             };
         }
         catch
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            _framePool.Return(buffer);
             throw;
         }
     }
