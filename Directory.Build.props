@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
-    <Version>0.1.1-1</Version>
+    <Version>0.1.1-2</Version>
     <Authors>llzx373</Authors>
     <Product>HomePlayer</Product>
     <Copyright>Copyright (c) 2026 llzx373</Copyright>
