@@ -40,25 +40,59 @@ public sealed partial class SettingsPage : Page
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
         HotkeyList.ItemsSource = _hotkeys;
-        LoadHotkeys(settings.Hotkeys);
-        LoadAudioDevices(settings.AudioOutputId);
+        LoadHotkeysSafe(settings.Hotkeys);
+        LoadAudioDevicesSafe(settings.AudioOutputId);
         CodecSummary.Text = "正在扫描编解码器…";
         _ = ReloadCodecsAsync(settings);
         AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
         Unloaded += (_, _) => EndCapture();
         Loaded += (_, _) =>
         {
+            EndCapture();
             _loading = true;
-            TraySwitch.IsOn = App.Host.Settings.CloseToTray;
-            AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
-            LoadAudioDevices(App.Host.Settings.AudioOutputId);
-            _loading = false;
+            try
+            {
+                TraySwitch.IsOn = App.Host.Settings.CloseToTray;
+                FitWindowSwitch.IsOn = App.Host.Settings.FitWindow;
+                AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
+                LoadAudioDevicesSafe(App.Host.Settings.AudioOutputId);
+            }
+            finally
+            {
+                _loading = false;
+            }
             _ = RefreshCacheTextAsync();
             RefreshCrashSummary();
         };
         _loading = false;
         CacheText.Text = "缓存占用计算中…";
         CrashSummary.Text = "正在读取崩溃日志…";
+    }
+
+    private void LoadHotkeysSafe(Dictionary<string, string> saved)
+    {
+        try
+        {
+            LoadHotkeys(saved);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write(CrashLog.UnhandledKind, "加载快捷键失败" + Environment.NewLine + ex);
+        }
+    }
+
+    private void LoadAudioDevicesSafe(string? savedId)
+    {
+        try
+        {
+            LoadAudioDevices(savedId);
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write(CrashLog.UnhandledKind, "枚举播放设备失败" + Environment.NewLine + ex);
+            AudioDeviceBox.ItemsSource = new List<AudioOutput> { new(AudioOutputs.SystemDefaultId, "系统默认", true) };
+            AudioDeviceBox.SelectedIndex = 0;
+        }
     }
 
     private async Task RefreshCacheTextAsync()

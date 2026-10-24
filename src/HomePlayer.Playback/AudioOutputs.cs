@@ -36,7 +36,7 @@ public static class AudioOutputs
                 }
             }
         }
-        catch (Exception ex) when (ex is COMException or InvalidOperationException)
+        catch (Exception)
         {
         }
 

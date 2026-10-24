@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using WinRT.Interop;
@@ -25,6 +26,9 @@ public sealed partial class MainWindow : Window
     private bool _overlayVisible;
     private DateTime _overlayHoldUntil;
     private string _pageTag = "library";
+    private bool _syncingNav;
+    private bool _navigationErrorShown;
+    private Exception? _lastNavigationError;
     private uint _captionClickTime;
     private int _captionClickX;
     private int _captionClickY;
@@ -83,6 +87,7 @@ public sealed partial class MainWindow : Window
             RaiseOverlayTick();
         };
         Root.Loaded += OnRootLoaded;
+        RootFrame.NavigationFailed += OnNavigationFailed;
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         Nav.SelectedItem = Nav.MenuItems[0];
         _tray = new NativeTray(
@@ -92,7 +97,7 @@ public sealed partial class MainWindow : Window
             RequestExit);
     }
 
-    public void SelectPlayer() => Nav.SelectedItem = Nav.MenuItems[1];
+    public void SelectPlayer() => SelectPage("player");
 
     public void ShowFromTray()
     {
@@ -339,16 +344,122 @@ public sealed partial class MainWindow : Window
 
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+        if (_syncingNav)
+            return;
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string;
-        _pageTag = tag ?? "library";
-        var page = _pageTag switch
+        ShowPage(tag ?? "library");
+    }
+
+    private static Type PageFor(string tag) => tag switch
+    {
+        "player" => typeof(PlayerPage),
+        "settings" => typeof(SettingsPage),
+        _ => typeof(LibraryPage)
+    };
+
+    private NavigationViewItem? NavItemFor(string tag) => tag switch
+    {
+        "player" => Nav.MenuItems.ElementAtOrDefault(1) as NavigationViewItem,
+        "settings" => Nav.FooterMenuItems.ElementAtOrDefault(0) as NavigationViewItem,
+        _ => Nav.MenuItems.ElementAtOrDefault(0) as NavigationViewItem
+    };
+
+    private void SelectPage(string tag)
+    {
+        var item = NavItemFor(tag);
+        if (item == null)
+            return;
+        if (!ReferenceEquals(Nav.SelectedItem, item))
         {
-            "player" => typeof(PlayerPage),
-            "settings" => typeof(SettingsPage),
-            _ => typeof(LibraryPage)
-        };
-        RootFrame.Navigate(page);
+            Nav.SelectedItem = item;
+            return;
+        }
+
+        if (_pageTag == tag && RootFrame.Content?.GetType() == PageFor(tag))
+            return;
+
+        ShowPage(tag);
+    }
+
+    private void ShowPage(string tag)
+    {
+        var page = PageFor(tag);
+        _lastNavigationError = null;
+        var started = false;
+        try
+        {
+            started = RootFrame.Navigate(page);
+        }
+        catch (Exception ex)
+        {
+            _lastNavigationError = ex;
+            CrashLog.Write(CrashLog.UnhandledKind, $"页面 {page.Name} 加载失败{Environment.NewLine}{ex}");
+        }
+
+        if (!started)
+        {
+            SyncNavSelection();
+            ShowNavigationError(tag, _lastNavigationError);
+            return;
+        }
+
+        _pageTag = tag;
         ApplyTitleBar();
+    }
+
+    private void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
+    {
+        _lastNavigationError = e.Exception;
+        CrashLog.Write(CrashLog.UnhandledKind, $"页面 {e.SourcePageType.Name} 加载失败{Environment.NewLine}{e.Exception}");
+    }
+
+    private void SyncNavSelection()
+    {
+        var item = NavItemFor(_pageTag);
+        if (item == null || ReferenceEquals(Nav.SelectedItem, item))
+            return;
+        _syncingNav = true;
+        try
+        {
+            Nav.SelectedItem = item;
+        }
+        finally
+        {
+            _syncingNav = false;
+        }
+    }
+
+    private async void ShowNavigationError(string tag, Exception? error)
+    {
+        if (_navigationErrorShown)
+            return;
+        _navigationErrorShown = true;
+        try
+        {
+            var name = tag switch
+            {
+                "player" => "正在播放",
+                "settings" => "设置",
+                _ => "媒体库"
+            };
+            var dialog = new ContentDialog
+            {
+                Title = name + "页面打不开",
+                Content = error?.Message ?? "页面初始化失败，详细信息已写入崩溃日志。",
+                PrimaryButtonText = "重试",
+                CloseButtonText = "关闭",
+                XamlRoot = Root.XamlRoot
+            };
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                ShowPage(tag);
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            _navigationErrorShown = false;
+        }
     }
 
     private void ApplyNavPane()
@@ -374,7 +485,7 @@ public sealed partial class MainWindow : Window
             if (paths.Count == 0)
                 return;
             await App.Host.Playback.PlayPathsAsync(paths, 0);
-            Nav.SelectedItem = Nav.MenuItems[1];
+            SelectPlayer();
         }
         catch (Exception)
         {
@@ -534,13 +645,11 @@ public sealed partial class MainWindow : Window
         SetOverlayOpen(alongTop || DateTime.UtcNow < _overlayHoldUntil);
     }
 
-    private void TitleLibrary_Click(object sender, RoutedEventArgs e) =>
-        Nav.SelectedItem = Nav.MenuItems[0];
+    private void TitleLibrary_Click(object sender, RoutedEventArgs e) => SelectPage("library");
 
-    private void TitlePlayer_Click(object sender, RoutedEventArgs e) => SelectPlayer();
+    private void TitlePlayer_Click(object sender, RoutedEventArgs e) => SelectPage("player");
 
-    private void TitleSettings_Click(object sender, RoutedEventArgs e) =>
-        Nav.SelectedItem = Nav.FooterMenuItems[0];
+    private void TitleSettings_Click(object sender, RoutedEventArgs e) => SelectPage("settings");
 
     private void SyncChromeButtons()
     {
