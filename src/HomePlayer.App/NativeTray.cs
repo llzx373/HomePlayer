@@ -17,31 +17,24 @@ internal sealed class NativeTray : IDisposable
     private const uint WmNull = 0x0000;
     private const uint WmQuit = 0x0012;
     private const uint MfString = 0;
-    private const uint MfSeparator = 0x00000800;
     private const uint TpmRightButton = 0x0002;
     private const uint TpmReturnCmd = 0x0100;
     private const int CmdOpen = 1;
-    private const int CmdToggle = 2;
-    private const int CmdNext = 3;
-    private const int CmdExit = 4;
+    private const int CmdExit = 2;
     private static readonly IntPtr MessageWindowParent = new(-3);
 
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new();
     private readonly Action _open;
-    private readonly Action _toggle;
-    private readonly Action _next;
     private readonly Action _exit;
     private WndProc? _proc;
     private IntPtr _hwnd;
     private IntPtr _icon;
     private uint _threadId;
 
-    public NativeTray(Action open, Action toggle, Action next, Action exit)
+    public NativeTray(Action open, Action exit)
     {
         _open = open;
-        _toggle = toggle;
-        _next = next;
         _exit = exit;
         _thread = new Thread(Loop)
         {
@@ -119,9 +112,6 @@ internal sealed class NativeTray : IDisposable
     {
         var menu = CreatePopupMenu();
         AppendMenu(menu, MfString, (IntPtr)CmdOpen, "打开主窗口");
-        AppendMenu(menu, MfString, (IntPtr)CmdToggle, "播放/暂停");
-        AppendMenu(menu, MfString, (IntPtr)CmdNext, "下一个");
-        AppendMenu(menu, MfSeparator, IntPtr.Zero, "");
         AppendMenu(menu, MfString, (IntPtr)CmdExit, "退出");
         GetCursorPos(out var pos);
         SetForegroundWindow(_hwnd);
@@ -132,12 +122,6 @@ internal sealed class NativeTray : IDisposable
         {
             case CmdOpen:
                 Safe(_open);
-                break;
-            case CmdToggle:
-                Safe(_toggle);
-                break;
-            case CmdNext:
-                Safe(_next);
                 break;
             case CmdExit:
                 Safe(_exit);

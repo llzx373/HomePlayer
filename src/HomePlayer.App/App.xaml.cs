@@ -31,13 +31,15 @@ public partial class App : Application
         CrashGuard.StartSession();
         var queue = DispatcherQueue.GetForCurrentThread();
         Host = AppHost.Create(action => queue.TryEnqueue(() => action()));
-        _window = new MainWindow();
+        var initial = IncomingPaths(AppInstance.GetCurrent().GetActivatedEventArgs(), true);
+        _window = new MainWindow(initial.Count > 0);
         Window = _window;
         _window.Activate();
         Host.StartLibraries();
         if (_instance != null)
             _instance.Activated += (_, e) => queue.TryEnqueue(() => HandleActivation(e, false));
-        HandleActivation(AppInstance.GetCurrent().GetActivatedEventArgs(), true);
+        if (initial.Count > 0)
+            HandleIncomingFiles(initial);
     }
 
     private bool ClaimInstance()
@@ -65,15 +67,27 @@ public partial class App : Application
         try
         {
             Window.ShowFromTray();
-            var paths = CollectPaths(args, includeCommandLine);
-            paths.AddRange(DrainInbox());
-            paths = VideoFiles.Expand(paths);
+            var paths = IncomingPaths(args, includeCommandLine);
             if (paths.Count == 0)
                 return;
             HandleIncomingFiles(paths);
         }
         catch (Exception)
         {
+        }
+    }
+
+    private static List<string> IncomingPaths(AppActivationArguments? args, bool includeCommandLine)
+    {
+        try
+        {
+            var paths = CollectPaths(args, includeCommandLine);
+            paths.AddRange(DrainInbox());
+            return VideoFiles.Expand(paths);
+        }
+        catch (Exception)
+        {
+            return [];
         }
     }
 

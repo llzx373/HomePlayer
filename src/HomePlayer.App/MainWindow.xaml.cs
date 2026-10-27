@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window
     public event Action? SuspendRendering;
     public event Action? ResumeRendering;
 
-    public MainWindow()
+    public MainWindow(bool startOnPlayer)
     {
         InitializeComponent();
         ApplyWindowChrome();
@@ -89,11 +89,9 @@ public sealed partial class MainWindow : Window
         Root.Loaded += OnRootLoaded;
         RootFrame.NavigationFailed += OnNavigationFailed;
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
-        Nav.SelectedItem = Nav.MenuItems[0];
+        Nav.SelectedItem = Nav.MenuItems[startOnPlayer ? 1 : 0];
         _tray = new NativeTray(
             () => RunOnUi(ShowFromTray),
-            () => App.Host.Playback.TogglePlay(),
-            () => _ = App.Host.Playback.NextAsync(),
             RequestExit);
     }
 
@@ -127,11 +125,11 @@ public sealed partial class MainWindow : Window
     {
         if (paths.Count == 0)
             return;
+        SelectPlayer();
         if (replace)
             await App.Host.Playback.PlayPathsAsync(paths, 0);
         else
             App.Host.Playback.Enqueue(paths);
-        SelectPlayer();
     }
 
     private void OnRootLoaded(object sender, RoutedEventArgs e)
