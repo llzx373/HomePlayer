@@ -227,30 +227,36 @@
                                 Click="Previous_Click">
                                 <FontIcon x:Name="PreviousIcon" Glyph="&#xE892;" FontSize="16" />
                             </Button>
-                            <Button
-                                x:Name="SeekBackButton"
-                                Style="{StaticResource PlayerIconButton}"
-                                AutomationProperties.Name="后退 5 秒"
-                                ToolTipService.ToolTip="后退 5 秒"
-                                Click="SeekBack_Click">
-                                <FontIcon x:Name="SeekBackIcon" Glyph="&#xED3C;" FontSize="16" />
-                            </Button>
-                            <Button
-                                x:Name="PlayButton"
-                                Style="{StaticResource PlayerPlayButton}"
-                                AutomationProperties.Name="播放/暂停"
-                                ToolTipService.ToolTip="播放/暂停"
-                                Click="Play_Click">
-                                <FontIcon x:Name="PlayIcon" Glyph="&#xE768;" FontSize="18" />
-                            </Button>
-                            <Button
-                                x:Name="SeekForwardButton"
-                                Style="{StaticResource PlayerIconButton}"
-                                AutomationProperties.Name="前进 5 秒"
-                                ToolTipService.ToolTip="前进 5 秒"
-                                Click="SeekForward_Click">
-                                <FontIcon x:Name="SeekForwardIcon" Glyph="&#xED3D;" FontSize="16" />
-                            </Button>
+                            <Grid Width="124" VerticalAlignment="Center">
+                                <Button
+                                    x:Name="SeekBackButton"
+                                    Style="{StaticResource PlayerSeekBackButton}"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="后退 5 秒"
+                                    ToolTipService.ToolTip="后退 5 秒"
+                                    Click="SeekBack_Click">
+                                    <FontIcon x:Name="SeekBackIcon" Glyph="&#xED3C;" FontSize="16" />
+                                </Button>
+                                <Button
+                                    x:Name="SeekForwardButton"
+                                    Style="{StaticResource PlayerSeekForwardButton}"
+                                    HorizontalAlignment="Right"
+                                    AutomationProperties.Name="前进 5 秒"
+                                    ToolTipService.ToolTip="前进 5 秒"
+                                    Click="SeekForward_Click">
+                                    <FontIcon x:Name="SeekForwardIcon" Glyph="&#xED3D;" FontSize="16" />
+                                </Button>
+                                <Button
+                                    x:Name="PlayButton"
+                                    Style="{StaticResource PlayerPlayButton}"
+                                    HorizontalAlignment="Left"
+                                    Margin="38,0,0,0"
+                                    AutomationProperties.Name="播放/暂停"
+                                    ToolTipService.ToolTip="播放/暂停"
+                                    Click="Play_Click">
+                                    <FontIcon x:Name="PlayIcon" Glyph="&#xE768;" FontSize="20" />
+                                </Button>
+                            </Grid>
                             <Button
                                 x:Name="NextButton"
                                 Style="{StaticResource PlayerIconButton}"
