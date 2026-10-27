@@ -25,6 +25,14 @@ dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release
 - **正式版**：`主.次.修订`，例如 `0.1.0`。GitHub 上打对应的 `v0.1.0` 标签后，Release 流水线会测试、编安装包并发布。
 - **开发版**：下一个正式版号加上序号 `n`，例如 `0.1.1-1`、`0.1.1-2`。开发版不打正式标签、不发 GitHub Release。
 
+## 图标
+
+`scripts/Generate-Icons.ps1` 按 16/20/24/32/40/48/64/96/128/256 逐尺寸绘制 `Assets/App.ico`，以及每个视频后缀的 `Assets/FileIcons/<ext>.ico`。改配色或增删后缀时，改脚本顶部的 `$appPalette` / `$filePalettes` 后重新运行：
+
+```powershell
+pwsh -File scripts/Generate-Icons.ps1
+```
+
 ## 安装包
 
 ```powershell
