@@ -27,6 +27,10 @@ public sealed partial class LibraryPage : Page
     private bool _loading;
     private bool _sorting;
     private bool _syncingLibrary;
+    private bool _viewRestored;
+    private bool _restoringView;
+    private bool _pendingAll;
+    private int _pendingUpdates;
     private int _reloadToken;
     private int _loadToken;
     private int _page = 1;
@@ -46,7 +50,7 @@ public sealed partial class LibraryPage : Page
         _reloadTimer.IsRepeating = false;
         _reloadTimer.Tick += (_, _) =>
         {
-            LoadPage();
+            ShowPendingUpdates();
             RefreshFolderTree();
         };
         _libraryTimer = DispatcherQueue.CreateTimer();
@@ -72,6 +76,7 @@ public sealed partial class LibraryPage : Page
         Loaded += (_, _) => QueueLibraryReload();
         Unloaded += (_, _) =>
         {
+            SaveViewState();
             _reloadTimer.Stop();
             _libraryTimer.Stop();
             _filterTimer.Stop();
@@ -82,9 +87,31 @@ public sealed partial class LibraryPage : Page
     {
         if (!IsLoaded || App.Host.Exiting)
             return;
-        App.Host.Libraries.TakeDirtyItems();
         if (!_reloadTimer.IsRunning)
             _reloadTimer.Start();
+    }
+
+    private void ShowPendingUpdates()
+    {
+        var (all, ids) = App.Host.Libraries.TakeDirtyItems();
+        if (!all && ids.Length == 0)
+            return;
+        if (all)
+            _pendingAll = true;
+        _pendingUpdates += ids.Length;
+        UpdateBar.Message = _pendingAll
+            ? "媒体库有变动，点击刷新查看。"
+            : $"有 {_pendingUpdates} 项更新，点击刷新查看。";
+        UpdateBar.IsOpen = true;
+    }
+
+    private void RefreshPending_Click(object sender, RoutedEventArgs e)
+    {
+        _pendingUpdates = 0;
+        _pendingAll = false;
+        UpdateBar.IsOpen = false;
+        LoadPage();
+        RefreshFolderTree();
     }
 
     private void QueueLibraryReload()
@@ -125,7 +152,9 @@ public sealed partial class LibraryPage : Page
         _libraries.Clear();
         foreach (var library in libraries)
             _libraries.Add(library);
-        var selection = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
+        var view = _viewRestored ? null : App.Host.Settings.LibraryView;
+        var targetId = selected ?? view?.LibraryId;
+        var selection = _libraries.FirstOrDefault(item => item.Id == targetId) ?? _libraries.FirstOrDefault();
         _syncingLibrary = true;
         try
         {
@@ -137,6 +166,13 @@ public sealed partial class LibraryPage : Page
         }
 
         _loading = false;
+        if (view != null && selection != null)
+        {
+            _viewRestored = true;
+            _ = RestoreViewAsync(selection, view);
+            return;
+        }
+
         _folderPath = "";
         RebuildFolderTree(selection);
         _page = 1;
@@ -167,6 +203,7 @@ public sealed partial class LibraryPage : Page
         var kind = library.Kind;
         var folderPath = _folderPath;
         var recursive = RecursiveSwitch.IsOn;
+        var filter = CurrentFilter(library.Kind);
         _ = Task.Run(() =>
         {
             IReadOnlyList<MediaItem> items;
@@ -174,15 +211,15 @@ public sealed partial class LibraryPage : Page
             var page = requestedPage;
             try
             {
-                total = App.Host.Repository.CountItems(libraryId, folderPath, recursive, query, LibraryFilter.All);
+                total = App.Host.Repository.CountItems(libraryId, folderPath, recursive, query, filter);
                 page = PagedView.ClampPage(page, total, pageSize);
                 items = App.Host.Repository.ListItemsPage(
-                    libraryId, folderPath, recursive, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                    libraryId, folderPath, recursive, query, filter, sort, (page - 1) * pageSize, pageSize);
                 if (items.Count == 0 && total > 0 && page > 1)
                 {
                     page--;
                     items = App.Host.Repository.ListItemsPage(
-                        libraryId, folderPath, recursive, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                        libraryId, folderPath, recursive, query, filter, sort, (page - 1) * pageSize, pageSize);
                 }
             }
             catch (Exception)
@@ -234,7 +271,11 @@ public sealed partial class LibraryPage : Page
 
         _cards.ReplaceAll(cards);
         Pager.Update(total, page, pageSize);
+        _pendingUpdates = 0;
+        _pendingAll = false;
+        UpdateBar.IsOpen = false;
         UpdateEmptyText();
+        SaveViewState();
     }
 
     private static IReadOnlyDictionary<string, DateTime> ComputeImageStamps(
@@ -286,7 +327,9 @@ public sealed partial class LibraryPage : Page
             Title = title,
             Subtitle = item.Error ?? subtitle,
             Image = LoadImage(imagePath, stamp),
-            Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : "",
+            Badge = item.Status == ItemStatus.Pending
+                ? "处理中"
+                : library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : "",
             Progress = ratio,
             ProgressVisibility = ratio > 0 ? Visibility.Visible : Visibility.Collapsed,
             WatchedVisibility = progress?.Finished == true ? Visibility.Visible : Visibility.Collapsed
@@ -315,9 +358,15 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (LibraryList.SelectedItem is not MediaLibrary)
+        if (LibraryList.SelectedItem is not MediaLibrary library)
         {
             EmptyText.Text = "选择一个媒体库。";
+            return;
+        }
+
+        if (CurrentFilter(library.Kind) != LibraryFilter.All)
+        {
+            EmptyText.Text = "没有符合筛选条件的条目。";
             return;
         }
 
@@ -333,6 +382,21 @@ public sealed partial class LibraryPage : Page
     private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
         ? SortBox.SelectedIndex == 1 ? SortMode.YearDesc : SortMode.Title
         : SortBox.SelectedIndex == 1 ? SortMode.ModifiedDesc : SortMode.FileName;
+
+    private LibraryFilter CurrentFilter(LibraryKind kind)
+    {
+        var index = FilterBox.SelectedIndex;
+        if (index <= 0)
+            return LibraryFilter.All;
+        if (kind == LibraryKind.Catalog)
+            return index switch
+            {
+                1 => LibraryFilter.Failed,
+                2 => LibraryFilter.NeedsReview,
+                _ => LibraryFilter.Unwatched
+            };
+        return index == 1 ? LibraryFilter.Failed : LibraryFilter.Unwatched;
+    }
 
     private void ConfigureSort(LibraryKind? kind)
     {
@@ -358,6 +422,14 @@ public sealed partial class LibraryPage : Page
             }
 
             SortBox.SelectedIndex = 0;
+
+            FilterBox.Items.Clear();
+            FilterBox.Items.Add("全部");
+            FilterBox.Items.Add("失败");
+            if (catalog)
+                FilterBox.Items.Add("待核对");
+            FilterBox.Items.Add("未看");
+            FilterBox.SelectedIndex = 0;
         }
         finally
         {
@@ -486,7 +558,7 @@ public sealed partial class LibraryPage : Page
 
     private void Search_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_sorting || _loading)
+        if (_sorting || _loading || _restoringView)
             return;
         _page = 1;
         _filterTimer.Stop();
@@ -495,10 +567,112 @@ public sealed partial class LibraryPage : Page
 
     private void Sort_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_sorting || _loading)
+        if (_sorting || _loading || _restoringView)
             return;
         _page = 1;
         LoadPage();
+    }
+
+    private void Filter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_sorting || _loading || _restoringView)
+            return;
+        _page = 1;
+        LoadPage();
+    }
+
+    private void SaveViewState()
+    {
+        if (!_viewRestored || _restoringView)
+            return;
+        var library = LibraryList.SelectedItem as MediaLibrary;
+        var expanded = new List<string>();
+        foreach (var (path, node) in _folderTreeNodes)
+        {
+            if (path.Length > 0 && node.IsExpanded)
+                expanded.Add(path);
+        }
+
+        App.Host.Settings.LibraryView = new LibraryViewState
+        {
+            LibraryId = library?.Id,
+            FolderPath = _folderPath.Length == 0 ? null : _folderPath,
+            Recursive = RecursiveSwitch.IsOn,
+            Page = _page,
+            PageSize = _pageSize,
+            SortMode = library == null ? "" : CurrentSort(library.Kind).ToString(),
+            ExpandedFolders = expanded
+        };
+    }
+
+    private async Task RestoreViewAsync(MediaLibrary library, LibraryViewState view)
+    {
+        _restoringView = true;
+        try
+        {
+            if (view.PageSize is 30 or 60 or 100 or 200)
+                _pageSize = view.PageSize;
+            RecursiveSwitch.IsOn = view.Recursive;
+            RebuildFolderTree(library);
+            foreach (var path in view.ExpandedFolders
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .OrderBy(path => path.Count(character => character == '/')))
+            {
+                var node = await EnsureFolderNodeAsync(path);
+                if (node != null)
+                    node.IsExpanded = true;
+            }
+
+            var folderPath = (view.FolderPath ?? "").Replace('\\', '/').Trim('/');
+            var target = await EnsureFolderNodeAsync(folderPath);
+            if (target != null)
+                FolderTree.SelectedNode = target;
+            _folderPath = folderPath;
+            RestoreSort(library.Kind, view.SortMode);
+            _page = Math.Max(1, view.Page);
+        }
+        finally
+        {
+            _restoringView = false;
+        }
+
+        LoadPage();
+    }
+
+    private async Task<TreeViewNode?> EnsureFolderNodeAsync(string path)
+    {
+        path = (path ?? "").Replace('\\', '/').Trim('/');
+        if (!_folderTreeNodes.TryGetValue("", out var root))
+            return null;
+        if (path.Length == 0)
+            return root;
+        var parentPath = HomePlayer.Core.FolderTree.Parent(path) ?? "";
+        var parentNode = await EnsureFolderNodeAsync(parentPath);
+        if (parentNode?.Content is not FolderNode parentFolder)
+            return null;
+        if (_folderTreeNodes.TryGetValue(path, out var node))
+            return node;
+        if (!parentFolder.Loaded)
+            await LoadFolderChildrenAsync(parentNode, parentFolder);
+        return _folderTreeNodes.GetValueOrDefault(path);
+    }
+
+    private void RestoreSort(LibraryKind kind, string? sortMode)
+    {
+        var mode = Enum.TryParse<SortMode>(sortMode, out var parsed) ? parsed : SortMode.FileName;
+        ConfigureSort(kind);
+        var index = kind == LibraryKind.Catalog
+            ? mode == SortMode.YearDesc ? 1 : 0
+            : mode == SortMode.ModifiedDesc ? 1 : 0;
+        _sorting = true;
+        try
+        {
+            SortBox.SelectedIndex = index;
+        }
+        finally
+        {
+            _sorting = false;
+        }
     }
 
     private void RebuildFolderTree(MediaLibrary? library)
@@ -579,7 +753,7 @@ public sealed partial class LibraryPage : Page
             children = [];
         }
 
-        DispatcherQueue.TryEnqueue(() =>
+        void Apply()
         {
             if ((LibraryList.SelectedItem as MediaLibrary)?.Id != folder.LibraryId)
                 return;
@@ -588,7 +762,12 @@ public sealed partial class LibraryPage : Page
             if (!_folderTreeNodes.TryGetValue(folder.Path, out var live) || !ReferenceEquals(live, node))
                 return;
             ApplyFolderChildren(node, folder, children, self);
-        });
+        }
+
+        if (DispatcherQueue.HasThreadAccess)
+            Apply();
+        else
+            DispatcherQueue.TryEnqueue(Apply);
     }
 
     private void ApplyFolderChildren(
@@ -652,6 +831,7 @@ public sealed partial class LibraryPage : Page
 
     private void FolderTree_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
     {
+        DispatcherQueue.TryEnqueue(SaveViewState);
         if (args.Node.Content is not FolderNode folder || folder.Loaded)
             return;
         _ = LoadFolderChildrenAsync(args.Node, folder);
@@ -659,6 +839,8 @@ public sealed partial class LibraryPage : Page
 
     private void FolderTree_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
     {
+        if (_restoringView)
+            return;
         var path = (FolderTree.SelectedNode?.Content as FolderNode)?.Path ?? "";
         if (string.Equals(path, _folderPath, StringComparison.OrdinalIgnoreCase))
             return;
@@ -683,13 +865,16 @@ public sealed partial class LibraryPage : Page
         e.Handled = true;
     }
 
+    private void FolderTree_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args) => SaveViewState();
+
     private void Recursive_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_loading)
+        if (_loading || _restoringView)
             return;
         foreach (var folder in _folderNodes.Values)
             folder.SetRecursive(RecursiveSwitch.IsOn);
         _page = 1;
+        SaveViewState();
         LoadPage();
     }
 
@@ -792,8 +977,9 @@ public sealed partial class LibraryPage : Page
         var recursive = RecursiveSwitch.IsOn;
         var query = SearchBox.Text?.Trim() ?? "";
         var sort = CurrentSort(library.Kind);
+        var filter = CurrentFilter(library.Kind);
         return await Task.Run(() => App.Host.Repository.ListAllPaths(
-            library.Id, folderPath, recursive, query, LibraryFilter.All, sort));
+            library.Id, folderPath, recursive, query, filter, sort));
     }
 
     private async void Random_Click(object sender, RoutedEventArgs e)

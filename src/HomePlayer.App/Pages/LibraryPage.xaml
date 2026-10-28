@@ -31,6 +31,7 @@
                 Grid.Row="3"
                 SelectionChanged="FolderTree_SelectionChanged"
                 Expanding="FolderTree_Expanding"
+                Collapsed="FolderTree_Collapsed"
                 RightTapped="FolderTree_RightTapped">
                 <TreeView.ItemTemplate>
                     <DataTemplate>
@@ -69,22 +70,36 @@
         <Grid Grid.Column="1" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="160" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="SearchBox" PlaceholderText="按名称过滤" TextChanged="Search_TextChanged" />
-                <ComboBox x:Name="SortBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="Sort_SelectionChanged" />
-                <Button Grid.Column="2" Content="随机播放" Click="Random_Click" />
-                <Button Grid.Column="3" Content="刷新" Click="Refresh_Click" />
+                <ComboBox x:Name="FilterBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="Filter_SelectionChanged" />
+                <ComboBox x:Name="SortBox" Grid.Column="2" HorizontalAlignment="Stretch" SelectionChanged="Sort_SelectionChanged" />
+                <Button Grid.Column="3" Content="随机播放" Click="Random_Click" />
+                <Button Grid.Column="4" Content="刷新" Click="Refresh_Click" />
             </Grid>
-            <Grid Grid.Row="1">
+            <InfoBar
+                x:Name="UpdateBar"
+                Grid.Row="1"
+                Severity="Informational"
+                IsOpen="False"
+                IsClosable="False"
+                Title="媒体库有更新">
+                <InfoBar.ActionButton>
+                    <Button Content="刷新" Click="RefreshPending_Click" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <Grid Grid.Row="2">
                 <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <GridView
                     x:Name="Cards"
@@ -130,7 +145,7 @@
                     </GridView.ItemTemplate>
                 </GridView>
             </Grid>
-            <local:PagerBar x:Name="Pager" Grid.Row="2" />
+            <local:PagerBar x:Name="Pager" Grid.Row="3" />
         </Grid>
     </Grid>
 </Page>

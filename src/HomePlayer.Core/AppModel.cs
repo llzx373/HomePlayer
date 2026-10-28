@@ -79,6 +79,18 @@ public sealed class AppSettings
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];
     public List<CodecPreference> AudioDecoderOrder { get; set; } = [];
     public Dictionary<string, string> Hotkeys { get; set; } = [];
+    public LibraryViewState LibraryView { get; set; } = new();
+}
+
+public sealed class LibraryViewState
+{
+    public string? LibraryId { get; set; }
+    public string? FolderPath { get; set; }
+    public bool Recursive { get; set; } = true;
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = PagedView.DefaultPageSize;
+    public string SortMode { get; set; } = "";
+    public List<string> ExpandedFolders { get; set; } = [];
 }
 
 public sealed class MediaLibrary
