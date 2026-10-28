@@ -90,6 +90,19 @@ public sealed class MediaLibrary
     public DateTime? LastFullScanUtc { get; set; }
 }
 
+public sealed class MediaFolder
+{
+    public string LibraryId { get; set; } = "";
+    public string RelativePath { get; set; } = "";
+    public string? ParentPath { get; set; }
+    public string Name { get; set; } = "";
+    public int DirectCount { get; set; }
+    public int RecursiveCount { get; set; }
+    public string? CoverPath { get; set; }
+    public string? CoverStamp { get; set; }
+    public bool HasChildren { get; set; }
+}
+
 public sealed class MediaItem
 {
     public string Id { get; set; } = "";

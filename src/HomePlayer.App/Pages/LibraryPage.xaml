@@ -14,10 +14,54 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="2*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <TextBlock Text="媒体库" Style="{ThemeResource SubtitleTextBlockStyle}" />
             <ListView x:Name="LibraryList" Grid.Row="1" SelectionChanged="LibraryList_SelectionChanged" />
-            <StackPanel Grid.Row="2" Spacing="8">
+            <ToggleSwitch
+                x:Name="RecursiveSwitch"
+                Grid.Row="2"
+                IsOn="True"
+                OnContent="递归包含子文件夹"
+                OffContent="仅当前文件夹"
+                Toggled="Recursive_Toggled" />
+            <TreeView
+                x:Name="FolderTree"
+                Grid.Row="3"
+                SelectionChanged="FolderTree_SelectionChanged"
+                Expanding="FolderTree_Expanding"
+                RightTapped="FolderTree_RightTapped">
+                <TreeView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="48"
+                                Height="27"
+                                CornerRadius="3"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                            </Border>
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="{Binding Name}"
+                                VerticalAlignment="Center"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Text="{Binding CountText}"
+                                VerticalAlignment="Center"
+                                Opacity="0.6" />
+                        </Grid>
+                    </DataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+            <StackPanel Grid.Row="4" Spacing="8">
                 <Button Content="添加库" Click="Add_Click" HorizontalAlignment="Stretch" />
                 <Button Content="移除所选库" Click="Remove_Click" HorizontalAlignment="Stretch" />
             </StackPanel>

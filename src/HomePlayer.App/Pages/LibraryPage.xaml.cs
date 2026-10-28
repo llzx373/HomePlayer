@@ -21,13 +21,18 @@ public sealed partial class LibraryPage : Page
     private readonly DispatcherQueueTimer _reloadTimer;
     private readonly DispatcherQueueTimer _libraryTimer;
     private readonly DispatcherQueueTimer _filterTimer;
+    private readonly Dictionary<string, FolderNode> _folderNodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TreeViewNode> _folderTreeNodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (DateTime Stamp, BitmapImage Image)> _coverCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading;
     private bool _sorting;
+    private bool _syncingLibrary;
     private int _reloadToken;
     private int _loadToken;
     private int _page = 1;
     private int _pageSize = PagedView.DefaultPageSize;
     private int _total;
+    private string _folderPath = "";
 
     public LibraryPage()
     {
@@ -39,7 +44,11 @@ public sealed partial class LibraryPage : Page
         _reloadTimer = DispatcherQueue.CreateTimer();
         _reloadTimer.Interval = TimeSpan.FromMilliseconds(400);
         _reloadTimer.IsRepeating = false;
-        _reloadTimer.Tick += (_, _) => LoadPage();
+        _reloadTimer.Tick += (_, _) =>
+        {
+            LoadPage();
+            RefreshFolderTree();
+        };
         _libraryTimer = DispatcherQueue.CreateTimer();
         _libraryTimer.Interval = TimeSpan.FromMilliseconds(400);
         _libraryTimer.IsRepeating = false;
@@ -116,8 +125,20 @@ public sealed partial class LibraryPage : Page
         _libraries.Clear();
         foreach (var library in libraries)
             _libraries.Add(library);
-        LibraryList.SelectedItem = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
+        var selection = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
+        _syncingLibrary = true;
+        try
+        {
+            LibraryList.SelectedItem = selection;
+        }
+        finally
+        {
+            _syncingLibrary = false;
+        }
+
         _loading = false;
+        _folderPath = "";
+        RebuildFolderTree(selection);
         _page = 1;
         LoadPage();
     }
@@ -144,6 +165,8 @@ public sealed partial class LibraryPage : Page
         var pageSize = _pageSize;
         var libraryId = library.Id;
         var kind = library.Kind;
+        var folderPath = _folderPath;
+        var recursive = RecursiveSwitch.IsOn;
         _ = Task.Run(() =>
         {
             IReadOnlyList<MediaItem> items;
@@ -151,15 +174,15 @@ public sealed partial class LibraryPage : Page
             var page = requestedPage;
             try
             {
-                total = App.Host.Repository.CountItems(libraryId, null, true, query, LibraryFilter.All);
+                total = App.Host.Repository.CountItems(libraryId, folderPath, recursive, query, LibraryFilter.All);
                 page = PagedView.ClampPage(page, total, pageSize);
                 items = App.Host.Repository.ListItemsPage(
-                    libraryId, null, true, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                    libraryId, folderPath, recursive, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
                 if (items.Count == 0 && total > 0 && page > 1)
                 {
                     page--;
                     items = App.Host.Repository.ListItemsPage(
-                        libraryId, null, true, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                        libraryId, folderPath, recursive, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
                 }
             }
             catch (Exception)
@@ -272,9 +295,19 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        EmptyText.Text = LibraryList.SelectedItem is not MediaLibrary
-            ? "选择一个媒体库。"
-            : App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
+        if (LibraryList.SelectedItem is not MediaLibrary)
+        {
+            EmptyText.Text = "选择一个媒体库。";
+            return;
+        }
+
+        if (_folderPath.Length > 0)
+        {
+            EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个文件夹里没有视频。";
+            return;
+        }
+
+        EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
     }
 
     private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
@@ -423,8 +456,10 @@ public sealed partial class LibraryPage : Page
 
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading)
+        if (_loading || _syncingLibrary)
             return;
+        _folderPath = "";
+        RebuildFolderTree(LibraryList.SelectedItem as MediaLibrary);
         _page = 1;
         LoadPage();
     }
@@ -444,6 +479,257 @@ public sealed partial class LibraryPage : Page
             return;
         _page = 1;
         LoadPage();
+    }
+
+    private void RebuildFolderTree(MediaLibrary? library)
+    {
+        _folderNodes.Clear();
+        _folderTreeNodes.Clear();
+        FolderTree.RootNodes.Clear();
+        if (library == null)
+            return;
+        var root = new FolderNode { LibraryId = library.Id, Path = "", Name = library.Name };
+        root.SetRecursive(RecursiveSwitch.IsOn);
+        var node = new TreeViewNode { Content = root, HasUnrealizedChildren = true };
+        _folderNodes[""] = root;
+        _folderTreeNodes[""] = node;
+        FolderTree.RootNodes.Add(node);
+        _ = LoadFolderChildrenAsync(node, root);
+    }
+
+    private void RefreshFolderTree()
+    {
+        var library = LibraryList.SelectedItem as MediaLibrary;
+        if (library == null || _folderNodes.Count == 0)
+            return;
+        var targets = _folderNodes.Values
+            .Where(folder => folder.Loaded || folder.Path.Length == 0)
+            .ToList();
+        if (targets.Count == 0)
+            return;
+        _ = Task.Run(() =>
+        {
+            var results = new List<(FolderNode Folder, IReadOnlyList<MediaFolder> Children, MediaFolder? Self)>();
+            foreach (var folder in targets)
+            {
+                try
+                {
+                    var children = App.Host.Repository.ListChildFolders(library.Id, folder.Path);
+                    var self = folder.Path.Length == 0 ? App.Host.Repository.GetFolder(library.Id, "") : null;
+                    results.Add((folder, children, self));
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
+                    return;
+                foreach (var (folder, children, self) in results)
+                {
+                    if (!_folderTreeNodes.TryGetValue(folder.Path, out var node)
+                        || !_folderNodes.TryGetValue(folder.Path, out var current)
+                        || !ReferenceEquals(current, folder))
+                        continue;
+                    ApplyFolderChildren(node, folder, children, self);
+                }
+            });
+        });
+    }
+
+    private async Task LoadFolderChildrenAsync(TreeViewNode node, FolderNode folder)
+    {
+        IReadOnlyList<MediaFolder> children;
+        MediaFolder? self = null;
+        try
+        {
+            (children, self) = await Task.Run(() =>
+            {
+                var childFolders = App.Host.Repository.ListChildFolders(folder.LibraryId, folder.Path);
+                var folderRow = folder.Path.Length == 0
+                    ? App.Host.Repository.GetFolder(folder.LibraryId, "")
+                    : null;
+                return (childFolders, folderRow);
+            });
+        }
+        catch (Exception)
+        {
+            children = [];
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if ((LibraryList.SelectedItem as MediaLibrary)?.Id != folder.LibraryId)
+                return;
+            if (!_folderNodes.TryGetValue(folder.Path, out var current) || !ReferenceEquals(current, folder))
+                return;
+            if (!_folderTreeNodes.TryGetValue(folder.Path, out var live) || !ReferenceEquals(live, node))
+                return;
+            ApplyFolderChildren(node, folder, children, self);
+        });
+    }
+
+    private void ApplyFolderChildren(
+        TreeViewNode node,
+        FolderNode folder,
+        IReadOnlyList<MediaFolder> children,
+        MediaFolder? self)
+    {
+        if (self != null)
+        {
+            folder.SetCounts(self.DirectCount, self.RecursiveCount);
+            folder.SetCover(LoadCover(self.CoverPath));
+            folder.HasChildren = self.HasChildren;
+        }
+
+        var models = new Dictionary<string, MediaFolder>(StringComparer.OrdinalIgnoreCase);
+        foreach (var child in children)
+            models[child.RelativePath] = child;
+
+        for (var i = node.Children.Count - 1; i >= 0; i--)
+        {
+            if (node.Children[i].Content is not FolderNode existing || models.ContainsKey(existing.Path))
+                continue;
+            node.Children.RemoveAt(i);
+            _folderNodes.Remove(existing.Path);
+            _folderTreeNodes.Remove(existing.Path);
+        }
+
+        foreach (var model in children)
+        {
+            if (_folderTreeNodes.TryGetValue(model.RelativePath, out var childNode)
+                && childNode.Content is FolderNode existing)
+            {
+                existing.SetCounts(model.DirectCount, model.RecursiveCount);
+                existing.SetCover(LoadCover(model.CoverPath));
+                existing.HasChildren = model.HasChildren;
+                if (!existing.Loaded)
+                    childNode.HasUnrealizedChildren = model.HasChildren;
+                continue;
+            }
+
+            var folderNode = new FolderNode
+            {
+                LibraryId = model.LibraryId,
+                Path = model.RelativePath,
+                Name = model.Name,
+                HasChildren = model.HasChildren
+            };
+            folderNode.SetRecursive(RecursiveSwitch.IsOn);
+            folderNode.SetCounts(model.DirectCount, model.RecursiveCount);
+            folderNode.SetCover(LoadCover(model.CoverPath));
+            var treeNode = new TreeViewNode { Content = folderNode, HasUnrealizedChildren = model.HasChildren };
+            node.Children.Add(treeNode);
+            _folderNodes[model.RelativePath] = folderNode;
+            _folderTreeNodes[model.RelativePath] = treeNode;
+        }
+
+        folder.Loaded = true;
+        node.HasUnrealizedChildren = false;
+    }
+
+    private void FolderTree_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
+    {
+        if (args.Node.Content is not FolderNode folder || folder.Loaded)
+            return;
+        _ = LoadFolderChildrenAsync(args.Node, folder);
+    }
+
+    private void FolderTree_SelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
+    {
+        var path = (FolderTree.SelectedNode?.Content as FolderNode)?.Path ?? "";
+        if (string.Equals(path, _folderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+        _folderPath = path;
+        _page = 1;
+        LoadPage();
+    }
+
+    private void FolderTree_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (FolderFrom(e.OriginalSource) is not FolderNode folder
+            || LibraryList.SelectedItem is not MediaLibrary library)
+            return;
+        var menu = new MenuFlyout();
+        menu.Items.Add(Action("本文件夹随机播放", () => PlayFolderRandomAsync(library, folder)));
+        menu.Items.Add(Action("在资源管理器中打开", () =>
+        {
+            OpenFolder(library, folder);
+            return Task.CompletedTask;
+        }));
+        menu.ShowAt(FolderTree, e.GetPosition(FolderTree));
+        e.Handled = true;
+    }
+
+    private void Recursive_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        foreach (var folder in _folderNodes.Values)
+            folder.SetRecursive(RecursiveSwitch.IsOn);
+        _page = 1;
+        LoadPage();
+    }
+
+    private async Task PlayFolderRandomAsync(MediaLibrary library, FolderNode folder)
+    {
+        var recursive = RecursiveSwitch.IsOn;
+        var sort = CurrentSort(library.Kind);
+        var paths = await Task.Run(() => App.Host.Repository.ListAllPaths(
+            library.Id, folder.Path, recursive, null, LibraryFilter.All, sort));
+        if (paths.Count == 0)
+            return;
+        await App.Host.Playback.PlayPathsAsync(Shuffle.Order(paths), 0);
+        App.Window.SelectPlayer();
+    }
+
+    private static void OpenFolder(MediaLibrary library, FolderNode folder)
+    {
+        var path = folder.Path.Length == 0
+            ? library.RootPath
+            : Path.Combine(library.RootPath, folder.Path.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(path))
+            return;
+        System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
+    }
+
+    private static FolderNode? FolderFrom(object source)
+    {
+        var element = source as FrameworkElement;
+        while (element != null)
+        {
+            if (element.DataContext is FolderNode folder)
+                return folder;
+            element = VisualTreeHelper.GetParent(element) as FrameworkElement;
+        }
+
+        return null;
+    }
+
+    private BitmapImage? LoadCover(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+        DateTime stamp;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+                return null;
+            stamp = info.LastWriteTimeUtc;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (_coverCache.TryGetValue(path, out var cached) && cached.Stamp == stamp)
+            return cached.Image;
+        var image = new BitmapImage { DecodePixelWidth = 96, UriSource = new Uri(path) };
+        _coverCache[path] = (stamp, image);
+        return image;
     }
 
     private async void Card_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -675,6 +961,58 @@ public sealed partial class LibraryPage : Page
             _imageCache.Remove(oldest);
         }
     }
+}
+
+public sealed class FolderNode : System.ComponentModel.INotifyPropertyChanged
+{
+    private bool _recursive = true;
+    private BitmapImage? _cover;
+
+    public string LibraryId { get; init; } = "";
+    public string Path { get; init; } = "";
+    public string Name { get; init; } = "";
+    public int DirectCount { get; private set; }
+    public int RecursiveCount { get; private set; }
+    public bool HasChildren { get; set; }
+    public bool Loaded { get; set; }
+
+    public BitmapImage? Cover
+    {
+        get => _cover;
+        private set
+        {
+            if (ReferenceEquals(_cover, value))
+                return;
+            _cover = value;
+            OnPropertyChanged(nameof(Cover));
+        }
+    }
+
+    public string CountText => (_recursive ? RecursiveCount : DirectCount).ToString("N0", CultureInfo.InvariantCulture);
+
+    public void SetCounts(int direct, int recursive)
+    {
+        if (DirectCount == direct && RecursiveCount == recursive)
+            return;
+        DirectCount = direct;
+        RecursiveCount = recursive;
+        OnPropertyChanged(nameof(CountText));
+    }
+
+    public void SetRecursive(bool recursive)
+    {
+        if (_recursive == recursive)
+            return;
+        _recursive = recursive;
+        OnPropertyChanged(nameof(CountText));
+    }
+
+    public void SetCover(BitmapImage? cover) => Cover = cover;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string name) =>
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
 public sealed class MediaCard

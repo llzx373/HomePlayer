@@ -94,6 +94,7 @@ public sealed class LibraryRepository : IDisposable
             using var tx = _connection.BeginTransaction();
             Execute("DELETE FROM WorkItem WHERE MediaItemId IN (SELECT Id FROM MediaItem WHERE LibraryId = $id);", ("$id", id));
             Execute("DELETE FROM MediaItem WHERE LibraryId = $id;", ("$id", id));
+            Execute("DELETE FROM Folder WHERE LibraryId = $id;", ("$id", id));
             Execute("DELETE FROM Library WHERE Id = $id;", ("$id", id));
             tx.Commit();
         }
@@ -204,6 +205,179 @@ public sealed class LibraryRepository : IDisposable
             return list;
         }
     }
+
+    public MediaFolder? GetFolder(string libraryId, string relativePath)
+    {
+        var path = NormalizeDir(relativePath);
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT f.LibraryId, f.RelativePath, f.ParentPath, f.Name, f.DirectCount, f.RecursiveCount,
+                       f.CoverPath, f.CoverStamp,
+                       EXISTS (SELECT 1 FROM Folder c WHERE c.LibraryId = f.LibraryId AND c.ParentPath = f.RelativePath) AS HasChildren
+                FROM Folder f
+                WHERE f.LibraryId = $library AND f.RelativePath = $path;
+                """;
+            command.Parameters.AddWithValue("$library", libraryId);
+            command.Parameters.AddWithValue("$path", path);
+            using var reader = command.ExecuteReader();
+            return reader.Read() ? ReadFolder(reader) : null;
+        }
+    }
+
+    public IReadOnlyList<MediaFolder> ListChildFolders(string libraryId, string? parentPath)
+    {
+        var parent = NormalizeDir(parentPath);
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT f.LibraryId, f.RelativePath, f.ParentPath, f.Name, f.DirectCount, f.RecursiveCount,
+                       f.CoverPath, f.CoverStamp,
+                       EXISTS (SELECT 1 FROM Folder c WHERE c.LibraryId = f.LibraryId AND c.ParentPath = f.RelativePath) AS HasChildren
+                FROM Folder f
+                WHERE f.LibraryId = $library AND f.RelativePath <> $parent AND IFNULL(f.ParentPath, '') = $parent
+                ORDER BY f.Name COLLATE NOCASE;
+                """;
+            command.Parameters.AddWithValue("$library", libraryId);
+            command.Parameters.AddWithValue("$parent", parent);
+            using var reader = command.ExecuteReader();
+            var list = new List<MediaFolder>();
+            while (reader.Read())
+                list.Add(ReadFolder(reader));
+            return list;
+        }
+    }
+
+    public IReadOnlyList<MediaFolder> ListFolders(string libraryId)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT f.LibraryId, f.RelativePath, f.ParentPath, f.Name, f.DirectCount, f.RecursiveCount,
+                       f.CoverPath, f.CoverStamp,
+                       EXISTS (SELECT 1 FROM Folder c WHERE c.LibraryId = f.LibraryId AND c.ParentPath = f.RelativePath) AS HasChildren
+                FROM Folder f
+                WHERE f.LibraryId = $library
+                ORDER BY f.RelativePath COLLATE NOCASE;
+                """;
+            command.Parameters.AddWithValue("$library", libraryId);
+            using var reader = command.ExecuteReader();
+            var list = new List<MediaFolder>();
+            while (reader.Read())
+                list.Add(ReadFolder(reader));
+            return list;
+        }
+    }
+
+    /// <summary>
+    /// 把扫描出的目录树写回 <c>Folder</c> 表，保留已有封面列。返回被删除的目录。
+    /// </summary>
+    public IReadOnlyList<string> SyncFolders(string libraryId, IReadOnlyList<MediaFolder> folders)
+    {
+        lock (_gate)
+        {
+            using var tx = _connection.BeginTransaction();
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var read = _connection.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = "SELECT RelativePath FROM Folder WHERE LibraryId = $library;";
+                read.Parameters.AddWithValue("$library", libraryId);
+                using var reader = read.ExecuteReader();
+                while (reader.Read())
+                    existing.Add(reader.GetString(0));
+            }
+
+            using (var write = _connection.CreateCommand())
+            {
+                write.Transaction = tx;
+                write.CommandText = """
+                    INSERT INTO Folder (LibraryId, RelativePath, ParentPath, Name, DirectCount, RecursiveCount)
+                    VALUES ($library, $path, $parent, $name, $direct, $recursive)
+                    ON CONFLICT(LibraryId, RelativePath) DO UPDATE SET
+                        ParentPath = excluded.ParentPath,
+                        Name = excluded.Name,
+                        DirectCount = excluded.DirectCount,
+                        RecursiveCount = excluded.RecursiveCount;
+                    """;
+                var library = write.Parameters.Add("$library", SqliteType.Text);
+                var path = write.Parameters.Add("$path", SqliteType.Text);
+                var parent = write.Parameters.Add("$parent", SqliteType.Text);
+                var name = write.Parameters.Add("$name", SqliteType.Text);
+                var direct = write.Parameters.Add("$direct", SqliteType.Integer);
+                var recursive = write.Parameters.Add("$recursive", SqliteType.Integer);
+                foreach (var folder in folders)
+                {
+                    library.Value = libraryId;
+                    path.Value = folder.RelativePath;
+                    parent.Value = (object?)folder.ParentPath ?? DBNull.Value;
+                    name.Value = folder.Name;
+                    direct.Value = folder.DirectCount;
+                    recursive.Value = folder.RecursiveCount;
+                    write.ExecuteNonQuery();
+                    existing.Remove(folder.RelativePath);
+                }
+            }
+
+            var removed = existing.ToList();
+            if (removed.Count > 0)
+            {
+                using var delete = _connection.CreateCommand();
+                delete.Transaction = tx;
+                delete.CommandText = "DELETE FROM Folder WHERE LibraryId = $library AND RelativePath = $path;";
+                var library = delete.Parameters.Add("$library", SqliteType.Text);
+                var path = delete.Parameters.Add("$path", SqliteType.Text);
+                foreach (var folder in removed)
+                {
+                    library.Value = libraryId;
+                    path.Value = folder;
+                    delete.ExecuteNonQuery();
+                }
+            }
+
+            tx.Commit();
+            return removed;
+        }
+    }
+
+    public void SaveFolderCover(string libraryId, string relativePath, string? coverPath, string? stamp)
+    {
+        lock (_gate)
+        {
+            Execute(
+                "UPDATE Folder SET CoverPath = $cover, CoverStamp = $stamp WHERE LibraryId = $library AND RelativePath = $path;",
+                ("$cover", (object?)coverPath ?? DBNull.Value),
+                ("$stamp", (object?)stamp ?? DBNull.Value),
+                ("$library", libraryId),
+                ("$path", NormalizeDir(relativePath)));
+        }
+    }
+
+    public void ClearFolderCovers(string libraryId)
+    {
+        lock (_gate)
+        {
+            Execute(
+                "UPDATE Folder SET CoverPath = NULL, CoverStamp = NULL WHERE LibraryId = $library;",
+                ("$library", libraryId));
+        }
+    }
+
+    private static MediaFolder ReadFolder(SqliteDataReader reader) => new()
+    {
+        LibraryId = reader.GetString(0),
+        RelativePath = reader.GetString(1),
+        ParentPath = reader.IsDBNull(2) ? null : reader.GetString(2),
+        Name = reader.GetString(3),
+        DirectCount = reader.GetInt32(4),
+        RecursiveCount = reader.GetInt32(5),
+        CoverPath = reader.IsDBNull(6) ? null : reader.GetString(6),
+        CoverStamp = reader.IsDBNull(7) ? null : reader.GetString(7),
+        HasChildren = reader.GetInt32(8) != 0
+    };
 
     private sealed record ItemQuery(string Where, IReadOnlyList<(string Name, object Value)> Parameters);
 
@@ -568,7 +742,7 @@ public sealed class LibraryRepository : IDisposable
         }
     }
 
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
 
     private void Migrate()
     {
@@ -627,6 +801,18 @@ public sealed class LibraryRepository : IDisposable
                 Finished INTEGER NOT NULL,
                 UpdatedUtcTicks INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS Folder (
+                LibraryId TEXT NOT NULL,
+                RelativePath TEXT NOT NULL,
+                ParentPath TEXT,
+                Name TEXT NOT NULL,
+                DirectCount INTEGER NOT NULL,
+                RecursiveCount INTEGER NOT NULL,
+                CoverPath TEXT,
+                CoverStamp TEXT,
+                PRIMARY KEY (LibraryId, RelativePath)
+            );
+            CREATE INDEX IF NOT EXISTS IX_Folder_Parent ON Folder(LibraryId, ParentPath);
             """;
         command.ExecuteNonQuery();
 
@@ -638,8 +824,14 @@ public sealed class LibraryRepository : IDisposable
             version = 1;
         }
 
-        if (version < SchemaVersion)
+        if (version < 2)
+        {
             MigrateToVersion2();
+            version = 2;
+        }
+
+        if (version < SchemaVersion)
+            MigrateToVersion3();
     }
 
     private int ReadUserVersion()
@@ -684,6 +876,30 @@ public sealed class LibraryRepository : IDisposable
         }
 
         BackfillRelativeColumns(tx);
+        WriteUserVersion(2, tx);
+        tx.Commit();
+    }
+
+    private void MigrateToVersion3()
+    {
+        using var tx = _connection.BeginTransaction();
+        using var command = _connection.CreateCommand();
+        command.Transaction = tx;
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS Folder (
+                LibraryId TEXT NOT NULL,
+                RelativePath TEXT NOT NULL,
+                ParentPath TEXT,
+                Name TEXT NOT NULL,
+                DirectCount INTEGER NOT NULL,
+                RecursiveCount INTEGER NOT NULL,
+                CoverPath TEXT,
+                CoverStamp TEXT,
+                PRIMARY KEY (LibraryId, RelativePath)
+            );
+            CREATE INDEX IF NOT EXISTS IX_Folder_Parent ON Folder(LibraryId, ParentPath);
+            """;
+        command.ExecuteNonQuery();
         WriteUserVersion(SchemaVersion, tx);
         tx.Commit();
     }

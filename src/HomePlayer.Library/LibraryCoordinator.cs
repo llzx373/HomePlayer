@@ -394,12 +394,14 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         var existing = _repository.ListItems(libraryId);
         var byPath = existing.ToDictionary(item => item.RelativePath, StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var relativePaths = new List<string>();
         foreach (var file in VideoFiles.Enumerate(library.RootPath))
         {
             if (_shutdown.IsCancellationRequested)
                 return;
             var relative = Path.GetRelativePath(library.RootPath, file);
             seen.Add(relative);
+            relativePaths.Add(relative);
             long size;
             long ticks;
             try
@@ -447,6 +449,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             MarkDirty(item.Id);
         }
 
+        _repository.SyncFolders(library.Id, FolderTree.Build(library, relativePaths));
         _repository.TouchScan(library.Id, DateTime.UtcNow);
         Changed?.Invoke(this, EventArgs.Empty);
     }

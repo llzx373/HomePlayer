@@ -12,10 +12,19 @@ public class SchemaMigrationTests
         using var temp = new TempDatabase();
         using var repository = new LibraryRepository(temp.DatabasePath);
 
-        Assert.Equal(2, temp.UserVersion());
+        Assert.Equal(3, temp.UserVersion());
         Assert.True(temp.HasColumn("MediaItem", "RelativeDir"));
         Assert.True(temp.HasColumn("MediaItem", "FileName"));
         Assert.True(temp.HasColumn("MediaItem", "AddedUtcTicks"));
+    }
+
+    [Fact]
+    public void Folder_table_is_created_by_the_migration()
+    {
+        using var temp = new TempDatabase();
+        using var repository = new LibraryRepository(temp.DatabasePath);
+
+        Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM Folder;"));
     }
 
     [Fact]
@@ -25,7 +34,7 @@ public class SchemaMigrationTests
         temp.CreateVersion1Database();
         using var repository = new LibraryRepository(temp.DatabasePath);
 
-        Assert.Equal(2, temp.UserVersion());
+        Assert.Equal(3, temp.UserVersion());
         Assert.Equal("a/b", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'nested';"));
         Assert.Equal("c.mkv", temp.Text("SELECT FileName FROM MediaItem WHERE Id = 'nested';"));
         Assert.Equal("", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'root';"));
@@ -47,7 +56,7 @@ public class SchemaMigrationTests
         {
         }
 
-        Assert.Equal(2, temp.UserVersion());
+        Assert.Equal(3, temp.UserVersion());
         Assert.Equal("a/b", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'nested';"));
     }
 

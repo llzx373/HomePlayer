@@ -149,6 +149,63 @@ public class LibraryRepositoryTests
             paths);
     }
 
+    [Fact]
+    public void Folder_rows_are_listed_by_parent_and_report_children()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        var folders = new List<MediaFolder>
+        {
+            new() { LibraryId = library.Id, RelativePath = "", Name = "库根", DirectCount = 1, RecursiveCount = 3 },
+            new() { LibraryId = library.Id, RelativePath = "a", ParentPath = "", Name = "a", DirectCount = 1, RecursiveCount = 2 },
+            new() { LibraryId = library.Id, RelativePath = "a/b", ParentPath = "a", Name = "b", DirectCount = 1, RecursiveCount = 1 }
+        };
+        fixture.Repository.SyncFolders(library.Id, folders);
+
+        var root = Assert.Single(fixture.Repository.ListChildFolders(library.Id, null));
+        Assert.Equal("a", root.RelativePath);
+        Assert.True(root.HasChildren);
+        Assert.Equal(2, root.RecursiveCount);
+
+        var nested = Assert.Single(fixture.Repository.ListChildFolders(library.Id, "a"));
+        Assert.Equal("a/b", nested.RelativePath);
+        Assert.False(nested.HasChildren);
+
+        var self = fixture.Repository.GetFolder(library.Id, "");
+        Assert.NotNull(self);
+        Assert.Equal(3, self.RecursiveCount);
+    }
+
+    [Fact]
+    public void Sync_folders_updates_counts_and_removes_missing_folders()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        fixture.Repository.SyncFolders(library.Id,
+        [
+            new MediaFolder { LibraryId = library.Id, RelativePath = "", Name = "库根", DirectCount = 1, RecursiveCount = 2 },
+            new MediaFolder { LibraryId = library.Id, RelativePath = "a", ParentPath = "", Name = "a", DirectCount = 1, RecursiveCount = 1 },
+            new MediaFolder { LibraryId = library.Id, RelativePath = "b", ParentPath = "", Name = "b", DirectCount = 1, RecursiveCount = 1 }
+        ]);
+        fixture.Repository.SaveFolderCover(library.Id, "a", @"C:\cover.jpg", "stamp");
+
+        var removed = fixture.Repository.SyncFolders(library.Id,
+        [
+            new MediaFolder { LibraryId = library.Id, RelativePath = "", Name = "库根", DirectCount = 2, RecursiveCount = 3 },
+            new MediaFolder { LibraryId = library.Id, RelativePath = "a", ParentPath = "", Name = "a", DirectCount = 2, RecursiveCount = 2 }
+        ]);
+
+        Assert.Equal(["b"], removed);
+        Assert.Null(fixture.Repository.GetFolder(library.Id, "b"));
+        var root = fixture.Repository.GetFolder(library.Id, "");
+        Assert.NotNull(root);
+        Assert.Equal(3, root.RecursiveCount);
+        var a = fixture.Repository.GetFolder(library.Id, "a");
+        Assert.NotNull(a);
+        Assert.Equal(2, a.DirectCount);
+        Assert.Equal("stamp", a.CoverStamp);
+    }
+
     private sealed class RepositoryFixture : IDisposable
     {
         private readonly string _directory;
