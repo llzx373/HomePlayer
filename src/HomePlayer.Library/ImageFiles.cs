@@ -34,6 +34,64 @@ public static class ImageFiles
         return path;
     }
 
+    /// <summary>
+    /// 把最多四张图拼成一张封面。一张铺满，两张左右分，三到四张走 2×2。
+    /// </summary>
+    public static string? ComposeGrid(IReadOnlyList<string?> images, string path, int width, int height)
+    {
+        var existing = images
+            .Where(file => file != null && File.Exists(file))
+            .Cast<string>()
+            .Take(4)
+            .ToList();
+        if (existing.Count == 0)
+            return null;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var canvas = new Bitmap(width, height);
+        using var graphics = Graphics.FromImage(canvas);
+        graphics.Clear(Color.FromArgb(255, 20, 24, 28));
+        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        const int gap = 4;
+        var rects = existing.Count switch
+        {
+            1 => [new Rectangle(0, 0, width, height)],
+            2 => [new Rectangle(0, 0, (width - gap) / 2, height), new Rectangle((width + gap) / 2, 0, (width - gap) / 2, height)],
+            _ => Grid(width, height, gap)
+        };
+        for (var i = 0; i < existing.Count; i++)
+        {
+            using var image = new Bitmap(existing[i]);
+            DrawFill(graphics, image, rects[i]);
+        }
+
+        canvas.Save(path, ImageFormat.Jpeg);
+        return path;
+
+        static Rectangle[] Grid(int width, int height, int gap)
+        {
+            var cellW = (width - gap) / 2;
+            var cellH = (height - gap) / 2;
+            return
+            [
+                new Rectangle(0, 0, cellW, cellH),
+                new Rectangle(cellW + gap, 0, cellW, cellH),
+                new Rectangle(0, cellH + gap, cellW, cellH),
+                new Rectangle(cellW + gap, cellH + gap, cellW, cellH)
+            ];
+        }
+
+        static void DrawFill(Graphics graphics, Bitmap image, Rectangle rect)
+        {
+            var scale = Math.Max(rect.Width / (double)image.Width, rect.Height / (double)image.Height);
+            var drawWidth = image.Width * scale;
+            var drawHeight = image.Height * scale;
+            var x = rect.X + (rect.Width - drawWidth) / 2;
+            var y = rect.Y + (rect.Height - drawHeight) / 2;
+            graphics.DrawImage(image, new RectangleF((float)x, (float)y, (float)drawWidth, (float)drawHeight));
+        }
+    }
+
     public static string? ComposeSheet(IReadOnlyList<string?> frames, string path)
     {
         var existing = frames.Where(file => file != null && File.Exists(file)).Cast<string>().ToList();

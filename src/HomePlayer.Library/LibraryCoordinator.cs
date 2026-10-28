@@ -12,6 +12,10 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private readonly TmdbClient _tmdb;
     private readonly Func<string?> _apiKey;
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
+    private readonly Channel<(string LibraryId, string RelativePath)> _coverQueue = Channel.CreateUnbounded<(string, string)>();
+    private readonly HashSet<string> _coverQueued = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _coverQueuedGate = new();
+    private readonly SemaphoreSlim _coverGate = new(1, 1);
     private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CancellationTokenSource> _debounce = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
@@ -62,6 +66,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             return;
         for (var i = 0; i < 2; i++)
             _workers.Add(Task.Run(() => WorkerAsync(_shutdown.Token)));
+        _workers.Add(Task.Run(() => CoverWorkerAsync(_shutdown.Token)));
         IReadOnlyList<MediaLibrary> libraries;
         try
         {
@@ -155,6 +160,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 {
                     foreach (var item in _repository.ListItems(libraryId))
                         TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
+                    foreach (var folder in _repository.ListFolders(libraryId))
+                        TryDeleteDirectory(FolderCovers.CacheDirectory(libraryId, folder.RelativePath));
                 }
 
                 _repository.DeleteLibrary(libraryId);
@@ -238,6 +245,10 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                     _repository.Enqueue(item.Id, library.Kind);
                     Submit(item.Id);
                 }
+
+                _repository.ClearFolderCovers(library.Id);
+                foreach (var folder in _repository.ListFolders(library.Id))
+                    EnqueueCover(library.Id, folder.RelativePath);
             }
         });
 
@@ -249,6 +260,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     {
         _shutdown.Cancel();
         _queue.Writer.TryComplete();
+        _coverQueue.Writer.TryComplete();
         lock (_watchersGate)
         {
             foreach (var watcher in _watchers.Values)
@@ -287,6 +299,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         }
 
         _slotSignal.Dispose();
+        _coverGate.Dispose();
         _shutdown.Dispose();
     }
 
@@ -449,7 +462,12 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             MarkDirty(item.Id);
         }
 
-        _repository.SyncFolders(library.Id, FolderTree.Build(library, relativePaths));
+        var folders = FolderTree.Build(library, relativePaths);
+        var removedFolders = _repository.SyncFolders(library.Id, folders);
+        foreach (var path in removedFolders)
+            TryDeleteDirectory(FolderCovers.CacheDirectory(library.Id, path));
+        foreach (var folder in folders)
+            EnqueueCover(library.Id, folder.RelativePath);
         _repository.TouchScan(library.Id, DateTime.UtcNow);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -564,8 +582,160 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             _repository.MarkWork(item.Id, 3);
         }
 
+        foreach (var dir in FolderTree.Ancestors(item.RelativeDir))
+            EnqueueCover(library.Id, dir);
         MarkDirty(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EnqueueCover(string libraryId, string relativePath)
+    {
+        var path = (relativePath ?? "").Replace('\\', '/').Trim('/');
+        var key = libraryId + "|" + path;
+        lock (_coverQueuedGate)
+        {
+            if (!_coverQueued.Add(key))
+                return;
+        }
+
+        if (!_coverQueue.Writer.TryWrite((libraryId, path)))
+        {
+            lock (_coverQueuedGate)
+                _coverQueued.Remove(key);
+        }
+    }
+
+    private async Task CoverWorkerAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var (libraryId, relativePath) in _coverQueue.Reader.ReadAllAsync(cancellationToken))
+            {
+                var key = libraryId + "|" + relativePath;
+                try
+                {
+                    while (!cancellationToken.IsCancellationRequested && Busy())
+                        await Task.Delay(500, cancellationToken);
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
+
+                    await _coverGate.WaitAsync(cancellationToken);
+                    bool changed;
+                    try
+                    {
+                        changed = await Task.Run(() => RefreshFolderCover(libraryId, relativePath), cancellationToken);
+                    }
+                    finally
+                    {
+                        _coverGate.Release();
+                    }
+
+                    if (changed)
+                        Changed?.Invoke(this, EventArgs.Empty);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                }
+                finally
+                {
+                    lock (_coverQueuedGate)
+                        _coverQueued.Remove(key);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private bool Busy() =>
+        Volatile.Read(ref _active) > 0 || Volatile.Read(ref _maxParallel) == 1;
+
+    private bool RefreshFolderCover(string libraryId, string relativePath)
+    {
+        var library = _repository.GetLibrary(libraryId);
+        if (library == null)
+            return false;
+        var folder = _repository.GetFolder(libraryId, relativePath);
+        if (folder == null)
+            return false;
+
+        var sources = CoverSources(library, relativePath);
+        var stamp = FolderCovers.Stamp(sources);
+        var path = FolderCovers.CoverPath(libraryId, relativePath);
+        var upToDate = string.Equals(folder.CoverStamp, stamp, StringComparison.Ordinal)
+            && (stamp.Length == 0 ? !File.Exists(path) : File.Exists(path));
+        if (upToDate)
+            return false;
+
+        if (sources.Count == 0)
+        {
+            if (folder.CoverPath == null && folder.CoverStamp == null)
+                return false;
+            TryDeleteDirectory(FolderCovers.CacheDirectory(libraryId, relativePath));
+            _repository.SaveFolderCover(libraryId, relativePath, null, null);
+            return true;
+        }
+
+        var images = sources
+            .Select(item => FolderCovers.ImagePath(item, library.Kind))
+            .ToList();
+        var cover = ImageFiles.ComposeGrid(images, path, FolderCovers.CoverWidth, FolderCovers.CoverHeight);
+        if (cover == null)
+            return false;
+        _repository.SaveFolderCover(libraryId, relativePath, cover, stamp);
+        return true;
+    }
+
+    private IReadOnlyList<MediaItem> CoverSources(MediaLibrary library, string relativePath)
+    {
+        var selected = new List<MediaItem>(FolderCovers.SourceLimit);
+        var direct = _repository.ListItemsPage(
+            library.Id, relativePath, false, null, LibraryFilter.All, SortMode.FileName, 0, FolderCovers.SourceLimit * 2);
+        foreach (var item in direct)
+        {
+            if (selected.Count >= FolderCovers.SourceLimit)
+                break;
+            if (FolderCovers.ImagePath(item, library.Kind) == null)
+                continue;
+            selected.Add(item);
+        }
+
+        if (library.Kind == LibraryKind.Catalog)
+        {
+            if (selected.Count == 0)
+            {
+                var fallback = _repository.ListItemsPage(
+                        library.Id, relativePath, true, null, LibraryFilter.All, SortMode.FileName, 0, FolderCovers.SourceLimit * 4)
+                    .FirstOrDefault(item => FolderCovers.ImagePath(item, library.Kind) != null);
+                if (fallback != null)
+                    selected.Add(fallback);
+            }
+
+            return selected.Count == 0 ? [] : [selected[0]];
+        }
+
+        if (selected.Count >= FolderCovers.SourceLimit)
+            return selected;
+
+        var recursive = _repository.ListItemsPage(
+            library.Id, relativePath, true, null, LibraryFilter.All, SortMode.FileName, 0, FolderCovers.SourceLimit * 4);
+        foreach (var item in recursive)
+        {
+            if (selected.Count >= FolderCovers.SourceLimit)
+                break;
+            if (selected.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.Ordinal)))
+                continue;
+            if (FolderCovers.ImagePath(item, library.Kind) == null)
+                continue;
+            selected.Add(item);
+        }
+
+        return selected;
     }
 
     private void BuildThumbs(MediaItem item, string full, CancellationToken cancellationToken)
