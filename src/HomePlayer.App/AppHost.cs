@@ -64,7 +64,6 @@ public sealed class AppHost : IAsyncDisposable
     {
         try
         {
-            Playback.PersistProgress();
             Settings.Volume = Playback.Volume;
             var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AppPaths.SettingsFile, json);

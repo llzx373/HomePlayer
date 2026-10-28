@@ -169,8 +169,11 @@ public sealed partial class LibraryPage : Page
         if (view != null && selection != null)
         {
             _viewRestored = true;
-            _ = RestoreViewAsync(selection, view);
-            return;
+            if (string.Equals(view.LibraryId, selection.Id, StringComparison.Ordinal))
+            {
+                _ = RestoreViewAsync(selection, view);
+                return;
+            }
         }
 
         _folderPath = "";

@@ -535,6 +535,7 @@ public sealed partial class MainWindow : Window
         if (App.Host.Exiting)
             return;
         App.Host.Exiting = true;
+        _exitTrace.Run("PersistProgress", App.Host.Playback.PersistProgress);
         _ = Task.Run(() =>
         {
             _exitTrace.Run("SaveSettings", App.Host.SaveSettings);

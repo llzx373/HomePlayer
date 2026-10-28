@@ -448,6 +448,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 };
                 _repository.InsertItem(item);
                 _repository.Enqueue(item.Id, library.Kind);
+                EnqueueAncestorCovers(library.Id, relative);
                 MarkDirty(item.Id);
                 Submit(item.Id);
             }
@@ -455,6 +456,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             {
                 _repository.MarkChanged(item, size, ticks);
                 _repository.Enqueue(item.Id, library.Kind);
+                EnqueueAncestorCovers(library.Id, item.RelativePath);
                 ResetProgress(library, item.RelativePath);
                 MarkDirty(item.Id);
                 Submit(item.Id);
@@ -468,6 +470,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
             _repository.DeleteItem(item.Id);
             ResetProgress(library, item.RelativePath);
+            EnqueueAncestorCovers(library.Id, item.RelativePath);
             MarkDirty(item.Id);
         }
 
@@ -475,8 +478,11 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         var removedFolders = _repository.SyncFolders(library.Id, folders);
         foreach (var path in removedFolders)
             TryDeleteDirectory(FolderCovers.CacheDirectory(library.Id, path));
-        foreach (var folder in folders)
-            EnqueueCover(library.Id, folder.RelativePath);
+        foreach (var folder in _repository.ListFolders(library.Id))
+        {
+            if (string.IsNullOrEmpty(folder.CoverPath))
+                EnqueueCover(library.Id, folder.RelativePath);
+        }
         _repository.TouchScan(library.Id, DateTime.UtcNow);
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -592,10 +598,15 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             _repository.MarkWork(item.Id, 3);
         }
 
-        foreach (var dir in FolderTree.Ancestors(item.RelativeDir))
-            EnqueueCover(library.Id, dir);
+        EnqueueAncestorCovers(library.Id, item.RelativePath);
         MarkDirty(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EnqueueAncestorCovers(string libraryId, string relativePath)
+    {
+        foreach (var dir in FolderTree.Ancestors(RelativePaths.Split(relativePath).Directory))
+            EnqueueCover(libraryId, dir);
     }
 
     private void EnqueueCover(string libraryId, string relativePath)
