@@ -99,8 +99,11 @@ public sealed class MediaItem
     public double? Rating { get; set; }
     public string? PosterPath { get; set; }
     public MatchStatus MatchStatus { get; set; }
+    public long AddedUtcTicks { get; set; }
 
-    public string FileName => Path.GetFileName(RelativePath);
+    public string RelativeDir => RelativePaths.Split(RelativePath).Directory;
+
+    public string FileName => RelativePaths.Split(RelativePath).FileName;
 
     public string FullPath(string root) => Path.Combine(root, RelativePath);
 }

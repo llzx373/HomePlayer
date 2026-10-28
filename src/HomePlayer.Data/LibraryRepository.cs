@@ -177,20 +177,27 @@ public sealed class LibraryRepository : IDisposable
     {
         lock (_gate)
         {
+            var split = RelativePaths.Split(item.RelativePath);
+            item.AddedUtcTicks = item.AddedUtcTicks > 0 ? item.AddedUtcTicks : DateTime.UtcNow.Ticks;
             using var command = _connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO MediaItem (
-                    Id, LibraryId, RelativePath, Size, MtimeUtcTicks, DurationSeconds, Width, Height, VideoCodec,
+                    Id, LibraryId, RelativePath, RelativeDir, FileName, AddedUtcTicks,
+                    Size, MtimeUtcTicks, DurationSeconds, Width, Height, VideoCodec,
                     Status, Error, SheetPath, FramePathsJson, MediaType, TmdbId, Season, Episode, Title, OriginalTitle,
                     Year, Overview, Rating, PosterPath, MatchStatus)
                 VALUES (
-                    $id, $library, $path, $size, $mtime, NULL, NULL, NULL, NULL,
+                    $id, $library, $path, $dir, $name, $added,
+                    $size, $mtime, NULL, NULL, NULL, NULL,
                     $status, NULL, NULL, '[]', NULL, NULL, NULL, NULL, NULL, NULL,
                     NULL, NULL, NULL, NULL, $match);
                 """;
             command.Parameters.AddWithValue("$id", item.Id);
             command.Parameters.AddWithValue("$library", item.LibraryId);
             command.Parameters.AddWithValue("$path", item.RelativePath);
+            command.Parameters.AddWithValue("$dir", split.Directory);
+            command.Parameters.AddWithValue("$name", split.FileName);
+            command.Parameters.AddWithValue("$added", item.AddedUtcTicks);
             command.Parameters.AddWithValue("$size", item.Size);
             command.Parameters.AddWithValue("$mtime", item.MtimeUtcTicks);
             command.Parameters.AddWithValue("$status", (int)item.Status);
@@ -395,6 +402,8 @@ public sealed class LibraryRepository : IDisposable
         }
     }
 
+    private const int SchemaVersion = 2;
+
     private void Migrate()
     {
         using var command = _connection.CreateCommand();
@@ -447,6 +456,114 @@ public sealed class LibraryRepository : IDisposable
             );
             """;
         command.ExecuteNonQuery();
+
+        var version = ReadUserVersion();
+        if (version == 0)
+        {
+            // 上面这套 CREATE TABLE IF NOT EXISTS 就是 v1 的结构，新库和老库都从这里起步。
+            WriteUserVersion(1);
+            version = 1;
+        }
+
+        if (version < SchemaVersion)
+            MigrateToVersion2();
+    }
+
+    private int ReadUserVersion()
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    private void WriteUserVersion(int version, SqliteTransaction? transaction = null)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "PRAGMA user_version = " + version.ToString(CultureInfo.InvariantCulture) + ";";
+        command.ExecuteNonQuery();
+    }
+
+    private void MigrateToVersion2()
+    {
+        using var tx = _connection.BeginTransaction();
+
+        if (!HasColumn("MediaItem", "RelativeDir", tx))
+        {
+            using var columns = _connection.CreateCommand();
+            columns.Transaction = tx;
+            columns.CommandText = """
+                ALTER TABLE MediaItem ADD COLUMN RelativeDir TEXT NOT NULL DEFAULT '';
+                ALTER TABLE MediaItem ADD COLUMN FileName TEXT NOT NULL DEFAULT '';
+                ALTER TABLE MediaItem ADD COLUMN AddedUtcTicks INTEGER NOT NULL DEFAULT 0;
+                """;
+            columns.ExecuteNonQuery();
+        }
+
+        using (var indexes = _connection.CreateCommand())
+        {
+            indexes.Transaction = tx;
+            indexes.CommandText = """
+                CREATE INDEX IF NOT EXISTS IX_MediaItem_Library_Dir ON MediaItem(LibraryId, RelativeDir);
+                CREATE INDEX IF NOT EXISTS IX_MediaItem_Library_File ON MediaItem(LibraryId, FileName);
+                """;
+            indexes.ExecuteNonQuery();
+        }
+
+        BackfillRelativeColumns(tx);
+        WriteUserVersion(SchemaVersion, tx);
+        tx.Commit();
+    }
+
+    private bool HasColumn(string table, string column, SqliteTransaction? transaction = null)
+    {
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info($table) WHERE name = $column;";
+        command.Parameters.AddWithValue("$table", table);
+        command.Parameters.AddWithValue("$column", column);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) > 0;
+    }
+
+    /// <summary>
+    /// v1 的条目没有 <c>RelativeDir</c> / <c>FileName</c> / <c>AddedUtcTicks</c>，这里一次性回填。
+    /// 老数据没有真实入库时间，用文件修改时间近似。
+    /// </summary>
+    private void BackfillRelativeColumns(SqliteTransaction transaction)
+    {
+        var rows = new List<(string Id, string RelativePath, long AddedTicks, long MtimeTicks)>();
+        using (var command = _connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT Id, RelativePath, AddedUtcTicks, MtimeUtcTicks FROM MediaItem;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt64(3)));
+        }
+
+        if (rows.Count == 0)
+            return;
+
+        using var update = _connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE MediaItem SET RelativeDir = $dir, FileName = $name, AddedUtcTicks = $added
+            WHERE Id = $id;
+            """;
+        var dir = update.Parameters.Add("$dir", SqliteType.Text);
+        var name = update.Parameters.Add("$name", SqliteType.Text);
+        var added = update.Parameters.Add("$added", SqliteType.Integer);
+        var id = update.Parameters.Add("$id", SqliteType.Text);
+
+        foreach (var row in rows)
+        {
+            var split = RelativePaths.Split(row.RelativePath);
+            dir.Value = split.Directory;
+            name.Value = split.FileName;
+            added.Value = row.AddedTicks > 0 ? row.AddedTicks : row.MtimeTicks;
+            id.Value = row.Id;
+            update.ExecuteNonQuery();
+        }
     }
 
     private void Execute(string sql, params (string Name, object Value)[] parameters)
@@ -488,7 +605,8 @@ public sealed class LibraryRepository : IDisposable
             Overview = reader.IsDBNull(reader.GetOrdinal("Overview")) ? null : reader.GetString(reader.GetOrdinal("Overview")),
             Rating = reader.IsDBNull(reader.GetOrdinal("Rating")) ? null : reader.GetDouble(reader.GetOrdinal("Rating")),
             PosterPath = reader.IsDBNull(reader.GetOrdinal("PosterPath")) ? null : reader.GetString(reader.GetOrdinal("PosterPath")),
-            MatchStatus = (MatchStatus)reader.GetInt32(reader.GetOrdinal("MatchStatus"))
+            MatchStatus = (MatchStatus)reader.GetInt32(reader.GetOrdinal("MatchStatus")),
+            AddedUtcTicks = reader.GetInt64(reader.GetOrdinal("AddedUtcTicks"))
         };
     }
 }
