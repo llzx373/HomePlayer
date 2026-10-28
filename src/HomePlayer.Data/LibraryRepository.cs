@@ -5,10 +5,12 @@ using Microsoft.Data.Sqlite;
 
 namespace HomePlayer.Data;
 
-public sealed class LibraryRepository : IDisposable
+public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
 {
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
+    private readonly object _stateGate = new();
+    private readonly Dictionary<string, PlaybackState> _pendingStates = new(StringComparer.OrdinalIgnoreCase);
 
     public LibraryRepository(string databasePath)
     {
@@ -201,7 +203,7 @@ public sealed class LibraryRepository : IDisposable
             using var reader = command.ExecuteReader();
             var list = new List<string>();
             while (reader.Read())
-                list.Add(Path.Combine(root, reader.GetString(0)));
+                list.Add(Path.Combine(root, reader.GetString(0).Replace('/', Path.DirectorySeparatorChar)));
             return list;
         }
     }
@@ -365,6 +367,130 @@ public sealed class LibraryRepository : IDisposable
                 ("$library", libraryId));
         }
     }
+
+    public IReadOnlyDictionary<string, PlaybackState> LoadAll(int limit)
+    {
+        if (limit < 1)
+            return new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT Path, PositionSeconds, DurationSeconds, Finished, UpdatedUtcTicks
+                FROM PlaybackState
+                ORDER BY UpdatedUtcTicks DESC
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var map = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
+            while (reader.Read())
+            {
+                var state = ReadPlaybackState(reader);
+                map[state.Path] = state;
+            }
+
+            return map;
+        }
+    }
+
+    public IReadOnlyDictionary<string, PlaybackState> LoadPlaybackStates(IReadOnlyCollection<string> paths)
+    {
+        var map = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
+        if (paths.Count == 0)
+            return map;
+        var values = paths as IList<string> ?? [.. paths];
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            for (var offset = 0; offset < values.Count; offset += MaxQueryIds)
+            {
+                var count = Math.Min(MaxQueryIds, values.Count - offset);
+                command.Parameters.Clear();
+                var names = new string[count];
+                for (var i = 0; i < count; i++)
+                {
+                    names[i] = "$path" + i;
+                    command.Parameters.AddWithValue(names[i], values[offset + i]);
+                }
+
+                command.CommandText =
+                    "SELECT Path, PositionSeconds, DurationSeconds, Finished, UpdatedUtcTicks FROM PlaybackState WHERE Path IN ("
+                    + string.Join(",", names) + ");";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    var state = ReadPlaybackState(reader);
+                    map[state.Path] = state;
+                }
+            }
+        }
+
+        return map;
+    }
+
+    public void Save(PlaybackState state)
+    {
+        lock (_stateGate)
+            _pendingStates[state.Path] = state;
+    }
+
+    public void Flush()
+    {
+        PlaybackState[] pending;
+        lock (_stateGate)
+        {
+            if (_pendingStates.Count == 0)
+                return;
+            pending = [.. _pendingStates.Values];
+            _pendingStates.Clear();
+        }
+
+        lock (_gate)
+        {
+            using var tx = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = tx;
+            command.CommandText = """
+                INSERT INTO PlaybackState (Path, PositionSeconds, DurationSeconds, Finished, UpdatedUtcTicks)
+                VALUES ($path, $position, $duration, $finished, $updated)
+                ON CONFLICT(Path) DO UPDATE SET
+                    PositionSeconds = excluded.PositionSeconds,
+                    DurationSeconds = excluded.DurationSeconds,
+                    Finished = excluded.Finished,
+                    UpdatedUtcTicks = excluded.UpdatedUtcTicks;
+                """;
+            var path = command.Parameters.Add("$path", SqliteType.Text);
+            var position = command.Parameters.Add("$position", SqliteType.Real);
+            var duration = command.Parameters.Add("$duration", SqliteType.Real);
+            var finished = command.Parameters.Add("$finished", SqliteType.Integer);
+            var updated = command.Parameters.Add("$updated", SqliteType.Integer);
+            foreach (var state in pending)
+            {
+                path.Value = state.Path;
+                position.Value = state.PositionSeconds;
+                duration.Value = state.DurationSeconds;
+                finished.Value = state.Finished ? 1 : 0;
+                updated.Value = state.UpdatedUtcTicks;
+                command.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
+    }
+
+    public void DeletePlaybackState(string path)
+    {
+        lock (_gate)
+            Execute("DELETE FROM PlaybackState WHERE Path = $path;", ("$path", path));
+    }
+
+    private static PlaybackState ReadPlaybackState(SqliteDataReader reader) => new(
+        reader.GetString(0),
+        reader.GetDouble(1),
+        reader.GetDouble(2),
+        reader.GetInt32(3) != 0,
+        reader.GetInt64(4));
 
     private static MediaFolder ReadFolder(SqliteDataReader reader) => new()
     {
@@ -564,6 +690,14 @@ public sealed class LibraryRepository : IDisposable
                 ("$pending", (int)ItemStatus.Pending),
                 ("$none", (int)MatchStatus.None),
                 ("$id", item.Id));
+            Execute(
+                """
+                DELETE FROM PlaybackState WHERE Path = (
+                    SELECT l.RootPath || '\' || replace($relative, '/', '\')
+                    FROM Library l WHERE l.Id = $library);
+                """,
+                ("$relative", item.RelativePath),
+                ("$library", item.LibraryId));
         }
     }
 
@@ -573,6 +707,14 @@ public sealed class LibraryRepository : IDisposable
         {
             using var tx = _connection.BeginTransaction();
             Execute("DELETE FROM WorkItem WHERE MediaItemId = $id;", ("$id", id));
+            Execute(
+                """
+                DELETE FROM PlaybackState WHERE Path IN (
+                    SELECT l.RootPath || '\' || replace(m.RelativePath, '/', '\')
+                    FROM MediaItem m JOIN Library l ON l.Id = m.LibraryId
+                    WHERE m.Id = $id);
+                """,
+                ("$id", id));
             Execute("DELETE FROM MediaItem WHERE Id = $id;", ("$id", id));
             tx.Commit();
         }

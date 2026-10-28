@@ -192,7 +192,18 @@ public sealed partial class LibraryPage : Page
             }
 
             var stamps = ComputeImageStamps(items, kind);
-            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, token));
+            IReadOnlyDictionary<string, PlaybackState> states;
+            try
+            {
+                states = App.Host.Repository.LoadPlaybackStates(
+                    items.Select(item => item.FullPath(library.RootPath)).ToList());
+            }
+            catch (Exception)
+            {
+                states = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, states, token));
         });
     }
 
@@ -203,6 +214,7 @@ public sealed partial class LibraryPage : Page
         int total,
         IReadOnlyList<MediaItem> items,
         IReadOnlyDictionary<string, DateTime> stamps,
+        IReadOnlyDictionary<string, PlaybackState> states,
         int token)
     {
         if (token != _loadToken || App.Host.Exiting)
@@ -215,7 +227,7 @@ public sealed partial class LibraryPage : Page
         var cards = new List<MediaCard>(items.Count);
         foreach (var item in items)
         {
-            var card = CreateCard(item, library, stamps);
+            var card = CreateCard(item, library, stamps, states);
             if (card != null)
                 cards.Add(card);
         }
@@ -252,7 +264,8 @@ public sealed partial class LibraryPage : Page
     private MediaCard? CreateCard(
         MediaItem item,
         MediaLibrary library,
-        IReadOnlyDictionary<string, DateTime> stamps)
+        IReadOnlyDictionary<string, DateTime> stamps,
+        IReadOnlyDictionary<string, PlaybackState> states)
     {
         var title = library.Kind == LibraryKind.Catalog && !string.IsNullOrWhiteSpace(item.Title) && item.MatchStatus == MatchStatus.Matched
             ? item.Title!
@@ -262,6 +275,10 @@ public sealed partial class LibraryPage : Page
             : CatalogSubtitle(item);
         var imagePath = library.Kind == LibraryKind.Raw ? item.SheetPath : item.PosterPath;
         var stamp = !string.IsNullOrWhiteSpace(imagePath) && stamps.TryGetValue(imagePath, out var value) ? value : default;
+        states.TryGetValue(item.FullPath(library.RootPath), out var progress);
+        var ratio = progress is { Finished: false, DurationSeconds: > 0 } && progress.PositionSeconds > 0
+            ? Math.Clamp(progress.PositionSeconds / progress.DurationSeconds, 0, 1)
+            : 0;
         return new MediaCard
         {
             Item = item,
@@ -269,7 +286,10 @@ public sealed partial class LibraryPage : Page
             Title = title,
             Subtitle = item.Error ?? subtitle,
             Image = LoadImage(imagePath, stamp),
-            Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : ""
+            Badge = library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : "",
+            Progress = ratio,
+            ProgressVisibility = ratio > 0 ? Visibility.Visible : Visibility.Collapsed,
+            WatchedVisibility = progress?.Finished == true ? Visibility.Visible : Visibility.Collapsed
         };
     }
 
@@ -1050,4 +1070,7 @@ public sealed class MediaCard
     public required string Subtitle { get; init; }
     public BitmapImage? Image { get; init; }
     public required string Badge { get; init; }
+    public double Progress { get; init; }
+    public Visibility ProgressVisibility { get; init; }
+    public Visibility WatchedVisibility { get; init; }
 }

@@ -7,10 +7,14 @@ public sealed class PlaybackController : IDisposable
     private readonly Action<Action> _post;
     private readonly Func<CodecPlan> _codecs;
     private readonly Func<string?> _audioOutput;
+    private readonly IPlaybackStateStore? _store;
+    private readonly Dictionary<string, PlaybackState> _states = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _stateGate = new();
+    private readonly CancellationTokenSource _flushStop = new();
+    private readonly Task? _flushLoop;
     private IPlaybackEngine? _engine;
     private string? _reason;
     private string? _playingPath;
-    private readonly Dictionary<string, TimeSpan> _resumeByPath = new(StringComparer.OrdinalIgnoreCase);
     private int _token;
     private double _volume = 0.8;
     private double _rate = 1.0;
@@ -18,11 +22,28 @@ public sealed class PlaybackController : IDisposable
     private int _videoWidth;
     private int _videoHeight;
 
-    public PlaybackController(Action<Action> post, Func<CodecPlan> codecs, Func<string?> audioOutput)
+    public PlaybackController(
+        Action<Action> post,
+        Func<CodecPlan> codecs,
+        Func<string?> audioOutput,
+        IPlaybackStateStore? store = null)
     {
         _post = post;
         _codecs = codecs;
         _audioOutput = audioOutput;
+        _store = store;
+        if (store == null)
+            return;
+        try
+        {
+            foreach (var (path, state) in store.LoadAll(2000))
+                _states[path] = state;
+        }
+        catch (Exception)
+        {
+        }
+
+        _flushLoop = Task.Run(() => FlushLoopAsync(_flushStop.Token));
     }
 
     public Playlist Playlist { get; } = new();
@@ -126,12 +147,14 @@ public sealed class PlaybackController : IDisposable
         if (_engine?.IsPlaying != true)
             return;
         _engine.Pause();
+        PersistProgress();
         Notify();
     }
 
     public void Stop()
     {
         RememberPosition();
+        _store?.Flush();
         _token++;
         _playingPath = null;
         DisposeEngine();
@@ -143,6 +166,8 @@ public sealed class PlaybackController : IDisposable
 
     public Task ShutdownAsync()
     {
+        PersistProgress();
+        _flushStop.Cancel();
         _token++;
         _playingPath = null;
         var engine = TakeEngine();
@@ -183,6 +208,7 @@ public sealed class PlaybackController : IDisposable
         if (Duration > TimeSpan.Zero && position > Duration)
             position = Duration;
         _engine?.Seek(position);
+        PersistProgress();
         Notify();
     }
 
@@ -222,7 +248,37 @@ public sealed class PlaybackController : IDisposable
         return info;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _flushStop.Cancel();
+        try
+        {
+            _flushLoop?.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception)
+        {
+        }
+
+        _flushStop.Dispose();
+    }
+
+    public void PersistProgress()
+    {
+        RememberPosition();
+        _store?.Flush();
+    }
+
+    /// <summary>
+    /// 文件内容变了或已被删除时丢掉内存里的旧进度，避免下次从错误位置续播。
+    /// </summary>
+    public void ForgetProgress(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return;
+        lock (_stateGate)
+            _states.Remove(path);
+    }
 
     private async Task MoveAsync(int? index)
     {
@@ -429,6 +485,8 @@ public sealed class PlaybackController : IDisposable
     private void OnEnded()
     {
         var token = _token;
+        var path = _playingPath;
+        var duration = _engine?.Duration ?? TimeSpan.Zero;
         _post(() =>
         {
             if (token != _token)
@@ -436,6 +494,9 @@ public sealed class PlaybackController : IDisposable
             var next = Playlist.NextIndex(true);
             if (next == null)
             {
+                if (path != null)
+                    SaveState(path, duration, duration);
+                _store?.Flush();
                 Status = "播放结束";
                 Notify();
                 return;
@@ -443,13 +504,16 @@ public sealed class PlaybackController : IDisposable
 
             if (next == Playlist.CurrentIndex)
             {
-                if (_playingPath != null)
-                    _resumeByPath.Remove(_playingPath);
+                if (path != null)
+                    SaveState(path, TimeSpan.Zero, duration);
+                _store?.Flush();
                 _engine?.Seek(TimeSpan.Zero);
                 _engine?.Play();
                 return;
             }
 
+            if (path != null)
+                SaveState(path, duration, duration);
             Playlist.CurrentIndex = next.Value;
             _ = PlayCurrentAsync(false);
         });
@@ -513,21 +577,49 @@ public sealed class PlaybackController : IDisposable
     {
         if (_engine == null || string.IsNullOrEmpty(_playingPath))
             return;
-        var resume = PlaybackResume.Position(_engine.Position, _engine.Duration);
-        if (resume == null)
-            _resumeByPath.Remove(_playingPath);
-        else
-            _resumeByPath[_playingPath] = resume.Value;
+        SaveState(_playingPath, _engine.Position, _engine.Duration);
+    }
+
+    private void SaveState(string path, TimeSpan position, TimeSpan duration)
+    {
+        var (seconds, finished) = PlaybackProgress.Evaluate(position, duration);
+        var state = new PlaybackState(path, seconds, duration.TotalSeconds, finished, DateTime.UtcNow.Ticks);
+        lock (_stateGate)
+            _states[path] = state;
+        _store?.Save(state);
     }
 
     private void ApplyResume(IPlaybackEngine engine, string path)
     {
-        if (!_resumeByPath.TryGetValue(path, out var saved))
+        PlaybackState? state;
+        lock (_stateGate)
+        {
+            if (!_states.TryGetValue(path, out state))
+                return;
+        }
+
+        if (state.Finished)
             return;
-        var resume = PlaybackResume.Position(saved, engine.Duration);
+        var resume = PlaybackResume.Position(TimeSpan.FromSeconds(state.PositionSeconds), engine.Duration);
         if (resume == null)
             return;
         engine.Seek(resume.Value);
+    }
+
+    private async Task FlushLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                _store?.Flush();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private void Notify() => Changed?.Invoke();

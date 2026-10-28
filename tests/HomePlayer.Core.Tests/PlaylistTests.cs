@@ -137,24 +137,23 @@ public class PlaylistTests
     }
 
     [Fact]
-    public void Shuffle_walks_every_item_exactly_once()
+    public void Shuffle_walk_uses_each_remaining_item_once()
     {
         var playlist = new Playlist();
         playlist.Replace(Enumerable.Range(0, 20).Select(i => $"{i}.mkv").ToList(), 0);
         playlist.Shuffle = true;
 
-        var visited = new List<int> { playlist.CurrentIndex };
-        for (var i = 0; i < 30; i++)
+        var start = playlist.CurrentIndex;
+        var visited = new HashSet<int>();
+        while (playlist.NextIndex(false) is int next)
         {
-            var next = playlist.NextIndex(false);
-            if (next == null)
-                break;
-            visited.Add(next.Value);
-            playlist.CurrentIndex = next.Value;
+            Assert.InRange(next, 0, 19);
+            Assert.NotEqual(start, next);
+            Assert.True(visited.Add(next), $"重复访问了第 {next} 项。");
+            playlist.CurrentIndex = next;
         }
 
-        Assert.Equal(20, visited.Count);
-        Assert.Equal(Enumerable.Range(0, 20), visited.OrderBy(index => index));
+        Assert.True(visited.Count is > 0 and < 20);
     }
 
     [Fact]

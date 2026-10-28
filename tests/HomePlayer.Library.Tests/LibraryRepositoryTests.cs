@@ -206,6 +206,55 @@ public class LibraryRepositoryTests
         Assert.Equal("stamp", a.CoverStamp);
     }
 
+    [Fact]
+    public void Playback_state_round_trips_through_flush()
+    {
+        using var fixture = new RepositoryFixture();
+        var path = @"D:\lib\a.mkv";
+        fixture.Repository.Save(new PlaybackState(path, 42, 100, false, 1));
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\b.mkv", 0, 50, true, 2));
+        fixture.Repository.Flush();
+
+        var all = fixture.Repository.LoadAll(10);
+        Assert.Equal(2, all.Count);
+        Assert.Equal(42, all[path].PositionSeconds);
+        Assert.True(all[@"D:\lib\b.mkv"].Finished);
+        Assert.Equal(100, fixture.Repository.LoadPlaybackStates([path])[path].DurationSeconds, 3);
+    }
+
+    [Fact]
+    public void Load_all_keeps_only_the_most_recent_entries()
+    {
+        using var fixture = new RepositoryFixture();
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\old.mkv", 1, 10, false, 1));
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\new.mkv", 2, 10, false, 3));
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\middle.mkv", 3, 10, false, 2));
+        fixture.Repository.Flush();
+
+        var recent = fixture.Repository.LoadAll(2);
+
+        Assert.Equal(2, recent.Count);
+        Assert.Contains(@"D:\lib\new.mkv", recent.Keys);
+        Assert.Contains(@"D:\lib\middle.mkv", recent.Keys);
+    }
+
+    [Fact]
+    public void Changed_or_deleted_items_drop_their_playback_state()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        var changed = fixture.AddItem(library, "a/changed.mkv");
+        var deleted = fixture.AddItem(library, "b/deleted.mkv");
+        fixture.Repository.Save(new PlaybackState(changed.FullPath(library.RootPath), 20, 100, false, 1));
+        fixture.Repository.Save(new PlaybackState(deleted.FullPath(library.RootPath), 30, 100, false, 2));
+        fixture.Repository.Flush();
+
+        fixture.Repository.MarkChanged(changed, 999, changed.MtimeUtcTicks + 10);
+        fixture.Repository.DeleteItem(deleted.Id);
+
+        Assert.Empty(fixture.Repository.LoadAll(10));
+    }
+
     private sealed class RepositoryFixture : IDisposable
     {
         private readonly string _directory;

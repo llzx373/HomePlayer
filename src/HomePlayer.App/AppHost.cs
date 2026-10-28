@@ -38,10 +38,11 @@ public sealed class AppHost : IAsyncDisposable
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
         var codecPlans = new CodecPlanCache(() => settings);
-        var playback = new PlaybackController(post, codecPlans.Get, () => settings.AudioOutputId);
+        var playback = new PlaybackController(post, codecPlans.Get, () => settings.AudioOutputId, repository);
         playback.SetVolume(settings.Volume);
         var host = new AppHost(settings, repository, libraries, playback, codecPlans);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
+        libraries.ItemReset += playback.ForgetProgress;
         return host;
     }
 
@@ -63,6 +64,7 @@ public sealed class AppHost : IAsyncDisposable
     {
         try
         {
+            Playback.PersistProgress();
             Settings.Volume = Playback.Volume;
             var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AppPaths.SettingsFile, json);

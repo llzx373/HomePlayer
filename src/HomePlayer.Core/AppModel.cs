@@ -135,7 +135,7 @@ public sealed class MediaItem
 
     public string FileName => RelativePaths.Split(RelativePath).FileName;
 
-    public string FullPath(string root) => Path.Combine(root, RelativePath);
+    public string FullPath(string root) => Path.Combine(root, RelativePath.Replace('/', Path.DirectorySeparatorChar));
 }
 
 public sealed record MediaProbe(

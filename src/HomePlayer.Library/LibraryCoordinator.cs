@@ -46,6 +46,11 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     public event EventHandler? Changed;
 
+    /// <summary>
+    /// 条目的文件内容变了或被删掉，播放侧要丢掉对应的旧进度。
+    /// </summary>
+    public event Action<string>? ItemReset;
+
     public int PendingCount => _repository.PendingCount();
 
     public (bool All, string[] Ids) TakeDirtyItems()
@@ -197,6 +202,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
         _repository.MarkChanged(item, size, ticks);
         _repository.Enqueue(item.Id, library.Kind);
+        ResetProgress(library, item.RelativePath);
         MarkDirty(item.Id);
         Submit(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -243,6 +249,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                         return;
                     _repository.MarkChanged(item, item.Size, item.MtimeUtcTicks);
                     _repository.Enqueue(item.Id, library.Kind);
+                    ResetProgress(library, item.RelativePath);
                     Submit(item.Id);
                 }
 
@@ -448,6 +455,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             {
                 _repository.MarkChanged(item, size, ticks);
                 _repository.Enqueue(item.Id, library.Kind);
+                ResetProgress(library, item.RelativePath);
                 MarkDirty(item.Id);
                 Submit(item.Id);
             }
@@ -459,6 +467,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 continue;
             TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
             _repository.DeleteItem(item.Id);
+            ResetProgress(library, item.RelativePath);
             MarkDirty(item.Id);
         }
 
@@ -553,6 +562,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         {
             _repository.DeleteItem(item.Id);
             _repository.MarkWork(itemId, 2);
+            ResetProgress(library, item.RelativePath);
             MarkDirty(item.Id);
             Changed?.Invoke(this, EventArgs.Empty);
             return;
@@ -870,6 +880,12 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     {
         lock (_dirtyGate)
             _dirtyItems.Add(itemId);
+    }
+
+    private void ResetProgress(MediaLibrary library, string relativePath)
+    {
+        var full = Path.Combine(library.RootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        ItemReset?.Invoke(full);
     }
 
     private void MarkAllDirty()
