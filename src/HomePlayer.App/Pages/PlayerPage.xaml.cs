@@ -29,6 +29,9 @@ public sealed partial class PlayerPage : Page
     private const string GlyphExitFullscreen = "\uE73F";
     private const string GlyphRepeat = "\uE8EE";
     private const string GlyphRepeatOne = "\uE8ED";
+    // 无边框播放时标题栏浮在内容之上，播放列表面板顶部要让出这条高度，
+    // 否则面板标题行的「收起」会被标题栏盖住，点下去还会点到窗口按钮。
+    private const double OverlayTitleBarHeight = 40;
 
     private readonly VideoPresenter _presenter;
     private SubtitleSession _subtitles = new();
@@ -221,6 +224,7 @@ public sealed partial class PlayerPage : Page
                 ControlsRow.Height = new GridLength(0);
                 ControlsBar.RequestedTheme = ElementTheme.Dark;
                 ControlsBar.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, 0x1A, 0x1A, 0x1A));
+                PlaylistPane.Padding = new Thickness(0, OverlayTitleBarHeight, 0, 0);
                 _controlsHoldUntil = DateTime.UtcNow.AddSeconds(2.5);
                 _controlsVisible = false;
                 SetControlsOpen(true);
@@ -234,6 +238,7 @@ public sealed partial class PlayerPage : Page
                 ControlsRow.Height = GridLength.Auto;
                 ControlsBar.RequestedTheme = ElementTheme.Default;
                 ControlsBar.ClearValue(Panel.BackgroundProperty);
+                PlaylistPane.Padding = new Thickness(0);
                 _controlsHoldUntil = DateTime.MinValue;
                 _controlsVisible = false;
                 SetControlsOpen(true);
