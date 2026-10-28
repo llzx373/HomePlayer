@@ -152,7 +152,13 @@ public sealed class Playlist
 
     private void RebuildShuffle()
     {
-        _shuffle = Enumerable.Range(0, Items.Count).OrderBy(_ => _random.Next()).ToList();
+        _shuffle = Enumerable.Range(0, Items.Count).ToList();
+        for (var i = _shuffle.Count - 1; i > 0; i--)
+        {
+            var j = _random.Next(i + 1);
+            (_shuffle[i], _shuffle[j]) = (_shuffle[j], _shuffle[i]);
+        }
+
         _shuffleCursor = CurrentIndex < 0 ? -1 : Math.Max(0, _shuffle.IndexOf(CurrentIndex));
         if (_shuffleCursor < 0 && _shuffle.Count > 0)
             _shuffleCursor = 0;

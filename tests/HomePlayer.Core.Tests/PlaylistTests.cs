@@ -137,6 +137,27 @@ public class PlaylistTests
     }
 
     [Fact]
+    public void Shuffle_walks_every_item_exactly_once()
+    {
+        var playlist = new Playlist();
+        playlist.Replace(Enumerable.Range(0, 20).Select(i => $"{i}.mkv").ToList(), 0);
+        playlist.Shuffle = true;
+
+        var visited = new List<int> { playlist.CurrentIndex };
+        for (var i = 0; i < 30; i++)
+        {
+            var next = playlist.NextIndex(false);
+            if (next == null)
+                break;
+            visited.Add(next.Value);
+            playlist.CurrentIndex = next.Value;
+        }
+
+        Assert.Equal(20, visited.Count);
+        Assert.Equal(Enumerable.Range(0, 20), visited.OrderBy(index => index));
+    }
+
+    [Fact]
     public void RefreshShuffleOrder_does_not_change_items_or_current()
     {
         var playlist = new Playlist();

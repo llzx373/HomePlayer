@@ -749,9 +749,41 @@ public sealed partial class LibraryPage : Page
 
     private async Task PlayCardAsync(MediaCard card)
     {
-        var paths = _cards.Select(item => item.Item.FullPath(item.Library.RootPath)).ToList();
-        var index = _cards.IndexOf(card);
-        await App.Host.Playback.PlayPathsAsync(paths, Math.Max(0, index));
+        var paths = await ListViewPathsAsync(card.Library);
+        if (paths.Count == 0)
+            return;
+        var target = card.Item.FullPath(card.Library.RootPath);
+        var index = 0;
+        for (var i = 0; i < paths.Count; i++)
+        {
+            if (!string.Equals(paths[i], target, StringComparison.OrdinalIgnoreCase))
+                continue;
+            index = i;
+            break;
+        }
+
+        await App.Host.Playback.PlayPathsAsync(paths, index);
+        App.Window.SelectPlayer();
+    }
+
+    private async Task<IReadOnlyList<string>> ListViewPathsAsync(MediaLibrary library)
+    {
+        var folderPath = _folderPath;
+        var recursive = RecursiveSwitch.IsOn;
+        var query = SearchBox.Text?.Trim() ?? "";
+        var sort = CurrentSort(library.Kind);
+        return await Task.Run(() => App.Host.Repository.ListAllPaths(
+            library.Id, folderPath, recursive, query, LibraryFilter.All, sort));
+    }
+
+    private async void Random_Click(object sender, RoutedEventArgs e)
+    {
+        if (LibraryList.SelectedItem is not MediaLibrary library)
+            return;
+        var paths = await ListViewPathsAsync(library);
+        if (paths.Count == 0)
+            return;
+        await App.Host.Playback.PlayPathsAsync(Shuffle.Order(paths), 0);
         App.Window.SelectPlayer();
     }
 
@@ -760,12 +792,7 @@ public sealed partial class LibraryPage : Page
         if (CardFrom(e.OriginalSource) is not MediaCard card)
             return;
         var menu = new MenuFlyout();
-        menu.Items.Add(Action("播放", async () =>
-        {
-            var paths = _cards.Select(item => item.Item.FullPath(item.Library.RootPath)).ToList();
-            await App.Host.Playback.PlayPathsAsync(paths, Math.Max(0, _cards.IndexOf(card)));
-            App.Window.SelectPlayer();
-        }));
+        menu.Items.Add(Action("播放", () => PlayCardAsync(card)));
         menu.Items.Add(Action("加入播放列表", () =>
         {
             App.Host.Playback.Enqueue([card.Item.FullPath(card.Library.RootPath)]);
