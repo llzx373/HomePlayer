@@ -48,50 +48,115 @@
                     </ScrollViewer>
                 </Border>
             </Grid>
-            <Grid
+            <Border
                 x:Name="PlaylistPane"
                 Grid.Column="1"
                 Width="300"
-                Padding="12"
-                RowSpacing="8"
                 Visibility="Collapsed"
-                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+                RequestedTheme="Dark"
+                Background="#F2141414"
+                BorderThickness="1,0,0,0"
+                BorderBrush="#1FFFFFFF">
                 <Grid>
-                    <TextBlock Text="播放列表" Style="{ThemeResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
-                    <Button Content="收起" HorizontalAlignment="Right" Click="CollapsePlaylist_Click" />
-                </Grid>
-                <ListView
-                    x:Name="PlaylistView"
-                    Grid.Row="1"
-                    CanReorderItems="True"
-                    CanDragItems="True"
-                    AllowDrop="True"
-                    DoubleTapped="Playlist_DoubleTapped"
-                    DragItemsCompleted="Playlist_Reordered">
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding DisplayName}" />
-                                <TextBlock Text="{Binding Error}" Opacity="0.7" TextWrapping="Wrap" />
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Height="44" Padding="12,0,6,0">
+                        <TextBlock
+                            Text="播放列表"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Foreground="#F2FFFFFF"
+                            VerticalAlignment="Center" />
+                        <Button
+                            Style="{StaticResource PlayerPanelIconButton}"
+                            HorizontalAlignment="Right"
+                            AutomationProperties.Name="收起"
+                            ToolTipService.ToolTip="收起"
+                            Click="CollapsePlaylist_Click">
+                            <FontIcon Glyph="&#xE76C;" FontSize="12" />
+                        </Button>
+                    </Grid>
+                    <Border Grid.Row="1" BorderThickness="0,1,0,1" BorderBrush="#14FFFFFF">
+                        <ListView
+                            x:Name="PlaylistView"
+                            Padding="4"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ItemContainerStyle="{StaticResource PlayerPanelListItem}"
+                            CanReorderItems="True"
+                            CanDragItems="True"
+                            AllowDrop="True"
+                            DoubleTapped="Playlist_DoubleTapped"
+                            DragItemsCompleted="Playlist_Reordered">
+                            <ListView.Resources>
+                                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#14FFFFFF" />
+                                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#1FFFFFFF" />
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#1FFFFFFF" />
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#29FFFFFF" />
+                                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#33FFFFFF" />
+                                <SolidColorBrush x:Key="ListViewItemForegroundSelected" Color="#FFFFFF" />
+                            </ListView.Resources>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid RowSpacing="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="{Binding DisplayName}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Row="1"
+                                            Text="{Binding Error}"
+                                            FontSize="11"
+                                            Foreground="#FFFFB4B4"
+                                            Opacity="0.85"
+                                            TextWrapping="Wrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Border>
+                    <Grid Grid.Row="2" Padding="6,6,6,8" ColumnSpacing="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="PlaylistRepeatButton"
+                            Style="{StaticResource PlayerPanelButton}"
+                            AutomationProperties.Name="循环"
+                            ToolTipService.ToolTip="循环"
+                            Click="Repeat_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon x:Name="PlaylistRepeatIcon" Glyph="&#xE8EE;" FontSize="14" Opacity="0.45" />
+                                <TextBlock x:Name="PlaylistRepeatText" Text="播完停止" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-                <StackPanel Grid.Row="2" Spacing="8">
-                    <ComboBox x:Name="RepeatBox" HorizontalAlignment="Stretch" SelectionChanged="Repeat_Changed">
-                        <ComboBoxItem Content="播完停止" />
-                        <ComboBoxItem Content="循环单条" />
-                        <ComboBoxItem Content="循环全部" />
-                    </ComboBox>
-                    <ToggleSwitch x:Name="ShuffleSwitch" Header="随机" Toggled="Shuffle_Toggled" />
-                    <Button Content="清空" Click="Clear_Click" />
-                </StackPanel>
-            </Grid>
+                        </Button>
+                        <ToggleButton
+                            x:Name="PlaylistShuffleButton"
+                            Grid.Column="1"
+                            Style="{StaticResource PlayerPanelIconToggleButton}"
+                            AutomationProperties.Name="随机"
+                            ToolTipService.ToolTip="随机"
+                            Click="Shuffle_Click">
+                            <FontIcon x:Name="PlaylistShuffleIcon" Glyph="&#xE8B1;" FontSize="14" Opacity="0.45" />
+                        </ToggleButton>
+                        <Button
+                            x:Name="PlaylistClearButton"
+                            Grid.Column="2"
+                            Style="{StaticResource PlayerPanelIconButton}"
+                            AutomationProperties.Name="清空播放列表"
+                            ToolTipService.ToolTip="清空播放列表"
+                            Click="Clear_Click">
+                            <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
         </Grid>
         <Grid
             x:Name="ControlsBar"

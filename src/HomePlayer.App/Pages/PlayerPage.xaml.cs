@@ -46,7 +46,6 @@ public sealed partial class PlayerPage : Page
     private string? _progressMedia;
     private bool _progressOpen;
     private bool _updatingVolume;
-    private bool _playlistSync;
     private bool _alwaysOnTopSync;
     private bool _overlayChrome;
     private bool _fullscreenChrome;
@@ -86,7 +85,6 @@ public sealed partial class PlayerPage : Page
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         PlaylistView.ItemsSource = playback.Playlist.Items;
-        RepeatBox.SelectedIndex = (int)playback.Playlist.Repeat;
         UpdateRepeatButton();
         SetShuffle(playback.Playlist.Shuffle);
         _updatingVolume = true;
@@ -265,11 +263,22 @@ public sealed partial class PlayerPage : Page
             SetControlsOpen(true);
         }
 
+        ApplyChromeInsets();
         ControlsBar.UpdateLayout();
         RememberControlsHeight();
         Stage.UpdateLayout();
         _presenter.Refresh();
         FitWindow(false);
+    }
+
+    // 浮起的控件栏只盖视频区，不压住右侧播放列表，
+    // 否则鼠标一碰列表底部就会把控件栏叫出来，还挡住列表自己的控件。
+    private void ApplyChromeInsets()
+    {
+        var inset = 0.0;
+        if (_overlayChrome && PlaylistPane.Visibility == Visibility.Visible)
+            inset = PlaylistPane.ActualWidth > 1 ? PlaylistPane.ActualWidth : PlaylistPane.Width;
+        ControlsBar.Margin = new Thickness(0, 0, Math.Max(0, inset), 0);
     }
 
     private void UpdateControlsOverlay()
@@ -288,7 +297,12 @@ public sealed partial class PlayerPage : Page
 
         RememberControlsHeight();
         var band = Math.Max(_controlsHeight, 1);
-        var alongBottom = x >= -16 && x <= width + 16
+        var videoRight = width;
+        if (PlaylistPane.Visibility == Visibility.Visible)
+            videoRight -= PlaylistPane.ActualWidth > 1 ? PlaylistPane.ActualWidth : PlaylistPane.Width;
+        // 热区只算视频区那一段：播放列表铺满右侧整列，鼠标停在列表上时不该唤出控件栏。
+        var alongBottom = x >= -16
+            && x <= videoRight + 1
             && y >= height - band
             && y <= height + 24;
         SetControlsOpen(alongBottom || DateTime.UtcNow < _controlsHoldUntil);
@@ -1134,13 +1148,11 @@ public sealed partial class PlayerPage : Page
 
     private void SetPlaylist(bool open)
     {
-        if (_playlistSync)
-            return;
-        _playlistSync = true;
         PlaylistPane.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PlaylistButton.IsChecked = open;
-        _playlistSync = false;
         Stage.UpdateLayout();
+        ApplyChromeInsets();
+        ControlsBar.UpdateLayout();
         _presenter.Refresh();
     }
 
@@ -1150,25 +1162,12 @@ public sealed partial class PlayerPage : Page
         Playback.Playlist.Clear();
     }
 
-    private void Repeat_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (_playlistSync || RepeatBox.SelectedIndex < 0)
-            return;
-        Playback.Playlist.Repeat = (RepeatMode)RepeatBox.SelectedIndex;
-        UpdateRepeatButton();
-    }
-
     private void Repeat_Click(object sender, RoutedEventArgs e) =>
         SetRepeat(NextRepeat(Playback.Playlist.Repeat));
 
     private void SetRepeat(RepeatMode mode)
     {
-        if (_playlistSync)
-            return;
-        _playlistSync = true;
         Playback.Playlist.Repeat = mode;
-        RepeatBox.SelectedIndex = (int)mode;
-        _playlistSync = false;
         UpdateRepeatButton();
     }
 
@@ -1184,9 +1183,18 @@ public sealed partial class PlayerPage : Page
         if (RepeatIcon == null || RepeatButton == null)
             return;
         var mode = Playback.Playlist.Repeat;
-        RepeatIcon.Glyph = mode == RepeatMode.One ? GlyphRepeatOne : GlyphRepeat;
-        RepeatIcon.Opacity = mode == RepeatMode.Off ? 0.45 : 1;
+        var glyph = mode == RepeatMode.One ? GlyphRepeatOne : GlyphRepeat;
+        var opacity = mode == RepeatMode.Off ? 0.45 : 1;
+        RepeatIcon.Glyph = glyph;
+        RepeatIcon.Opacity = opacity;
         ApplyTip(RepeatButton, RepeatTitle(mode), HotkeyCatalog.CycleRepeat);
+        if (PlaylistRepeatIcon != null)
+        {
+            PlaylistRepeatIcon.Glyph = glyph;
+            PlaylistRepeatIcon.Opacity = opacity;
+        }
+        if (PlaylistRepeatText != null)
+            PlaylistRepeatText.Text = RepeatTitle(mode);
     }
 
     private static string RepeatTitle(RepeatMode mode) => mode switch
@@ -1196,29 +1204,22 @@ public sealed partial class PlayerPage : Page
         _ => "播完停止"
     };
 
-    private void Shuffle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_playlistSync)
-            return;
-        SetShuffle(ShuffleSwitch.IsOn);
-    }
-
     private void Shuffle_Click(object sender, RoutedEventArgs e) =>
-        SetShuffle(ShuffleButton.IsChecked == true);
+        SetShuffle(sender is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton toggle && toggle.IsChecked == true);
 
     private void SetShuffle(bool on)
     {
-        if (_playlistSync)
-            return;
-        _playlistSync = true;
         Playback.Playlist.Shuffle = on;
-        if (ShuffleSwitch != null)
-            ShuffleSwitch.IsOn = on;
         if (ShuffleButton != null)
+        {
             ShuffleButton.IsChecked = on;
-        _playlistSync = false;
-        if (ShuffleIcon != null)
             ShuffleIcon.Opacity = on ? 1 : 0.45;
+        }
+        if (PlaylistShuffleButton != null)
+        {
+            PlaylistShuffleButton.IsChecked = on;
+            PlaylistShuffleIcon.Opacity = on ? 1 : 0.45;
+        }
     }
 
     private async void Playlist_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
