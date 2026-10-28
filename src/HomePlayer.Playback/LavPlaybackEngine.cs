@@ -88,7 +88,9 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _sta.Post(StopGraph);
     }
 
-    public void Seek(TimeSpan position) => _sta.Invoke(() =>
+    public void Seek(TimeSpan position) => _sta.Invoke(() => SeekCore(position));
+
+    private void SeekCore(TimeSpan position)
     {
         if (position < TimeSpan.Zero)
             position = TimeSpan.Zero;
@@ -96,10 +98,35 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         _sink?.ClearPresented();
         if (_seeking == null)
             return;
+        var paused = _sink is { Paused: true };
+        if (paused)
+            _sink?.RequestPausedFrame(position.Ticks);
         var current = position.Ticks;
         long stop = 0;
         _seeking.SetPositions(ref current, 1, ref stop, 0);
-    });
+        if (paused)
+            RenderPausedFrame();
+    }
+
+    private void RenderPausedFrame()
+    {
+        if (_control == null)
+            return;
+        var muted = _muted;
+        if (!muted)
+            _audio?.put_Volume(-10000);
+        try
+        {
+            _control.Run();
+            _sink?.WaitForPausedFrame(500);
+            _control.Pause();
+        }
+        finally
+        {
+            if (!muted)
+                _audio?.put_Volume(ToDecibels(_volume));
+        }
+    }
 
     public void SetVolume(double linear)
     {
@@ -128,12 +155,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
             position = _duration;
         if (position <= ReadPosition())
             return;
-        Volatile.Write(ref _seekedTicks, position.Ticks);
-        _sink?.ClearPresented();
-        var current = position.Ticks;
-        long stop = 0;
-        _seeking.SetPositions(ref current, 1, ref stop, 0);
-        _control?.Pause();
+        SeekCore(position);
     });
 
     public PipelineInfo GetPipeline() => _sta.Invoke(ReadPipeline);

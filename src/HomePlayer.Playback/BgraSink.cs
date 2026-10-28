@@ -21,12 +21,16 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     private bool _segmentTimed;
     private bool _useSampleAsMedia;
     private long _presentedTicks = -1;
+    private long _pausedFrameTicks = -1;
+    private long _pausedFrameStamp;
+    private readonly ManualResetEventSlim _pausedFrameShown = new(false);
 
     public BgraSinkFilter() => _pin = new BgraSinkPin(this);
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
     public bool HasPresented => Interlocked.Read(ref _presentedTicks) >= 0;
+    internal bool Paused => _state == RendererGate.Paused;
 
     public TimeSpan PresentedPosition => TimeSpan.FromTicks(Math.Max(0, Interlocked.Read(ref _presentedTicks)));
 
@@ -47,6 +51,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         _completed = false;
         _playClock.Reset();
         ReplaceClock(0);
+        Interlocked.Exchange(ref _pausedFrameTicks, -1);
         return Hr.Ok;
     }
 
@@ -157,35 +162,57 @@ public sealed class BgraSinkFilter : IBaseFilterSink
         _segmentTimed = false;
     }
 
-    internal void NotePresented(long sampleStream, long mediaTime)
+    internal long MediaTime(long sampleStream)
     {
-        long media;
-        if (mediaTime >= 0)
+        if (!_segmentTimed)
         {
-            media = mediaTime;
-        }
-        else
-        {
-            if (!_segmentTimed)
-            {
-                _segmentStreamStart = sampleStream;
-                _useSampleAsMedia = Math.Abs(sampleStream - _segmentMediaStart) < 20_000_000;
-                _segmentTimed = true;
-            }
-
-            media = _useSampleAsMedia
-                ? sampleStream
-                : _segmentMediaStart + (sampleStream - _segmentStreamStart);
+            _segmentStreamStart = sampleStream;
+            _useSampleAsMedia = Math.Abs(sampleStream - _segmentMediaStart) < 20_000_000;
+            _segmentTimed = true;
         }
 
-        if (media < 0)
-            media = 0;
-        Interlocked.Exchange(ref _presentedTicks, media);
+        var media = _useSampleAsMedia
+            ? sampleStream
+            : _segmentMediaStart + (sampleStream - _segmentStreamStart);
+        return Math.Max(0, media);
     }
+
+    internal void NotePresented(long media) => Interlocked.Exchange(ref _presentedTicks, Math.Max(0, media));
 
     internal void ClearPresented() => Interlocked.Exchange(ref _presentedTicks, -1);
 
-    internal bool WaitUntil(long streamTime)
+    internal void RequestPausedFrame(long ticks)
+    {
+        _pausedFrameShown.Reset();
+        Volatile.Write(ref _pausedFrameStamp, Environment.TickCount64);
+        Interlocked.Exchange(ref _pausedFrameTicks, Math.Max(0, ticks));
+    }
+
+    internal bool WaitForPausedFrame(int timeoutMs) => _pausedFrameShown.Wait(timeoutMs);
+
+    internal void NotePausedFrame(long media)
+    {
+        var target = Interlocked.Read(ref _pausedFrameTicks);
+        if (target < 0 || media < target)
+            return;
+        Interlocked.Exchange(ref _pausedFrameTicks, -1);
+        _pausedFrameShown.Set();
+    }
+
+    private bool? DecidePausedFrame(long mediaStart, long duration)
+    {
+        var target = Interlocked.Read(ref _pausedFrameTicks);
+        if (target < 0)
+            return null;
+        var reached = mediaStart + Math.Max(0, duration) >= target;
+        if (!reached && Environment.TickCount64 - Volatile.Read(ref _pausedFrameStamp) < 1000)
+            return false;
+        Interlocked.Exchange(ref _pausedFrameTicks, -1);
+        _pausedFrameShown.Set();
+        return true;
+    }
+
+    internal bool WaitUntil(long streamTime, long mediaTime, long duration)
     {
         while (true)
         {
@@ -197,6 +224,9 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
             if (_state == RendererGate.Paused)
             {
+                var paused = DecidePausedFrame(mediaTime, duration);
+                if (paused != null)
+                    return paused.Value;
                 if (_pin.FlushGate.Wait(20))
                     return false;
                 continue;
@@ -481,16 +511,14 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         var length = SampleLength(samplePointer);
         if (length <= 0 || Width <= 0 || Height <= 0)
             return Hr.Ok;
-        var hasTime = SampleTime(samplePointer, out var start) >= 0;
-        if (hasTime && !_filter.WaitUntil(start))
+        var hasTime = SampleTime(samplePointer, out var start, out var end) >= 0;
+        var media = hasTime ? _filter.MediaTime(start) : -1;
+        if (hasTime && !_filter.WaitUntil(start, media, end - start))
             return Hr.Ok;
         if (Flushing)
             return Hr.Ok;
         if (hasTime)
-        {
-            var media = SampleMediaTime(samplePointer, out var mediaStart) >= 0 ? mediaStart : -1;
-            _filter.NotePresented(start, media);
-        }
+            _filter.NotePresented(media);
         var stride = Width * 4;
         var needed = stride * Height;
         var copyLength = Math.Min(length, needed);
@@ -510,6 +538,8 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
             if (copyLength < needed)
                 Array.Clear(data, copyLength, needed - copyLength);
             _filter.Deliver(frame);
+            if (hasTime)
+                _filter.NotePausedFrame(media);
             return Hr.Ok;
         }
         catch
@@ -535,25 +565,15 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         return ((delegate* unmanaged[Stdcall]<IntPtr, int>)table[11])(sample);
     }
 
-    private static unsafe int SampleTime(IntPtr sample, out long start)
+    private static unsafe int SampleTime(IntPtr sample, out long start, out long end)
     {
         var table = *(IntPtr**)sample;
         var call = (delegate* unmanaged[Stdcall]<IntPtr, long*, long*, int>)table[5];
         long value;
-        long end;
-        var result = call(sample, &value, &end);
+        long stop;
+        var result = call(sample, &value, &stop);
         start = value;
-        return result;
-    }
-
-    private static unsafe int SampleMediaTime(IntPtr sample, out long start)
-    {
-        var table = *(IntPtr**)sample;
-        var call = (delegate* unmanaged[Stdcall]<IntPtr, long*, long*, int>)table[17];
-        long value;
-        long end;
-        var result = call(sample, &value, &end);
-        start = value;
+        end = stop;
         return result;
     }
 

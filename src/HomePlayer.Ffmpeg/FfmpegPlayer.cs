@@ -349,7 +349,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     if (!IsPlaying)
                     {
                         _resume.Reset();
-                        PresentNearest(videoFrame);
+                        PresentNearest(videoFrame, target);
                         continue;
                     }
                 }
@@ -458,29 +458,45 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         }
     }
 
-    private void PresentNearest(AVFrame* videoFrame)
+    private void PresentNearest(AVFrame* videoFrame, double target)
     {
+        const int maxPackets = 600;
         var packet = ffmpeg.av_packet_alloc();
+        var previous = ffmpeg.av_frame_alloc();
         try
         {
-            for (var i = 0; i < 30; i++)
+            for (var i = 0; i < maxPackets; i++)
             {
                 ffmpeg.av_packet_unref(packet);
                 if (ffmpeg.av_read_frame(_format, packet) < 0)
-                    return;
+                    break;
                 if (packet->stream_index != _videoIndex)
                     continue;
                 ffmpeg.avcodec_send_packet(_videoCodec, packet);
-                if (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
+                while (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
                 {
-                    Deliver(ToBgra(videoFrame));
+                    var pic = videoFrame->best_effort_timestamp;
+                    if (pic == ffmpeg.AV_NOPTS_VALUE)
+                        pic = videoFrame->pts;
+                    if (pic == ffmpeg.AV_NOPTS_VALUE || pic * Q2d(_videoTimeBase) >= target - 0.0005)
+                    {
+                        Deliver(ToBgra(videoFrame));
+                        ffmpeg.av_frame_unref(videoFrame);
+                        return;
+                    }
+
+                    ffmpeg.av_frame_unref(previous);
+                    ffmpeg.av_frame_ref(previous, videoFrame);
                     ffmpeg.av_frame_unref(videoFrame);
-                    return;
                 }
             }
+
+            if (previous->data[0] != null)
+                Deliver(ToBgra(previous));
         }
         finally
         {
+            ffmpeg.av_frame_free(&previous);
             ffmpeg.av_packet_free(&packet);
         }
     }
