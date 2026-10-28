@@ -24,6 +24,7 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<string, FolderNode> _folderNodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TreeViewNode> _folderTreeNodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (DateTime Stamp, BitmapImage Image)> _coverCache = new(StringComparer.OrdinalIgnoreCase);
+    private bool _ready;
     private bool _loading;
     private bool _sorting;
     private bool _syncingLibrary;
@@ -73,14 +74,20 @@ public sealed partial class LibraryPage : Page
             LoadPage();
         };
         App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(QueuePageReload);
-        Loaded += (_, _) => QueueLibraryReload();
+        Loaded += (_, _) =>
+        {
+            _ready = true;
+            QueueLibraryReload();
+        };
         Unloaded += (_, _) =>
         {
+            _ready = false;
             SaveViewState();
             _reloadTimer.Stop();
             _libraryTimer.Stop();
             _filterTimer.Stop();
         };
+        _ready = true;
     }
 
     private void QueuePageReload()
@@ -551,7 +558,7 @@ public sealed partial class LibraryPage : Page
 
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading || _syncingLibrary)
+        if (!_ready || _loading || _syncingLibrary)
             return;
         _folderPath = "";
         RebuildFolderTree(LibraryList.SelectedItem as MediaLibrary);
@@ -872,7 +879,7 @@ public sealed partial class LibraryPage : Page
 
     private void Recursive_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_loading || _restoringView)
+        if (!_ready || _loading || _restoringView)
             return;
         foreach (var folder in _folderNodes.Values)
             folder.SetRecursive(RecursiveSwitch.IsOn);
