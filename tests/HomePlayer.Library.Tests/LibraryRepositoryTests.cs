@@ -55,6 +55,100 @@ public class LibraryRepositoryTests
         Assert.Empty(fixture.Repository.GetItems([]));
     }
 
+    [Fact]
+    public void Count_and_page_return_sorted_windows()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        for (var i = 0; i < 25; i++)
+            fixture.AddItem(library, $"file{i:00}.mkv");
+
+        Assert.Equal(25, fixture.Repository.CountItems(library.Id, null, true, null, LibraryFilter.All));
+
+        var first = fixture.Repository.ListItemsPage(
+            library.Id, null, true, null, LibraryFilter.All, SortMode.FileName, 0, 10);
+        Assert.Equal(
+            Enumerable.Range(0, 10).Select(i => $"file{i:00}.mkv"),
+            first.Select(item => item.FileName));
+
+        var lastPage = fixture.Repository.ListItemsPage(
+            library.Id, null, true, null, LibraryFilter.All, SortMode.FileName, 20, 10);
+        Assert.Equal(
+            Enumerable.Range(20, 5).Select(i => $"file{i:00}.mkv"),
+            lastPage.Select(item => item.FileName));
+    }
+
+    [Fact]
+    public void Directory_filter_honours_the_recursive_switch()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        fixture.AddItem(library, "root.mkv");
+        fixture.AddItem(library, "a/direct.mkv");
+        fixture.AddItem(library, "a/b/nested.mkv");
+        fixture.AddItem(library, "other/x.mkv");
+
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, false, null, LibraryFilter.All));
+        Assert.Equal(4, fixture.Repository.CountItems(library.Id, null, true, null, LibraryFilter.All));
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, "a", false, null, LibraryFilter.All));
+        Assert.Equal(2, fixture.Repository.CountItems(library.Id, "a", true, null, LibraryFilter.All));
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, "a/b", true, null, LibraryFilter.All));
+
+        var nested = fixture.Repository.ListItemsPage(
+            library.Id, "a", true, null, LibraryFilter.All, SortMode.FileName, 0, 10);
+        Assert.Equal(["direct.mkv", "nested.mkv"], nested.Select(item => item.FileName));
+    }
+
+    [Fact]
+    public void Search_matches_titles_and_file_names_and_escapes_wildcards()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        var titled = fixture.AddItem(library, "z.mkv");
+        titled.Title = "Alpha Movie";
+        fixture.Repository.SaveMetadata(titled);
+        fixture.AddItem(library, "beta.mkv");
+        fixture.AddItem(library, "100%.mkv");
+
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, true, "alpha", LibraryFilter.All));
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, true, "BETA", LibraryFilter.All));
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, true, "%", LibraryFilter.All));
+        Assert.Equal(0, fixture.Repository.CountItems(library.Id, null, true, "_", LibraryFilter.All));
+    }
+
+    [Fact]
+    public void Status_and_review_filters_are_pushed_down()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Catalog);
+        var failed = fixture.AddItem(library, "failed.mkv");
+        var review = fixture.AddItem(library, "review.mkv");
+        fixture.AddItem(library, "ok.mkv");
+        fixture.Repository.SetStatus(failed.Id, ItemStatus.Failed, "坏了");
+        review.MatchStatus = MatchStatus.NeedsReview;
+        fixture.Repository.SaveMetadata(review);
+
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, true, null, LibraryFilter.Failed));
+        Assert.Equal(1, fixture.Repository.CountItems(library.Id, null, true, null, LibraryFilter.NeedsReview));
+        Assert.Equal(3, fixture.Repository.CountItems(library.Id, null, true, null, LibraryFilter.All));
+    }
+
+    [Fact]
+    public void List_all_paths_returns_absolute_paths_in_sort_order()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        fixture.AddItem(library, "b.mkv");
+        fixture.AddItem(library, "a.mkv");
+
+        var paths = fixture.Repository.ListAllPaths(
+            library.Id, null, true, null, LibraryFilter.All, SortMode.FileName);
+
+        Assert.Equal(
+            [Path.Combine(library.RootPath, "a.mkv"), Path.Combine(library.RootPath, "b.mkv")],
+            paths);
+    }
+
     private sealed class RepositoryFixture : IDisposable
     {
         private readonly string _directory;

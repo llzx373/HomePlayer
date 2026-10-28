@@ -2,10 +2,11 @@
 <Page
     x:Class="HomePlayer.LibraryPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:HomePlayer">
     <Grid Padding="16" ColumnSpacing="16">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="300" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
         <Grid Grid.Column="0" RowSpacing="8">
@@ -25,6 +26,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
@@ -32,8 +34,8 @@
                     <ColumnDefinition Width="180" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="SearchBox" PlaceholderText="按名称过滤" TextChanged="Filter_Changed" />
-                <ComboBox x:Name="SortBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="Filter_Changed" />
+                <TextBox x:Name="SearchBox" PlaceholderText="按名称过滤" TextChanged="Search_TextChanged" />
+                <ComboBox x:Name="SortBox" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="Sort_SelectionChanged" />
                 <Button Grid.Column="2" Content="刷新" Click="Refresh_Click" />
             </Grid>
             <Grid Grid.Row="1">
@@ -64,6 +66,7 @@
                     </GridView.ItemTemplate>
                 </GridView>
             </Grid>
+            <local:PagerBar x:Name="Pager" Grid.Row="2" />
         </Grid>
     </Grid>
 </Page>

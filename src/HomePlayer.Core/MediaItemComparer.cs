@@ -2,23 +2,30 @@ namespace HomePlayer.Core;
 
 public static class MediaItemComparer
 {
-    public static int Compare(MediaItem left, MediaItem right, LibraryKind kind, bool byDate)
+    public static int Compare(MediaItem left, MediaItem right, SortMode mode)
     {
-        if (kind == LibraryKind.Raw)
+        var primary = mode switch
         {
-            return byDate
-                ? right.MtimeUtcTicks.CompareTo(left.MtimeUtcTicks)
-                : string.Compare(left.FileName, right.FileName, StringComparison.OrdinalIgnoreCase);
-        }
+            SortMode.FileName => string.Compare(left.FileName, right.FileName, StringComparison.OrdinalIgnoreCase),
+            SortMode.ModifiedDesc => right.MtimeUtcTicks.CompareTo(left.MtimeUtcTicks),
+            SortMode.Title => string.Compare(Title(left), Title(right), StringComparison.OrdinalIgnoreCase),
+            SortMode.YearDesc => CompareYear(left, right),
+            SortMode.AddedDesc => right.AddedUtcTicks.CompareTo(left.AddedUtcTicks),
+            _ => 0
+        };
+        return primary != 0
+            ? primary
+            : string.Compare(left.RelativePath, right.RelativePath, StringComparison.OrdinalIgnoreCase);
+    }
 
-        if (byDate)
-        {
-            var year = (right.Year ?? 0).CompareTo(left.Year ?? 0);
-            return year != 0
-                ? year
-                : string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.CurrentCulture);
-        }
+    public static string Title(MediaItem item) =>
+        string.IsNullOrWhiteSpace(item.Title) ? item.FileName : item.Title;
 
-        return string.Compare(left.Title ?? left.FileName, right.Title ?? right.FileName, StringComparison.OrdinalIgnoreCase);
+    private static int CompareYear(MediaItem left, MediaItem right)
+    {
+        var year = (right.Year ?? 0).CompareTo(left.Year ?? 0);
+        return year != 0
+            ? year
+            : string.Compare(MediaItemComparer.Title(left), MediaItemComparer.Title(right), StringComparison.CurrentCulture);
     }
 }

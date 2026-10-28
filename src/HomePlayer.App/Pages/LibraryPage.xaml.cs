@@ -19,12 +19,15 @@ public sealed partial class LibraryPage : Page
     private readonly Queue<string> _imageOrder = [];
     private const int ImageCacheLimit = 200;
     private readonly DispatcherQueueTimer _reloadTimer;
+    private readonly DispatcherQueueTimer _libraryTimer;
     private readonly DispatcherQueueTimer _filterTimer;
     private bool _loading;
     private bool _sorting;
-    private bool _needsFullReload;
     private int _reloadToken;
-    private int _bindToken;
+    private int _loadToken;
+    private int _page = 1;
+    private int _pageSize = PagedView.DefaultPageSize;
+    private int _total;
 
     public LibraryPage()
     {
@@ -36,52 +39,57 @@ public sealed partial class LibraryPage : Page
         _reloadTimer = DispatcherQueue.CreateTimer();
         _reloadTimer.Interval = TimeSpan.FromMilliseconds(400);
         _reloadTimer.IsRepeating = false;
-        _reloadTimer.Tick += (_, _) => Reload();
+        _reloadTimer.Tick += (_, _) => LoadPage();
+        _libraryTimer = DispatcherQueue.CreateTimer();
+        _libraryTimer.Interval = TimeSpan.FromMilliseconds(400);
+        _libraryTimer.IsRepeating = false;
+        _libraryTimer.Tick += (_, _) => ReloadLibraries();
         _filterTimer = DispatcherQueue.CreateTimer();
         _filterTimer.Interval = TimeSpan.FromMilliseconds(200);
         _filterTimer.IsRepeating = false;
-        _filterTimer.Tick += (_, _) => BindCards();
-        App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(QueueReload);
-        Loaded += (_, _) =>
+        _filterTimer.Tick += (_, _) => LoadPage();
+        Pager.PageRequested += (_, page) =>
         {
-            _needsFullReload = true;
-            QueueReload();
+            _page = page;
+            LoadPage();
         };
+        Pager.PageSizeChanged += (_, size) =>
+        {
+            _pageSize = size;
+            _page = 1;
+            LoadPage();
+        };
+        App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(QueuePageReload);
+        Loaded += (_, _) => QueueLibraryReload();
         Unloaded += (_, _) =>
         {
             _reloadTimer.Stop();
+            _libraryTimer.Stop();
             _filterTimer.Stop();
         };
     }
 
-    private void QueueReload()
+    private void QueuePageReload()
     {
         if (!IsLoaded || App.Host.Exiting)
             return;
+        App.Host.Libraries.TakeDirtyItems();
         if (!_reloadTimer.IsRunning)
             _reloadTimer.Start();
     }
 
-    private void Reload()
+    private void QueueLibraryReload()
+    {
+        if (!IsLoaded || App.Host.Exiting)
+            return;
+        if (!_libraryTimer.IsRunning)
+            _libraryTimer.Start();
+    }
+
+    private void ReloadLibraries()
     {
         if (App.Host.Exiting)
             return;
-        var force = _needsFullReload;
-        _needsFullReload = false;
-        var (all, ids) = App.Host.Libraries.TakeDirtyItems();
-        if (!force && !all && ids.Length == 0)
-            return;
-        if (force || all)
-        {
-            ReloadAll();
-            return;
-        }
-
-        ApplyItemUpdates(ids);
-    }
-
-    private void ReloadAll()
-    {
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
         var token = ++_reloadToken;
         _loading = true;
@@ -110,131 +118,87 @@ public sealed partial class LibraryPage : Page
             _libraries.Add(library);
         LibraryList.SelectedItem = _libraries.FirstOrDefault(item => item.Id == selected) ?? _libraries.FirstOrDefault();
         _loading = false;
-        BindCards();
+        _page = 1;
+        LoadPage();
     }
 
-    private void BindCards()
+    private void LoadPage()
     {
-        if (_loading)
+        if (_loading || App.Host.Exiting)
             return;
         var library = LibraryList.SelectedItem as MediaLibrary;
         ConfigureSort(library?.Kind);
-        var token = ++_bindToken;
+        var token = ++_loadToken;
         if (library == null)
         {
             _cards.Clear();
+            _total = 0;
+            Pager.Update(0, 1, _pageSize);
             UpdateEmptyText();
             return;
         }
 
         var query = SearchBox.Text?.Trim() ?? "";
-        var sortIndex = SortBox.SelectedIndex;
+        var sort = CurrentSort(library.Kind);
+        var requestedPage = _page;
+        var pageSize = _pageSize;
         var libraryId = library.Id;
         var kind = library.Kind;
         _ = Task.Run(() =>
         {
             IReadOnlyList<MediaItem> items;
+            int total;
+            var page = requestedPage;
             try
             {
-                items = App.Host.Repository.ListItems(libraryId);
+                total = App.Host.Repository.CountItems(libraryId, null, true, query, LibraryFilter.All);
+                page = PagedView.ClampPage(page, total, pageSize);
+                items = App.Host.Repository.ListItemsPage(
+                    libraryId, null, true, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                if (items.Count == 0 && total > 0 && page > 1)
+                {
+                    page--;
+                    items = App.Host.Repository.ListItemsPage(
+                        libraryId, null, true, query, LibraryFilter.All, sort, (page - 1) * pageSize, pageSize);
+                }
             }
             catch (Exception)
             {
                 items = [];
+                total = 0;
             }
 
             var stamps = ComputeImageStamps(items, kind);
-            var comparer = Comparer<MediaItem>.Create((left, right) =>
-                MediaItemComparer.Compare(left, right, kind, sortIndex == 1));
-            var sorted = items.OrderBy(item => item, comparer).ToList();
-            DispatcherQueue.TryEnqueue(() => ApplyCards(library, query, kind, token, sorted, stamps));
+            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, token));
         });
     }
 
-    private void ApplyCards(
+    private void ApplyPage(
         MediaLibrary library,
-        string query,
-        LibraryKind kind,
-        int token,
+        int page,
+        int pageSize,
+        int total,
         IReadOnlyList<MediaItem> items,
-        IReadOnlyDictionary<string, DateTime> stamps)
+        IReadOnlyDictionary<string, DateTime> stamps,
+        int token)
     {
-        if (token != _bindToken || App.Host.Exiting || _loading)
+        if (token != _loadToken || App.Host.Exiting)
             return;
         if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
             return;
+        _page = page;
+        _pageSize = pageSize;
+        _total = total;
         var cards = new List<MediaCard>(items.Count);
         foreach (var item in items)
         {
-            var card = CreateCard(item, library, query, stamps);
+            var card = CreateCard(item, library, stamps);
             if (card != null)
                 cards.Add(card);
         }
 
         _cards.ReplaceAll(cards);
-        UpdateEmptyText();
-    }
-
-    private void ApplyItemUpdates(string[] ids)
-    {
-        if (_loading || ids.Length == 0)
-            return;
-        var library = LibraryList.SelectedItem as MediaLibrary;
-        if (library == null)
-            return;
-        ConfigureSort(library.Kind);
-        var query = SearchBox.Text?.Trim() ?? "";
-        var sortIndex = SortBox.SelectedIndex;
-        _ = Task.Run(() =>
-        {
-            IReadOnlyList<MediaItem> items;
-            try
-            {
-                items = App.Host.Repository.GetItems(ids);
-            }
-            catch (Exception)
-            {
-                items = [];
-            }
-
-            var stamps = ComputeImageStamps(items, library.Kind);
-            DispatcherQueue.TryEnqueue(() => ApplyItemUpdatesOnUi(library, query, sortIndex, ids, items, stamps));
-        });
-    }
-
-    private void ApplyItemUpdatesOnUi(
-        MediaLibrary library,
-        string query,
-        int sortIndex,
-        string[] ids,
-        IReadOnlyList<MediaItem> items,
-        IReadOnlyDictionary<string, DateTime> stamps)
-    {
-        if (_loading || App.Host.Exiting)
-            return;
-        if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
-            return;
-        var byId = new Dictionary<string, MediaItem>(items.Count, StringComparer.Ordinal);
-        foreach (var item in items)
-            byId[item.Id] = item;
-        foreach (var id in ids)
-        {
-            var index = IndexOfCard(id);
-            if (!byId.TryGetValue(id, out var item) || item.LibraryId != library.Id)
-            {
-                if (index >= 0)
-                    _cards.RemoveAt(index);
-                continue;
-            }
-
-            var card = CreateCard(item, library, query, stamps);
-            if (index >= 0)
-                _cards.RemoveAt(index);
-            if (card == null)
-                continue;
-            _cards.Insert(FindInsertIndex(item, library.Kind, sortIndex), card);
-        }
-
+        Pager.Update(total, page, pageSize);
         UpdateEmptyText();
     }
 
@@ -265,16 +229,11 @@ public sealed partial class LibraryPage : Page
     private MediaCard? CreateCard(
         MediaItem item,
         MediaLibrary library,
-        string query,
         IReadOnlyDictionary<string, DateTime> stamps)
     {
         var title = library.Kind == LibraryKind.Catalog && !string.IsNullOrWhiteSpace(item.Title) && item.MatchStatus == MatchStatus.Matched
             ? item.Title!
             : item.FileName;
-        if (query.Length > 0
-            && !title.Contains(query, StringComparison.OrdinalIgnoreCase)
-            && !item.FileName.Contains(query, StringComparison.OrdinalIgnoreCase))
-            return null;
         var subtitle = library.Kind == LibraryKind.Raw
             ? $"{ClockText.FormatSeconds(item.DurationSeconds)} · {Resolution(item)} · {item.VideoCodec ?? item.Status.ToString()}"
             : CatalogSubtitle(item);
@@ -291,28 +250,6 @@ public sealed partial class LibraryPage : Page
         };
     }
 
-    private int IndexOfCard(string itemId)
-    {
-        for (var i = 0; i < _cards.Count; i++)
-        {
-            if (string.Equals(_cards[i].Item.Id, itemId, StringComparison.Ordinal))
-                return i;
-        }
-
-        return -1;
-    }
-
-    private int FindInsertIndex(MediaItem item, LibraryKind kind, int sortIndex)
-    {
-        for (var i = 0; i < _cards.Count; i++)
-        {
-            if (MediaItemComparer.Compare(item, _cards[i].Item, kind, sortIndex == 1) < 0)
-                return i;
-        }
-
-        return _cards.Count;
-    }
-
     private void UpdateEmptyText()
     {
         if (_libraries.Count == 0)
@@ -322,7 +259,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (_cards.Count > 0)
+        if (_total > 0)
         {
             EmptyText.Visibility = Visibility.Collapsed;
             return;
@@ -340,8 +277,14 @@ public sealed partial class LibraryPage : Page
             : App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
     }
 
+    private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
+        ? SortBox.SelectedIndex == 1 ? SortMode.YearDesc : SortMode.Title
+        : SortBox.SelectedIndex == 1 ? SortMode.ModifiedDesc : SortMode.FileName;
+
     private void ConfigureSort(LibraryKind? kind)
     {
+        if (kind == null)
+            return;
         var catalog = kind == LibraryKind.Catalog;
         if (SortBox.Items.Count > 0 && Equals(SortBox.Tag, catalog))
             return;
@@ -349,7 +292,6 @@ public sealed partial class LibraryPage : Page
         try
         {
             SortBox.Tag = catalog;
-            var index = SortBox.SelectedIndex;
             SortBox.Items.Clear();
             if (catalog)
             {
@@ -362,7 +304,7 @@ public sealed partial class LibraryPage : Page
                 SortBox.Items.Add("修改时间");
             }
 
-            SortBox.SelectedIndex = index >= 0 && index < SortBox.Items.Count ? index : 0;
+            SortBox.SelectedIndex = 0;
         }
         finally
         {
@@ -439,6 +381,7 @@ public sealed partial class LibraryPage : Page
         try
         {
             App.Host.Libraries.Add(name.Text, path.Text, kind.SelectedIndex == 1 ? LibraryKind.Catalog : LibraryKind.Raw);
+            QueueLibraryReload();
         }
         catch (Exception ex)
         {
@@ -463,6 +406,7 @@ public sealed partial class LibraryPage : Page
         try
         {
             await App.Host.Libraries.RemoveAsync(library.Id);
+            QueueLibraryReload();
         }
         catch (Exception ex)
         {
@@ -474,16 +418,32 @@ public sealed partial class LibraryPage : Page
     {
         if (LibraryList.SelectedItem is MediaLibrary library)
             App.Host.Libraries.Refresh(library.Id);
+        LoadPage();
     }
 
-    private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e) => BindCards();
+    private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+            return;
+        _page = 1;
+        LoadPage();
+    }
 
-    private void Filter_Changed(object sender, object e)
+    private void Search_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_sorting || _loading)
             return;
+        _page = 1;
         _filterTimer.Stop();
         _filterTimer.Start();
+    }
+
+    private void Sort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_sorting || _loading)
+            return;
+        _page = 1;
+        LoadPage();
     }
 
     private async void Card_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)

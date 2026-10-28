@@ -125,6 +125,172 @@ public sealed class LibraryRepository : IDisposable
         }
     }
 
+    public int CountItems(
+        string libraryId,
+        string? relativeDir,
+        bool recursive,
+        string? search,
+        LibraryFilter filter)
+    {
+        lock (_gate)
+        {
+            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM MediaItem m" + query.Where + ";";
+            AddParameters(command, query);
+            return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+    }
+
+    public IReadOnlyList<MediaItem> ListItemsPage(
+        string libraryId,
+        string? relativeDir,
+        bool recursive,
+        string? search,
+        LibraryFilter filter,
+        SortMode sort,
+        int offset,
+        int limit)
+    {
+        if (limit < 1)
+            return [];
+        if (offset < 0)
+            offset = 0;
+        lock (_gate)
+        {
+            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT * FROM MediaItem m" + query.Where + " ORDER BY " + OrderBy(sort) + " LIMIT $limit OFFSET $offset;";
+            AddParameters(command, query);
+            command.Parameters.AddWithValue("$limit", limit);
+            command.Parameters.AddWithValue("$offset", offset);
+            using var reader = command.ExecuteReader();
+            var list = new List<MediaItem>(Math.Min(limit, 256));
+            while (reader.Read())
+                list.Add(ReadItem(reader));
+            return list;
+        }
+    }
+
+    public IReadOnlyList<string> ListAllPaths(
+        string libraryId,
+        string? relativeDir,
+        bool recursive,
+        string? search,
+        LibraryFilter filter,
+        SortMode sort)
+    {
+        string root;
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT RootPath FROM Library WHERE Id = $id;";
+            command.Parameters.AddWithValue("$id", libraryId);
+            if (command.ExecuteScalar() is not string value)
+                return [];
+            root = value;
+        }
+
+        lock (_gate)
+        {
+            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT m.RelativePath FROM MediaItem m" + query.Where + " ORDER BY " + OrderBy(sort) + ";";
+            AddParameters(command, query);
+            using var reader = command.ExecuteReader();
+            var list = new List<string>();
+            while (reader.Read())
+                list.Add(Path.Combine(root, reader.GetString(0)));
+            return list;
+        }
+    }
+
+    private sealed record ItemQuery(string Where, IReadOnlyList<(string Name, object Value)> Parameters);
+
+    private static ItemQuery BuildItemQuery(
+        string libraryId,
+        string? relativeDir,
+        bool recursive,
+        string? search,
+        LibraryFilter filter)
+    {
+        var clauses = new List<string> { "m.LibraryId = $library" };
+        var parameters = new List<(string Name, object Value)> { ("$library", libraryId) };
+
+        var dir = NormalizeDir(relativeDir);
+        if (dir.Length == 0)
+        {
+            if (!recursive)
+                clauses.Add("m.RelativeDir = ''");
+        }
+        else if (recursive)
+        {
+            clauses.Add("(m.RelativeDir = $dir OR m.RelativeDir LIKE $prefix ESCAPE '\\')");
+            parameters.Add(("$dir", dir));
+            parameters.Add(("$prefix", EscapeLike(dir) + "/%"));
+        }
+        else
+        {
+            clauses.Add("m.RelativeDir = $dir");
+            parameters.Add(("$dir", dir));
+        }
+
+        var term = search?.Trim() ?? "";
+        if (term.Length > 0)
+        {
+            clauses.Add("(COALESCE(m.Title, '') LIKE $search ESCAPE '\\' OR m.FileName LIKE $search ESCAPE '\\')");
+            parameters.Add(("$search", "%" + EscapeLike(term) + "%"));
+        }
+
+        switch (filter)
+        {
+            case LibraryFilter.Failed:
+                clauses.Add("m.Status = " + (int)ItemStatus.Failed);
+                break;
+            case LibraryFilter.NeedsReview:
+                clauses.Add("m.MatchStatus = " + (int)MatchStatus.NeedsReview);
+                break;
+            case LibraryFilter.Unwatched:
+                clauses.Add("""
+                    NOT EXISTS (
+                        SELECT 1 FROM PlaybackState ps
+                        WHERE ps.Path = (
+                            SELECT l.RootPath || '\' || replace(m.RelativePath, '/', '\')
+                            FROM Library l WHERE l.Id = m.LibraryId
+                        )
+                        AND (ps.Finished = 1 OR ps.PositionSeconds >= 5)
+                    )
+                    """);
+                break;
+        }
+
+        return new ItemQuery(" WHERE " + string.Join(" AND ", clauses), parameters);
+    }
+
+    private static void AddParameters(SqliteCommand command, ItemQuery query)
+    {
+        foreach (var (name, value) in query.Parameters)
+            command.Parameters.AddWithValue(name, value);
+    }
+
+    private static string OrderBy(SortMode sort) => sort switch
+    {
+        SortMode.FileName => "m.FileName COLLATE NOCASE ASC, m.RelativePath COLLATE NOCASE ASC",
+        SortMode.ModifiedDesc => "m.MtimeUtcTicks DESC, m.RelativePath COLLATE NOCASE ASC",
+        SortMode.Title => "COALESCE(NULLIF(m.Title, ''), m.FileName) COLLATE NOCASE ASC, m.RelativePath COLLATE NOCASE ASC",
+        SortMode.YearDesc => "m.Year IS NULL, m.Year DESC, COALESCE(NULLIF(m.Title, ''), m.FileName) COLLATE NOCASE ASC, m.RelativePath COLLATE NOCASE ASC",
+        SortMode.AddedDesc => "m.AddedUtcTicks DESC, m.RelativePath COLLATE NOCASE ASC",
+        _ => "m.RelativePath COLLATE NOCASE ASC"
+    };
+
+    private static string NormalizeDir(string? relativeDir) =>
+        (relativeDir ?? "").Replace('\\', '/').Trim('/');
+
+    private static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+
     public MediaItem? GetItem(string id)
     {
         lock (_gate)
@@ -453,6 +619,13 @@ public sealed class LibraryRepository : IDisposable
                 Key TEXT PRIMARY KEY,
                 Payload TEXT NOT NULL,
                 StoredUtc TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS PlaybackState (
+                Path TEXT PRIMARY KEY COLLATE NOCASE,
+                PositionSeconds REAL NOT NULL,
+                DurationSeconds REAL NOT NULL,
+                Finished INTEGER NOT NULL,
+                UpdatedUtcTicks INTEGER NOT NULL
             );
             """;
         command.ExecuteNonQuery();

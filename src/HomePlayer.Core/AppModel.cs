@@ -43,6 +43,23 @@ public enum TitleBarMode
     Overlay = 1
 }
 
+public enum SortMode
+{
+    FileName = 0,
+    ModifiedDesc = 1,
+    Title = 2,
+    YearDesc = 3,
+    AddedDesc = 4
+}
+
+public enum LibraryFilter
+{
+    All = 0,
+    Failed = 1,
+    NeedsReview = 2,
+    Unwatched = 3
+}
+
 public sealed class CodecPreference
 {
     public string Id { get; set; } = "";
