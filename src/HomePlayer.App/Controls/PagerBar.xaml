@@ -55,19 +55,19 @@
             Grid.Column="2"
             Margin="4,0,0,0"
             VerticalAlignment="Center"
-            Opacity="0.7" />
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         <StackPanel
             Grid.Column="3"
             Orientation="Horizontal"
             Spacing="6"
             VerticalAlignment="Center">
-            <TextBlock Text="每页" VerticalAlignment="Center" Opacity="0.7" />
+            <TextBlock Text="每页" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <ComboBox
                 x:Name="PageSizeBox"
                 MinWidth="72"
                 Height="28"
                 SelectionChanged="PageSize_SelectionChanged" />
-            <TextBlock Text="跳至" VerticalAlignment="Center" Opacity="0.7" />
+            <TextBlock Text="跳至" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <TextBox
                 x:Name="JumpBox"
                 Width="56"
@@ -75,7 +75,7 @@
                 Padding="6,4"
                 KeyDown="Jump_KeyDown"
                 LostFocus="Jump_LostFocus" />
-            <TextBlock Text="页" VerticalAlignment="Center" Opacity="0.7" />
+            <TextBlock Text="页" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
     </Grid>
 </UserControl>

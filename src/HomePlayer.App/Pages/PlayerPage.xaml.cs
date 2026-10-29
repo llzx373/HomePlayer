@@ -987,12 +987,20 @@ public sealed partial class PlayerPage : Page
         UpdateSubtitleOverlay();
     }
 
+    private static void SetStateIcon(FontIcon icon, bool active)
+    {
+        icon.Opacity = 1;
+        var key = active ? "AccentFillColorDefaultBrush" : "TextFillColorSecondaryBrush";
+        if (Application.Current.Resources.TryGetValue(key, out var resource) && resource is Brush brush)
+            icon.Foreground = brush;
+    }
+
     private void UpdateSubtitleChrome()
     {
         if (SubtitleButton == null)
             return;
         if (SubtitleIcon != null)
-            SubtitleIcon.Opacity = _subtitles.IsOff ? 0.45 : 1;
+            SetStateIcon(SubtitleIcon, !_subtitles.IsOff);
         ApplyTip(SubtitleButton, "字幕", HotkeyCatalog.CycleSubtitle);
     }
 
@@ -1140,7 +1148,7 @@ public sealed partial class PlayerPage : Page
         AlwaysOnTopMenuItem.IsChecked = on;
         _alwaysOnTopSync = false;
         if (AlwaysOnTopIcon != null)
-            AlwaysOnTopIcon.Opacity = on ? 1 : 0.45;
+            SetStateIcon(AlwaysOnTopIcon, on);
     }
 
     private void FitWindow(bool force)
@@ -1195,14 +1203,14 @@ public sealed partial class PlayerPage : Page
             return;
         var mode = Playback.Playlist.Repeat;
         var glyph = mode == RepeatMode.One ? GlyphRepeatOne : GlyphRepeat;
-        var opacity = mode == RepeatMode.Off ? 0.45 : 1;
+        var active = mode != RepeatMode.Off;
         RepeatIcon.Glyph = glyph;
-        RepeatIcon.Opacity = opacity;
+        SetStateIcon(RepeatIcon, active);
         ApplyTip(RepeatButton, RepeatTitle(mode), HotkeyCatalog.CycleRepeat);
         if (PlaylistRepeatIcon != null)
         {
             PlaylistRepeatIcon.Glyph = glyph;
-            PlaylistRepeatIcon.Opacity = opacity;
+            SetStateIcon(PlaylistRepeatIcon, active);
         }
         if (PlaylistRepeatText != null)
             PlaylistRepeatText.Text = RepeatTitle(mode);
@@ -1224,12 +1232,12 @@ public sealed partial class PlayerPage : Page
         if (ShuffleButton != null)
         {
             ShuffleButton.IsChecked = on;
-            ShuffleIcon.Opacity = on ? 1 : 0.45;
+            SetStateIcon(ShuffleIcon, on);
         }
         if (PlaylistShuffleButton != null)
         {
             PlaylistShuffleButton.IsChecked = on;
-            PlaylistShuffleIcon.Opacity = on ? 1 : 0.45;
+            SetStateIcon(PlaylistShuffleIcon, on);
         }
     }
 

@@ -70,7 +70,7 @@
                                 Grid.Column="2"
                                 Text="{Binding CountText}"
                                 VerticalAlignment="Center"
-                                Opacity="0.6" />
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                     </DataTemplate>
                 </TreeView.ItemTemplate>
@@ -199,7 +199,7 @@
                                     </Grid>
                                 </Border>
                                 <TextBlock Grid.Row="1" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="2" />
-                                <TextBlock Grid.Row="2" Text="{Binding Subtitle}" Opacity="0.7" TextWrapping="Wrap" MaxLines="2" />
+                                <TextBlock Grid.Row="2" Text="{Binding Subtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
                             </Grid>
                         </DataTemplate>
                     </GridView.ItemTemplate>

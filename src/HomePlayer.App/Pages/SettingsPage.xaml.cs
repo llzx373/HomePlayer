@@ -476,7 +476,11 @@ public sealed partial class SettingsPage : Page
             MaxHeight = 180,
             DisplayMemberPath = nameof(CrashLogItem.Title)
         };
-        var hint = new TextBlock { Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+        var hint = new TextBlock
+        {
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            TextWrapping = TextWrapping.Wrap
+        };
         var body = new TextBox
         {
             IsReadOnly = true,

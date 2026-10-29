@@ -133,7 +133,7 @@
                             ToolTipService.ToolTip="循环"
                             Click="Repeat_Click">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon x:Name="PlaylistRepeatIcon" Glyph="&#xE8EE;" FontSize="14" Opacity="0.45" />
+                                <FontIcon x:Name="PlaylistRepeatIcon" Glyph="&#xE8EE;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 <TextBlock x:Name="PlaylistRepeatText" Text="播完停止" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
@@ -144,7 +144,7 @@
                             AutomationProperties.Name="随机"
                             ToolTipService.ToolTip="随机"
                             Click="Shuffle_Click">
-                            <FontIcon x:Name="PlaylistShuffleIcon" Glyph="&#xE8B1;" FontSize="14" Opacity="0.45" />
+                            <FontIcon x:Name="PlaylistShuffleIcon" Glyph="&#xE8B1;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </ToggleButton>
                         <Button
                             x:Name="PlaylistClearButton"
@@ -408,7 +408,7 @@
                         Style="{StaticResource PlayerIconButton}"
                         AutomationProperties.Name="字幕"
                         ToolTipService.ToolTip="字幕">
-                        <FontIcon x:Name="SubtitleIcon" Glyph="&#xED1E;" FontSize="16" Opacity="0.45" />
+                        <FontIcon x:Name="SubtitleIcon" Glyph="&#xED1E;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <Button.Flyout>
                             <MenuFlyout x:Name="SubtitleFlyout" Placement="Bottom" Opening="SubtitleFlyout_Opening" />
                         </Button.Flyout>
@@ -421,7 +421,7 @@
                             AutomationProperties.Name="循环"
                             ToolTipService.ToolTip="循环"
                             Click="Repeat_Click">
-                            <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="16" Opacity="0.45" />
+                            <FontIcon x:Name="RepeatIcon" Glyph="&#xE8EE;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Button>
                         <ToggleButton
                             x:Name="ShuffleButton"
@@ -429,7 +429,7 @@
                             AutomationProperties.Name="随机"
                             ToolTipService.ToolTip="随机"
                             Click="Shuffle_Click">
-                            <FontIcon x:Name="ShuffleIcon" Glyph="&#xE8B1;" FontSize="16" Opacity="0.45" />
+                            <FontIcon x:Name="ShuffleIcon" Glyph="&#xE8B1;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </ToggleButton>
                     </StackPanel>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
@@ -501,7 +501,7 @@
                             AutomationProperties.Name="置顶"
                             ToolTipService.ToolTip="置顶"
                             Click="AlwaysOnTop_Click">
-                            <FontIcon x:Name="AlwaysOnTopIcon" Glyph="&#xE840;" FontSize="16" Opacity="0.45" />
+                            <FontIcon x:Name="AlwaysOnTopIcon" Glyph="&#xE840;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </ToggleButton>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -557,7 +557,7 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
-            <TextBlock x:Name="StatusText" Grid.Row="2" Opacity="0.75" TextWrapping="Wrap" />
+            <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
         </Grid>
     </Grid>
 </Page>
