@@ -377,6 +377,10 @@ public sealed partial class LibraryPage : Page
         var ratio = progress is { Finished: false, DurationSeconds: > 0 } && progress.PositionSeconds > 0
             ? Math.Clamp(progress.PositionSeconds / progress.DurationSeconds, 0, 1)
             : 0;
+        var pending = item.Status == ItemStatus.Pending;
+        var badge = pending
+            ? "处理中"
+            : library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : "";
         return new MediaCard
         {
             Item = item,
@@ -384,9 +388,9 @@ public sealed partial class LibraryPage : Page
             Title = title,
             Subtitle = item.Error ?? subtitle,
             Image = LoadImage(imagePath, stamp),
-            Badge = item.Status == ItemStatus.Pending
-                ? "处理中"
-                : library.Kind == LibraryKind.Catalog && item.MatchStatus != MatchStatus.Matched ? "待核对" : "",
+            Badge = badge,
+            BadgeVisibility = badge.Length > 0 ? Visibility.Visible : Visibility.Collapsed,
+            BadgeBackground = pending ? "#CC6B4E00" : "#CC7A3800",
             Progress = ratio,
             ProgressVisibility = ratio > 0 ? Visibility.Visible : Visibility.Collapsed,
             WatchedVisibility = progress?.Finished == true ? Visibility.Visible : Visibility.Collapsed
@@ -1342,6 +1346,8 @@ public sealed class MediaCard
     public required string Subtitle { get; init; }
     public BitmapImage? Image { get; init; }
     public required string Badge { get; init; }
+    public required Visibility BadgeVisibility { get; init; }
+    public required string BadgeBackground { get; init; }
     public double Progress { get; init; }
     public Visibility ProgressVisibility { get; init; }
     public Visibility WatchedVisibility { get; init; }

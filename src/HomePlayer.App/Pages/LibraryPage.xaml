@@ -4,6 +4,18 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:HomePlayer">
+    <Page.Resources>
+        <Style x:Key="MediaBadgeBorderStyle" TargetType="Border">
+            <Setter Property="Margin" Value="8" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="#B3000000" />
+        </Style>
+        <Style x:Key="MediaBadgeTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </Page.Resources>
     <Grid Padding="16" ColumnSpacing="16">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="300" />
@@ -138,16 +150,21 @@
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6">
                                     <Grid>
                                         <Image Source="{Binding Image}" Stretch="UniformToFill" />
-                                        <TextBlock Text="{Binding Badge}" Margin="8" VerticalAlignment="Top" HorizontalAlignment="Left" />
                                         <Border
-                                            Margin="8"
-                                            Padding="6,2"
-                                            CornerRadius="3"
+                                            Style="{StaticResource MediaBadgeBorderStyle}"
+                                            Background="{Binding BadgeBackground}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Top"
+                                            Visibility="{Binding BadgeVisibility}">
+                                            <TextBlock Text="{Binding Badge}" Style="{StaticResource MediaBadgeTextStyle}" />
+                                        </Border>
+                                        <Border
+                                            Style="{StaticResource MediaBadgeBorderStyle}"
+                                            Background="#CC1B5E20"
                                             HorizontalAlignment="Right"
                                             VerticalAlignment="Top"
-                                            Background="#99000000"
                                             Visibility="{Binding WatchedVisibility}">
-                                            <TextBlock Text="已看" FontSize="12" />
+                                            <TextBlock Text="已看" Style="{StaticResource MediaBadgeTextStyle}" />
                                         </Border>
                                         <ProgressBar
                                             Value="{Binding Progress}"
