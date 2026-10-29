@@ -9,6 +9,7 @@ public sealed class PlaybackController : IDisposable
     private readonly Func<string?> _audioOutput;
     private readonly IPlaybackStateStore? _store;
     private readonly Func<string, bool, (IPlaybackEngine Engine, string Reason)> _openEngine;
+    private readonly Func<bool> _historyEnabled;
     private readonly Dictionary<string, PlaybackState> _states = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _stateGate = new();
     private readonly CancellationTokenSource _flushStop = new();
@@ -28,13 +29,15 @@ public sealed class PlaybackController : IDisposable
         Func<CodecPlan> codecs,
         Func<string?> audioOutput,
         IPlaybackStateStore? store = null,
-        Func<string, bool, (IPlaybackEngine Engine, string Reason)>? openEngine = null)
+        Func<string, bool, (IPlaybackEngine Engine, string Reason)>? openEngine = null,
+        Func<bool>? historyEnabled = null)
     {
         _post = post;
         _codecs = codecs;
         _audioOutput = audioOutput;
         _store = store;
         _openEngine = openEngine ?? OpenEngine;
+        _historyEnabled = historyEnabled ?? (() => true);
         if (store == null)
             return;
         try
@@ -290,6 +293,12 @@ public sealed class PlaybackController : IDisposable
             return;
         lock (_stateGate)
             _states.Remove(path);
+    }
+
+    public void ClearHistory()
+    {
+        lock (_stateGate)
+            _states.Clear();
     }
 
     private async Task MoveAsync(int? index)
@@ -611,6 +620,8 @@ public sealed class PlaybackController : IDisposable
 
     private void SaveState(string path, TimeSpan position, TimeSpan duration)
     {
+        if (!_historyEnabled())
+            return;
         var (seconds, finished) = PlaybackProgress.Evaluate(position, duration);
         var state = new PlaybackState(path, seconds, duration.TotalSeconds, finished, DateTime.UtcNow.Ticks);
         lock (_stateGate)

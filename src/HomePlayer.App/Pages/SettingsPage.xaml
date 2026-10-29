@@ -47,6 +47,14 @@
                                         OffContent="退出程序"
                                         Toggled="Tray_Toggled" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="托盘图标左键打开窗口，右键可以真正退出。" />
+                                    <ToggleSwitch
+                                        x:Name="HistorySwitch"
+                                        Header="播放历史与续播"
+                                        OnContent="记录最近播放和观看进度"
+                                        OffContent="不再记录新的播放历史"
+                                        Toggled="History_Toggled" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="关闭后保留已有记录，但不再更新续播位置和最近播放。" />
+                                    <Button Content="清空播放历史" Click="ClearHistory_Click" HorizontalAlignment="Left" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">

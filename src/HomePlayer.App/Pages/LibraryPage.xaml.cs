@@ -40,6 +40,7 @@ public sealed partial class LibraryPage : Page
     private int _pageSize = PagedView.DefaultPageSize;
     private int _total;
     private string _folderPath = "";
+    private LibraryBrowseMode _browseMode;
 
     public LibraryPage()
     {
@@ -90,6 +91,20 @@ public sealed partial class LibraryPage : Page
             _filterTimer.Stop();
         };
         _ready = true;
+    }
+
+    private void BrowseTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || BrowseTabs.SelectedIndex < 0)
+            return;
+        _browseMode = (LibraryBrowseMode)BrowseTabs.SelectedIndex;
+        var libraryMode = _browseMode == LibraryBrowseMode.Library;
+        LibraryToolbar.Visibility = libraryMode ? Visibility.Visible : Visibility.Collapsed;
+        Pager.Visibility = libraryMode ? Visibility.Visible : Visibility.Collapsed;
+        RecursiveSwitch.IsEnabled = libraryMode;
+        FolderTree.IsEnabled = libraryMode;
+        _page = 1;
+        LoadPage();
     }
 
     private void LibraryPage_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -254,6 +269,12 @@ public sealed partial class LibraryPage : Page
         ConfigureSort(library?.Kind);
         UpdateScanWarning();
         var token = ++_loadToken;
+        if (_browseMode != LibraryBrowseMode.Library)
+        {
+            LoadSpecialPage(token);
+            return;
+        }
+
         _pageLoading = library != null;
         UpdateEmptyText();
         if (library == null)
@@ -314,6 +335,158 @@ public sealed partial class LibraryPage : Page
 
             DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, states, token, error));
         });
+    }
+
+    private void LoadSpecialPage(int token)
+    {
+        _pageLoading = true;
+        UpdateEmptyText();
+        _ = Task.Run(() =>
+        {
+            var entries = new List<SpecialMedia>();
+            string? error = null;
+            try
+            {
+                var libraries = App.Host.Repository.ListLibraries()
+                    .ToDictionary(library => library.Id, StringComparer.Ordinal);
+                if (_browseMode == LibraryBrowseMode.RecentlyAdded)
+                {
+                    foreach (var item in App.Host.Repository.ListRecentlyAdded(12))
+                    {
+                        if (libraries.TryGetValue(item.LibraryId, out var library))
+                            entries.Add(new SpecialMedia(item, library, null, true));
+                    }
+                }
+                else
+                {
+                    var states = App.Host.Repository.ListRecentStates(
+                        _browseMode == LibraryBrowseMode.ContinueWatching ? 60 : 12);
+                    foreach (var state in states)
+                    {
+                        if (_browseMode == LibraryBrowseMode.ContinueWatching
+                            && (state.Finished || state.PositionSeconds < 5
+                                || state.DurationSeconds - state.PositionSeconds <= 5))
+                            continue;
+                        var item = App.Host.Repository.FindItemByPath(state.Path);
+                        MediaLibrary? library = null;
+                        if (item != null)
+                            libraries.TryGetValue(item.LibraryId, out library);
+                        entries.Add(item == null || library == null
+                            ? ExternalMedia(state)
+                            : new SpecialMedia(item, library, state, true));
+                        if (entries.Count == 12)
+                            break;
+                    }
+                }
+
+                var statesByPath = App.Host.Repository.LoadPlaybackStates(
+                    entries.Select(entry => entry.Item.FullPath(entry.Library.RootPath)).ToList());
+                for (var i = 0; i < entries.Count; i++)
+                {
+                    if (entries[i].State == null
+                        && statesByPath.TryGetValue(entries[i].Item.FullPath(entries[i].Library.RootPath), out var state))
+                        entries[i] = entries[i] with { State = state };
+                }
+            }
+            catch (Exception ex)
+            {
+                entries.Clear();
+                error = LoadFailure("读取最近媒体", ex);
+            }
+
+            DispatcherQueue.TryEnqueue(() => ApplySpecialPage(entries, token, error));
+        });
+    }
+
+    private void ApplySpecialPage(IReadOnlyList<SpecialMedia> entries, int token, string? error)
+    {
+        if (token != _loadToken || App.Host.Exiting)
+            return;
+        _pageLoading = false;
+        SetLoadError(error);
+        _total = error == null ? entries.Count : 0;
+        if (error != null)
+        {
+            UpdateEmptyText();
+            return;
+        }
+
+        var cards = new List<MediaCard>(entries.Count);
+        foreach (var entry in entries)
+        {
+            var states = entry.State == null
+                ? new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [entry.State.Path] = entry.State
+                };
+            var card = CreateCard(entry.Item, entry.Library,
+                ComputeImageStamps([entry.Item], entry.Library.Kind), states);
+            if (card != null)
+                cards.Add(SpecialCard(card, entry));
+        }
+
+        _cards.ReplaceAll(cards);
+        Pager.Update(0, 1, _pageSize);
+        UpdateBar.IsOpen = false;
+        UpdateEmptyText();
+    }
+
+    private MediaCard SpecialCard(MediaCard card, SpecialMedia entry)
+    {
+        var path = entry.Item.FullPath(entry.Library.RootPath);
+        var source = entry.HasLibraryEntry ? entry.Library.Name : "库外视频";
+        var subtitle = _browseMode switch
+        {
+            LibraryBrowseMode.ContinueWatching => entry.State is { } state
+                ? $"剩余 {ClockText.FormatSeconds(Math.Max(0, state.DurationSeconds - state.PositionSeconds))} · {source}"
+                : source,
+            LibraryBrowseMode.RecentlyAdded => $"添加于 {AddedDate(entry.Item)} · {source}",
+            _ => entry.State is { Finished: true }
+                ? $"已看完 · {source}"
+                : entry.State is { PositionSeconds: > 0 } state
+                    ? $"观看到 {ClockText.FormatSeconds(state.PositionSeconds)} · {source}"
+                    : $"最近播放 · {source}"
+        };
+        return new MediaCard
+        {
+            Item = card.Item,
+            Library = card.Library,
+            Title = card.Title,
+            Subtitle = subtitle,
+            Image = card.Image,
+            Badge = card.Badge,
+            BadgeVisibility = card.BadgeVisibility,
+            BadgeBackground = card.BadgeBackground,
+            Progress = card.Progress,
+            ProgressVisibility = card.ProgressVisibility,
+            WatchedVisibility = card.WatchedVisibility,
+            HasLibraryEntry = entry.HasLibraryEntry,
+            IsHistoryEntry = _browseMode == LibraryBrowseMode.RecentlyPlayed,
+            HistoryPath = path
+        };
+    }
+
+    private static string AddedDate(MediaItem item)
+    {
+        var ticks = item.AddedUtcTicks > 0 ? item.AddedUtcTicks : item.MtimeUtcTicks;
+        return ticks > 0
+            ? new DateTime(ticks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.CurrentCulture)
+            : "未知时间";
+    }
+
+    private static SpecialMedia ExternalMedia(PlaybackState state)
+    {
+        var root = Path.GetDirectoryName(state.Path) ?? "";
+        var library = new MediaLibrary { Name = "库外视频", RootPath = root, Kind = LibraryKind.Raw };
+        var item = new MediaItem
+        {
+            LibraryId = library.Id,
+            RelativePath = Path.GetFileName(state.Path),
+            DurationSeconds = state.DurationSeconds > 0 ? state.DurationSeconds : null,
+            Status = ItemStatus.Ready
+        };
+        return new SpecialMedia(item, library, state, false);
     }
 
     private void ApplyPage(
@@ -446,6 +619,17 @@ public sealed partial class LibraryPage : Page
         }
 
         EmptyText.Visibility = Visibility.Visible;
+        if (_browseMode != LibraryBrowseMode.Library)
+        {
+            EmptyText.Text = _browseMode switch
+            {
+                LibraryBrowseMode.ContinueWatching => "还没有看到一半的视频。",
+                LibraryBrowseMode.RecentlyAdded => "媒体库里还没有最近添加的视频。",
+                _ => "还没有播放历史。"
+            };
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(SearchBox.Text))
         {
             EmptyText.Text = "没有匹配的条目。";
@@ -1051,7 +1235,9 @@ public sealed partial class LibraryPage : Page
 
     private async Task PlayCardAsync(MediaCard card)
     {
-        var paths = await ListViewPathsAsync(card.Library);
+        IReadOnlyList<string> paths = _browseMode == LibraryBrowseMode.Library
+            ? await ListViewPathsAsync(card.Library)
+            : _cards.Select(item => item.Item.FullPath(item.Library.RootPath)).ToList();
         if (paths.Count == 0)
             return;
         var target = card.Item.FullPath(card.Library.RootPath);
@@ -1131,20 +1317,34 @@ public sealed partial class LibraryPage : Page
             App.Host.Playback.Enqueue([card.Item.FullPath(card.Library.RootPath)]);
             return Task.CompletedTask;
         }));
-        menu.Items.Add(Action("查看", () => ShowCardAsync(card)));
+        if (card.HasLibraryEntry)
+            menu.Items.Add(Action("查看", () => ShowCardAsync(card)));
         menu.Items.Add(Action("在资源管理器中打开", () =>
         {
             System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{card.Item.FullPath(card.Library.RootPath)}\"");
             return Task.CompletedTask;
         }));
-        menu.Items.Add(Action("重新处理", () =>
+        if (card.HasLibraryEntry)
         {
-            App.Host.Libraries.Requeue(card.Item.Id);
-            return Task.CompletedTask;
-        }));
-        if (card.Library.Kind == LibraryKind.Catalog)
-            menu.Items.Add(Action("重新匹配", () => MatchAsync(card)));
+            menu.Items.Add(Action("重新处理", () =>
+            {
+                App.Host.Libraries.Requeue(card.Item.Id);
+                return Task.CompletedTask;
+            }));
+            if (card.Library.Kind == LibraryKind.Catalog)
+                menu.Items.Add(Action("重新匹配", () => MatchAsync(card)));
+        }
+        if (card.IsHistoryEntry)
+            menu.Items.Add(Action("从最近播放中移除", () => RemoveHistoryAsync(card)));
         return menu;
+    }
+
+    private async Task RemoveHistoryAsync(MediaCard card)
+    {
+        var path = card.HistoryPath ?? card.Item.FullPath(card.Library.RootPath);
+        await Task.Run(() => App.Host.Repository.DeletePlaybackState(path));
+        App.Host.Playback.ForgetProgress(path);
+        LoadPage();
     }
 
     private async Task ShowCardAsync(MediaCard card)
@@ -1374,6 +1574,20 @@ public sealed class FolderNode : System.ComponentModel.INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
+public enum LibraryBrowseMode
+{
+    Library,
+    ContinueWatching,
+    RecentlyAdded,
+    RecentlyPlayed
+}
+
+public sealed record SpecialMedia(
+    MediaItem Item,
+    MediaLibrary Library,
+    PlaybackState? State,
+    bool HasLibraryEntry);
+
 public sealed class MediaCard
 {
     public required MediaItem Item { get; init; }
@@ -1387,4 +1601,7 @@ public sealed class MediaCard
     public double Progress { get; init; }
     public Visibility ProgressVisibility { get; init; }
     public Visibility WatchedVisibility { get; init; }
+    public bool HasLibraryEntry { get; init; } = true;
+    public bool IsHistoryEntry { get; init; }
+    public string? HistoryPath { get; init; }
 }

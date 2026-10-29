@@ -74,6 +74,7 @@ public sealed class AppSettings
     public TitleBarMode TitleBar { get; set; } = TitleBarMode.Classic;
     public bool FitWindow { get; set; }
     public bool AlwaysOnTop { get; set; }
+    public bool RecordPlaybackHistory { get; set; } = true;
     public string? AudioOutputId { get; set; }
     public List<CodecPreference> SplitterOrder { get; set; } = [];
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];

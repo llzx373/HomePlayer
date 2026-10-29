@@ -68,12 +68,29 @@ public class PlaybackControllerTests
         Assert.Equal(TimeSpan.FromSeconds(30), engine.LastSeek);
     }
 
-    private static PlaybackController Create(FakeEngine engine, IPlaybackStateStore? store = null) => new(
+    [Fact]
+    public async Task Disabled_history_does_not_save_new_progress()
+    {
+        var store = new FakeStateStore();
+        using var controller = Create(new FakeEngine(), store, () => false);
+
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        controller.Seek(TimeSpan.FromSeconds(30));
+        controller.PersistProgress();
+
+        Assert.Empty(store.Saved);
+    }
+
+    private static PlaybackController Create(
+        FakeEngine engine,
+        IPlaybackStateStore? store = null,
+        Func<bool>? historyEnabled = null) => new(
         action => action(),
         () => throw new InvalidOperationException("测试不应读取编解码器"),
         () => null,
         store,
-        openEngine: (_, _) => (engine, "测试引擎"));
+        openEngine: (_, _) => (engine, "测试引擎"),
+        historyEnabled: historyEnabled);
 
     private sealed class FakeStateStore : IPlaybackStateStore
     {

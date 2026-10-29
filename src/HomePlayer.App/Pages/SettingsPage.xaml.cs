@@ -40,6 +40,7 @@ public sealed partial class SettingsPage : Page
         ApiKeyBox.Text = settings.TmdbApiKey ?? "";
         ApiKeyBox.TextChanged += ApiKey_Changed;
         TraySwitch.IsOn = settings.CloseToTray;
+        HistorySwitch.IsOn = settings.RecordPlaybackHistory;
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
         FitWindowSwitch.IsOn = settings.FitWindow;
         AlwaysOnTopSwitch.IsOn = settings.AlwaysOnTop;
@@ -73,6 +74,7 @@ public sealed partial class SettingsPage : Page
             try
             {
                 TraySwitch.IsOn = App.Host.Settings.CloseToTray;
+                HistorySwitch.IsOn = App.Host.Settings.RecordPlaybackHistory;
                 FitWindowSwitch.IsOn = App.Host.Settings.FitWindow;
                 AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
             }
@@ -188,6 +190,38 @@ public sealed partial class SettingsPage : Page
             return;
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
         SaveSettings();
+    }
+
+    private void History_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.RecordPlaybackHistory = HistorySwitch.IsOn;
+        SaveSettings();
+    }
+
+    private async void ClearHistory_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "清空播放历史",
+            Content = "将删除全部最近播放、续播位置和已看状态。此操作无法撤销。",
+            PrimaryButtonText = "清空",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        try
+        {
+            await Task.Run(() => App.Host.Repository.ClearPlaybackStates());
+            App.Host.Playback.ClearHistory();
+            SaveStatusText.Text = "播放历史已清空。";
+        }
+        catch (Exception ex)
+        {
+            SaveStatusText.Text = "清空失败：" + ex.Message;
+        }
     }
 
     private void TitleBar_Changed(object sender, SelectionChangedEventArgs e)

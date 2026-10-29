@@ -86,10 +86,19 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid x:Name="LibraryToolbar" ColumnSpacing="8" RowSpacing="8">
+            <RadioButtons x:Name="BrowseTabs" SelectedIndex="0" SelectionChanged="BrowseTabs_SelectionChanged">
+                <RadioButtons.Items>
+                    <x:String>媒体库</x:String>
+                    <x:String>继续观看</x:String>
+                    <x:String>最近添加</x:String>
+                    <x:String>最近播放</x:String>
+                </RadioButtons.Items>
+            </RadioButtons>
+            <Grid x:Name="LibraryToolbar" Grid.Row="1" ColumnSpacing="8" RowSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="140" />
@@ -109,7 +118,7 @@
             </Grid>
             <InfoBar
                 x:Name="UpdateBar"
-                Grid.Row="1"
+                Grid.Row="2"
                 Severity="Informational"
                 IsOpen="False"
                 IsClosable="False"
@@ -120,14 +129,14 @@
             </InfoBar>
             <InfoBar
                 x:Name="ScanWarningBar"
-                Grid.Row="2"
+                Grid.Row="3"
                 Severity="Warning"
                 IsOpen="False"
                 IsClosable="False"
                 Title="扫描不完整" />
             <InfoBar
                 x:Name="LibraryErrorBar"
-                Grid.Row="3"
+                Grid.Row="4"
                 Severity="Error"
                 IsOpen="False"
                 IsClosable="False"
@@ -136,7 +145,7 @@
                     <Button Content="重试" Click="RetryLoad_Click" />
                 </InfoBar.ActionButton>
             </InfoBar>
-            <Grid Grid.Row="4">
+            <Grid Grid.Row="5">
                 <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <ProgressRing
                     x:Name="LoadingIndicator"
@@ -205,7 +214,7 @@
                     </GridView.ItemTemplate>
                 </GridView>
             </Grid>
-            <local:PagerBar x:Name="Pager" Grid.Row="5" />
+            <local:PagerBar x:Name="Pager" Grid.Row="6" />
         </Grid>
     </Grid>
 </Page>

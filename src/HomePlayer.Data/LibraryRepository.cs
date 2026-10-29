@@ -394,6 +394,66 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
         }
     }
 
+    public IReadOnlyList<PlaybackState> ListRecentStates(int limit)
+    {
+        if (limit < 1)
+            return [];
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT Path, PositionSeconds, DurationSeconds, Finished, UpdatedUtcTicks
+                FROM PlaybackState
+                ORDER BY UpdatedUtcTicks DESC
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var list = new List<PlaybackState>(Math.Min(limit, 128));
+            while (reader.Read())
+                list.Add(ReadPlaybackState(reader));
+            return list;
+        }
+    }
+
+    public IReadOnlyList<MediaItem> ListRecentlyAdded(int limit)
+    {
+        if (limit < 1)
+            return [];
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT * FROM MediaItem
+                ORDER BY AddedUtcTicks DESC, FileName COLLATE NOCASE
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var list = new List<MediaItem>(Math.Min(limit, 128));
+            while (reader.Read())
+                list.Add(ReadItem(reader));
+            return list;
+        }
+    }
+
+    public MediaItem? FindItemByPath(string path)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT m.* FROM MediaItem m
+                JOIN Library l ON l.Id = m.LibraryId
+                WHERE (l.RootPath || '\' || replace(m.RelativePath, '/', '\')) = $path COLLATE NOCASE
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$path", path);
+            using var reader = command.ExecuteReader();
+            return reader.Read() ? ReadItem(reader) : null;
+        }
+    }
+
     public IReadOnlyDictionary<string, PlaybackState> LoadPlaybackStates(IReadOnlyCollection<string> paths)
     {
         var map = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
@@ -483,8 +543,18 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
 
     public void DeletePlaybackState(string path)
     {
+        lock (_stateGate)
+            _pendingStates.Remove(path);
         lock (_gate)
             Execute("DELETE FROM PlaybackState WHERE Path = $path;", ("$path", path));
+    }
+
+    public void ClearPlaybackStates()
+    {
+        lock (_stateGate)
+            _pendingStates.Clear();
+        lock (_gate)
+            Execute("DELETE FROM PlaybackState;");
     }
 
     private static PlaybackState ReadPlaybackState(SqliteDataReader reader) => new(

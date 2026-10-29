@@ -239,6 +239,41 @@ public class LibraryRepositoryTests
     }
 
     [Fact]
+    public void Recent_queries_return_ordered_items_and_match_absolute_paths()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        fixture.AddItem(library, "older.mkv", addedTicks: 10);
+        var newer = fixture.AddItem(library, "a/newer.mkv", addedTicks: 20);
+
+        Assert.Equal(newer.Id, Assert.Single(fixture.Repository.ListRecentlyAdded(1)).Id);
+        Assert.Equal(newer.Id, fixture.Repository.FindItemByPath(newer.FullPath(library.RootPath))?.Id);
+        Assert.Null(fixture.Repository.FindItemByPath(Path.Combine(library.RootPath, "missing.mkv")));
+
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\old.mkv", 1, 10, false, 1));
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\new.mkv", 2, 10, false, 3));
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\middle.mkv", 3, 10, false, 2));
+        fixture.Repository.Flush();
+        Assert.Equal(
+            [@"D:\lib\new.mkv", @"D:\lib\middle.mkv"],
+            fixture.Repository.ListRecentStates(2).Select(state => state.Path));
+    }
+
+    [Fact]
+    public void Clear_history_removes_saved_and_pending_states()
+    {
+        using var fixture = new RepositoryFixture();
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\saved.mkv", 20, 100, false, 1));
+        fixture.Repository.Flush();
+        fixture.Repository.Save(new PlaybackState(@"D:\lib\pending.mkv", 30, 100, false, 2));
+
+        fixture.Repository.ClearPlaybackStates();
+        fixture.Repository.Flush();
+
+        Assert.Empty(fixture.Repository.LoadAll(10));
+    }
+
+    [Fact]
     public void Changed_or_deleted_items_drop_their_playback_state()
     {
         using var fixture = new RepositoryFixture();
@@ -281,7 +316,7 @@ public class LibraryRepositoryTests
             return library;
         }
 
-        public MediaItem AddItem(MediaLibrary library, string relativePath)
+        public MediaItem AddItem(MediaLibrary library, string relativePath, long addedTicks = 0)
         {
             var item = new MediaItem
             {
@@ -290,6 +325,7 @@ public class LibraryRepositoryTests
                 RelativePath = relativePath,
                 Size = 1,
                 MtimeUtcTicks = DateTime.UtcNow.Ticks,
+                AddedUtcTicks = addedTicks,
                 Status = ItemStatus.Ready
             };
             Repository.InsertItem(item);
