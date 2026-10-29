@@ -21,13 +21,47 @@ public class PlaybackControllerTests
         Assert.True(engine.IsPlaying);
     }
 
-    private static PlaybackController Create(FakeEngine engine) => new(
+    [Fact]
+    public async Task Fault_keeps_current_item_and_saves_unfinished_progress()
+    {
+        var engine = new FakeEngine();
+        var store = new FakeStateStore();
+        using var controller = Create(engine, store);
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        controller.Seek(TimeSpan.FromSeconds(30));
+        store.Saved.Clear();
+
+        engine.RaiseFault(new InvalidOperationException("decode failed"));
+
+        Assert.Equal("播放失败：decode failed", controller.Status);
+        Assert.Equal("video.mkv", controller.Playlist.Current?.Path);
+        var state = Assert.Single(store.Saved);
+        Assert.Equal(30, state.PositionSeconds);
+        Assert.False(state.Finished);
+    }
+
+    private static PlaybackController Create(FakeEngine engine, IPlaybackStateStore? store = null) => new(
         action => action(),
         () => throw new InvalidOperationException("测试不应读取编解码器"),
         () => null,
+        store,
         openEngine: (_, _) => (engine, "测试引擎"));
 
-    private sealed class FakeEngine : IPlaybackEngine
+    private sealed class FakeStateStore : IPlaybackStateStore
+    {
+        public List<PlaybackState> Saved { get; } = [];
+
+        public IReadOnlyDictionary<string, PlaybackState> LoadAll(int limit) =>
+            new Dictionary<string, PlaybackState>();
+
+        public void Save(PlaybackState state) => Saved.Add(state);
+
+        public void Flush()
+        {
+        }
+    }
+
+    private sealed class FakeEngine : IPlaybackEngine, IPlaybackFaultSource
     {
         public string Name => "Fake";
         public bool IsOpen { get; private set; } = true;
@@ -42,6 +76,7 @@ public class PlaybackControllerTests
 
         public event Action<VideoFrame>? FrameArrived;
         public event Action? Ended;
+        public event Action<Exception>? Faulted;
 
         public void Open(string path)
         {
@@ -100,6 +135,12 @@ public class PlaybackControllerTests
             Position = Duration;
             IsPlaying = false;
             Ended?.Invoke();
+        }
+
+        public void RaiseFault(Exception error)
+        {
+            IsPlaying = false;
+            Faulted?.Invoke(error);
         }
     }
 }

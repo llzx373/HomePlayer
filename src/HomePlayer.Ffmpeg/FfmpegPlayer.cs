@@ -45,6 +45,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
+    public event Action<Exception>? Faulted;
     public event Action<byte[], int>? AudioPcm;
     public Func<int>? UnplayedBytes { get; set; }
 
@@ -400,7 +401,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                             FinishStep();
                         else
                         {
-                            RaiseEnded();
+                            RaiseFaulted(new InvalidOperationException($"读取媒体失败，FFmpeg 错误码 {read}。"));
                             Pause();
                         }
                     }
@@ -445,9 +446,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            RaiseEnded();
+            RaiseFaulted(ex);
             Pause();
         }
         finally
@@ -923,6 +924,14 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             return;
         _endedRaised = true;
         Ended?.Invoke();
+    }
+
+    private void RaiseFaulted(Exception error)
+    {
+        if (_endedRaised)
+            return;
+        _endedRaised = true;
+        Faulted?.Invoke(error);
     }
 
     private static double Pts(AVFrame* frame, AVRational timeBase)

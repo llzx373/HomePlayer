@@ -458,6 +458,8 @@ public sealed class PlaybackController : IDisposable
     {
         engine.FrameArrived += OnFrame;
         engine.Ended += OnEnded;
+        if (engine is IPlaybackFaultSource faults)
+            faults.Faulted += OnFaulted;
     }
 
     private void Discard(IPlaybackEngine engine)
@@ -476,6 +478,8 @@ public sealed class PlaybackController : IDisposable
     {
         engine.FrameArrived -= OnFrame;
         engine.Ended -= OnEnded;
+        if (engine is IPlaybackFaultSource faults)
+            faults.Faulted -= OnFaulted;
     }
 
     private void OnFrame(VideoFrame frame)
@@ -489,6 +493,20 @@ public sealed class PlaybackController : IDisposable
         }
 
         handler(frame);
+    }
+
+    private void OnFaulted(Exception error)
+    {
+        var token = _token;
+        _post(() =>
+        {
+            if (token != _token)
+                return;
+            _engine?.Pause();
+            PersistProgress();
+            Status = "播放失败：" + error.Message;
+            Notify();
+        });
     }
 
     private void OnEnded()

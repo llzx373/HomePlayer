@@ -27,3 +27,8 @@ public interface IPlaybackEngine : IDisposable
     event Action<VideoFrame>? FrameArrived;
     event Action? Ended;
 }
+
+public interface IPlaybackFaultSource
+{
+    event Action<Exception>? Faulted;
+}

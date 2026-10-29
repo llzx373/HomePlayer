@@ -5,7 +5,7 @@ using NAudio.Wave;
 
 namespace HomePlayer.Playback;
 
-public sealed class FfmpegPlaybackEngine : IPlaybackEngine
+public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 {
     private readonly object _gate = new();
     private readonly string? _audioOutputId;
@@ -29,6 +29,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
+    public event Action<Exception>? Faulted;
 
     public void Open(string path)
     {
@@ -48,6 +49,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine
                 handler(frame);
             };
             player.Ended += () => Ended?.Invoke();
+            player.Faulted += error => Faulted?.Invoke(error);
             player.AudioPcm += OnPcm;
             player.Open(path);
             if (player.HasAudio)
