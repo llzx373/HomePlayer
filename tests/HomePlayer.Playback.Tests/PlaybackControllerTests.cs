@@ -40,6 +40,21 @@ public class PlaybackControllerTests
         Assert.False(state.Finished);
     }
 
+    [Fact]
+    public async Task Resume_loads_record_on_demand_when_not_preloaded()
+    {
+        var engine = new FakeEngine();
+        var store = new FakeStateStore();
+        store.OnDemand["video.mkv"] = new PlaybackState("video.mkv", 30, 100, false, 1);
+        using var controller = Create(engine, store);
+
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+
+        Assert.Equal(2000, store.PreloadLimit);
+        Assert.Equal(1, store.LoadCount);
+        Assert.Equal(TimeSpan.FromSeconds(30), engine.LastSeek);
+    }
+
     private static PlaybackController Create(FakeEngine engine, IPlaybackStateStore? store = null) => new(
         action => action(),
         () => throw new InvalidOperationException("测试不应读取编解码器"),
@@ -50,9 +65,21 @@ public class PlaybackControllerTests
     private sealed class FakeStateStore : IPlaybackStateStore
     {
         public List<PlaybackState> Saved { get; } = [];
+        public Dictionary<string, PlaybackState> OnDemand { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int PreloadLimit { get; private set; }
+        public int LoadCount { get; private set; }
 
-        public IReadOnlyDictionary<string, PlaybackState> LoadAll(int limit) =>
-            new Dictionary<string, PlaybackState>();
+        public IReadOnlyDictionary<string, PlaybackState> LoadAll(int limit)
+        {
+            PreloadLimit = limit;
+            return new Dictionary<string, PlaybackState>();
+        }
+
+        public PlaybackState? Load(string path)
+        {
+            LoadCount++;
+            return OnDemand.GetValueOrDefault(path);
+        }
 
         public void Save(PlaybackState state) => Saved.Add(state);
 

@@ -429,6 +429,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
         return map;
     }
 
+    public PlaybackState? Load(string path) => LoadPlaybackStates([path]).GetValueOrDefault(path);
+
     public void Save(PlaybackState state)
     {
         lock (_stateGate)

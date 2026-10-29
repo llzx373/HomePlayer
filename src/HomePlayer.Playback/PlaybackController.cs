@@ -620,12 +620,25 @@ public sealed class PlaybackController : IDisposable
     {
         PlaybackState? state;
         lock (_stateGate)
+            _states.TryGetValue(path, out state);
+        if (state == null && _store != null)
         {
-            if (!_states.TryGetValue(path, out state))
-                return;
+            try
+            {
+                state = _store.Load(path);
+            }
+            catch (Exception)
+            {
+            }
+
+            if (state != null)
+            {
+                lock (_stateGate)
+                    _states[path] = state;
+            }
         }
 
-        if (state.Finished)
+        if (state == null || state.Finished)
             return;
         var resume = PlaybackResume.Position(TimeSpan.FromSeconds(state.PositionSeconds), engine.Duration);
         if (resume == null)

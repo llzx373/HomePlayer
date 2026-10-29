@@ -14,6 +14,8 @@ public interface IPlaybackStateStore
 {
     IReadOnlyDictionary<string, PlaybackState> LoadAll(int limit);
 
+    PlaybackState? Load(string path);
+
     /// <summary>
     /// 只写内存里的待落库集合，调用方可以在任意线程调用。
     /// </summary>
