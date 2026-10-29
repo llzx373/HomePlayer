@@ -148,22 +148,28 @@ public sealed partial class LibraryPage : Page
         _ = Task.Run(() =>
         {
             IReadOnlyList<MediaLibrary> libraries;
+            string? error = null;
             try
             {
                 libraries = App.Host.Repository.ListLibraries();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 libraries = [];
+                error = LoadFailure("读取媒体库列表", ex);
             }
 
-            DispatcherQueue.TryEnqueue(() => ApplyLibraries(selected, token, libraries));
+            DispatcherQueue.TryEnqueue(() => ApplyLibraries(selected, token, libraries, error));
         });
     }
 
-    private void ApplyLibraries(string? selected, int token, IReadOnlyList<MediaLibrary> libraries)
+    private void ApplyLibraries(string? selected, int token, IReadOnlyList<MediaLibrary> libraries, string? error)
     {
         if (token != _reloadToken || App.Host.Exiting)
+            return;
+        _loading = false;
+        SetLoadError(error);
+        if (error != null)
             return;
         _libraries.Clear();
         foreach (var library in libraries)
@@ -181,7 +187,6 @@ public sealed partial class LibraryPage : Page
             _syncingLibrary = false;
         }
 
-        _loading = false;
         if (view != null && selection != null)
         {
             _viewRestored = true;
@@ -196,6 +201,31 @@ public sealed partial class LibraryPage : Page
         RebuildFolderTree(selection);
         _page = 1;
         LoadPage();
+    }
+
+    private void RetryLoad_Click(object sender, RoutedEventArgs e)
+    {
+        SetLoadError(null);
+        ReloadLibraries();
+    }
+
+    private void SetLoadError(string? error)
+    {
+        LibraryErrorBar.Message = error ?? "";
+        LibraryErrorBar.IsOpen = error != null;
+    }
+
+    private static string LoadFailure(string operation, Exception error)
+    {
+        try
+        {
+            CrashLog.Write("媒体库读取失败", operation + Environment.NewLine + error);
+        }
+        catch (Exception)
+        {
+        }
+
+        return operation + "：" + error.Message;
     }
 
     private void LoadPage()
@@ -228,6 +258,7 @@ public sealed partial class LibraryPage : Page
         {
             IReadOnlyList<MediaItem> items;
             int total;
+            string? error = null;
             var page = requestedPage;
             try
             {
@@ -242,10 +273,11 @@ public sealed partial class LibraryPage : Page
                         libraryId, folderPath, recursive, query, filter, sort, (page - 1) * pageSize, pageSize);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 items = [];
                 total = 0;
+                error = LoadFailure("读取媒体条目", ex);
             }
 
             var stamps = ComputeImageStamps(items, kind);
@@ -260,7 +292,7 @@ public sealed partial class LibraryPage : Page
                 states = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
             }
 
-            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, states, token));
+            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, states, token, error));
         });
     }
 
@@ -272,11 +304,15 @@ public sealed partial class LibraryPage : Page
         IReadOnlyList<MediaItem> items,
         IReadOnlyDictionary<string, DateTime> stamps,
         IReadOnlyDictionary<string, PlaybackState> states,
-        int token)
+        int token,
+        string? error)
     {
         if (token != _loadToken || App.Host.Exiting)
             return;
         if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
+            return;
+        SetLoadError(error);
+        if (error != null)
             return;
         _page = page;
         _pageSize = pageSize;

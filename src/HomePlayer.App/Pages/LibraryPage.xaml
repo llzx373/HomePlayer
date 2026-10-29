@@ -72,6 +72,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -107,7 +108,18 @@
                 IsOpen="False"
                 IsClosable="False"
                 Title="扫描不完整" />
-            <Grid Grid.Row="3">
+            <InfoBar
+                x:Name="LibraryErrorBar"
+                Grid.Row="3"
+                Severity="Error"
+                IsOpen="False"
+                IsClosable="False"
+                Title="媒体库读取失败">
+                <InfoBar.ActionButton>
+                    <Button Content="重试" Click="RetryLoad_Click" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <Grid Grid.Row="4">
                 <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <GridView
                     x:Name="Cards"
@@ -153,7 +165,7 @@
                     </GridView.ItemTemplate>
                 </GridView>
             </Grid>
-            <local:PagerBar x:Name="Pager" Grid.Row="4" />
+            <local:PagerBar x:Name="Pager" Grid.Row="5" />
         </Grid>
     </Grid>
 </Page>
