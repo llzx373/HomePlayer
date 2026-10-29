@@ -627,11 +627,15 @@ public sealed partial class PlayerPage : Page
         ApplyTip(FullscreenButton, exit ? "退出全屏" : "全屏", HotkeyCatalog.Fullscreen);
     }
 
-    private void FitWindow_Click(object sender, RoutedEventArgs e)
+    private void FitWindow_Click(object sender, RoutedEventArgs e) =>
+        SetFitWindow(FitWindowButton.IsChecked == true);
+
+    private void SetFitWindow(bool enabled)
     {
-        App.Host.Settings.FitWindow = FitWindowButton.IsChecked == true;
+        FitWindowButton.IsChecked = enabled;
+        App.Host.Settings.FitWindow = enabled;
         App.Host.SaveSettings();
-        if (FitWindowButton.IsChecked == true)
+        if (enabled)
             FitWindow(true);
     }
 
@@ -1413,7 +1417,7 @@ public sealed partial class PlayerPage : Page
                 ToggleSubtitle();
                 break;
             case HotkeyCatalog.FitWindow:
-                FitWindow(true);
+                SetFitWindow(!App.Host.Settings.FitWindow);
                 break;
             case HotkeyCatalog.CycleAspect:
                 SetAspectMode(VideoAspect.Next(_presenter.AspectMode));
