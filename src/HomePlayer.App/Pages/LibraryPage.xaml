@@ -125,6 +125,7 @@
                     x:Name="Cards"
                     DoubleTapped="Cards_DoubleTapped"
                     RightTapped="Cards_RightTapped"
+                    KeyDown="Cards_KeyDown"
                     IsItemClickEnabled="False">
                     <GridView.ItemTemplate>
                         <DataTemplate>

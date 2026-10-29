@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Navigation;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using VirtualKey = Windows.System.VirtualKey;
 using WinRT.Interop;
 
 namespace HomePlayer;
@@ -418,41 +419,31 @@ public sealed partial class PlayerPage : Page
 
     private void Position_Pressed(object sender, PointerRoutedEventArgs e)
     {
-        if (Playback.Duration <= TimeSpan.Zero)
-            return;
-        var point = e.GetCurrentPoint(PositionBar);
-        if (!point.Properties.IsLeftButtonPressed)
+        if (Playback.Duration <= TimeSpan.Zero || !e.GetCurrentPoint(PositionBar).Properties.IsLeftButtonPressed)
             return;
         _pointerDown = true;
         _scrubbing = true;
-        PositionBar.CapturePointer(e.Pointer);
-        MoveScrub(point.Position.X);
-        e.Handled = true;
+        _scrubSeconds = PositionBar.Value;
     }
 
-    private void Position_Moved(object sender, PointerRoutedEventArgs e)
+    private void Position_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (!_pointerDown)
+        if (_layingProgress || Playback.Duration <= TimeSpan.Zero)
             return;
-        MoveScrub(e.GetCurrentPoint(PositionBar).Position.X);
-        e.Handled = true;
-    }
-
-    private void Position_Released(object sender, PointerRoutedEventArgs e)
-    {
-        FinishScrub();
-        e.Handled = true;
-    }
-
-    private void MoveScrub(double x)
-    {
-        var width = PositionBar.ActualWidth;
-        if (width <= 0 || Playback.Duration <= TimeSpan.Zero)
+        var seconds = PositionBar.Value;
+        if (_scrubbing || _pointerDown)
+        {
+            _scrubSeconds = seconds;
+            LayoutProgress(seconds);
             return;
-        var ratio = Math.Clamp(x / width, 0, 1);
-        _scrubSeconds = ratio * Playback.Duration.TotalSeconds;
-        LayoutProgress(_scrubSeconds);
+        }
+
+        Anchor(TimeSpan.FromSeconds(seconds), Playback.IsPlaying);
+        Playback.Seek(TimeSpan.FromSeconds(seconds));
+        LayoutProgress(seconds);
     }
+
+    private void Position_Released(object sender, PointerRoutedEventArgs e) => FinishScrub();
 
     private void FinishScrub()
     {
@@ -461,7 +452,6 @@ public sealed partial class PlayerPage : Page
         var seconds = _scrubSeconds;
         _scrubbing = false;
         _pointerDown = false;
-        PositionBar.ReleasePointerCaptures();
         Anchor(TimeSpan.FromSeconds(Math.Max(0, seconds)), Playback.IsPlaying);
         if (Playback.Duration <= TimeSpan.Zero)
             return;
@@ -554,14 +544,9 @@ public sealed partial class PlayerPage : Page
         try
         {
             var duration = Playback.Duration;
-            var maximum = duration.TotalSeconds;
-            var ratio = maximum > 0 ? Math.Clamp(seconds / maximum, 0, 1) : 0;
-            var width = PositionBar.ActualWidth;
-            var fill = width > 0 ? ratio * width : 0;
-            PlayedColumn.Width = new GridLength(Math.Max(0, fill));
-            var thumb = PositionThumb.Width > 0 ? PositionThumb.Width : 14;
-            var left = width > 0 ? Math.Clamp(fill - thumb / 2, 0, Math.Max(0, width - thumb)) : 0;
-            PositionThumb.Margin = new Thickness(left, 0, 0, 0);
+            var maximum = Math.Max(0, duration.TotalSeconds);
+            PositionBar.Maximum = maximum;
+            PositionBar.Value = maximum > 0 ? Math.Clamp(seconds, 0, maximum) : 0;
             var shown = TimeSpan.FromSeconds(Math.Max(0, maximum > 0 ? seconds : 0));
             CurrentTimeText.Text = ClockText.Format(shown);
             DurationTimeText.Text = ClockText.Format(duration);
@@ -1243,6 +1228,21 @@ public sealed partial class PlayerPage : Page
         var index = Playback.Playlist.Items.IndexOf(item);
         if (index < 0)
             return;
+        await Playback.PlayIndexAsync(index);
+    }
+
+    private async void Playlist_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+            return;
+        var item = (e.OriginalSource as FrameworkElement)?.DataContext as PlaylistItem
+            ?? PlaylistView.SelectedItem as PlaylistItem;
+        if (item == null)
+            return;
+        var index = Playback.Playlist.Items.IndexOf(item);
+        if (index < 0)
+            return;
+        e.Handled = true;
         await Playback.PlayIndexAsync(index);
     }
 

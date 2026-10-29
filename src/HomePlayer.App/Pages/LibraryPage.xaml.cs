@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace HomePlayer;
 
@@ -1049,10 +1050,40 @@ public sealed partial class LibraryPage : Page
         App.Window.SelectPlayer();
     }
 
+    private async void Cards_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        var card = CardFrom(e.OriginalSource) ?? Cards.SelectedItem as MediaCard;
+        if (card == null)
+            return;
+        Cards.SelectedItem = card;
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            await PlayCardAsync(card);
+            return;
+        }
+
+        if (e.Key == VirtualKey.Application
+            || e.Key == VirtualKey.F10
+            && Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
+        {
+            e.Handled = true;
+            BuildCardMenu(card).ShowAt((FrameworkElement)e.OriginalSource);
+        }
+    }
+
     private void Cards_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (CardFrom(e.OriginalSource) is not MediaCard card)
             return;
+        Cards.SelectedItem = card;
+        BuildCardMenu(card).ShowAt(Cards, e.GetPosition(Cards));
+        e.Handled = true;
+    }
+
+    private MenuFlyout BuildCardMenu(MediaCard card)
+    {
         var menu = new MenuFlyout();
         menu.Items.Add(Action("播放", () => PlayCardAsync(card)));
         menu.Items.Add(Action("加入播放列表", () =>
@@ -1073,8 +1104,7 @@ public sealed partial class LibraryPage : Page
         }));
         if (card.Library.Kind == LibraryKind.Catalog)
             menu.Items.Add(Action("重新匹配", () => MatchAsync(card)));
-        menu.ShowAt(Cards, e.GetPosition(Cards));
-        e.Handled = true;
+        return menu;
     }
 
     private async Task ShowCardAsync(MediaCard card)

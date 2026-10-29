@@ -90,6 +90,7 @@
                             CanDragItems="True"
                             AllowDrop="True"
                             DoubleTapped="Playlist_DoubleTapped"
+                            KeyDown="Playlist_KeyDown"
                             DragItemsCompleted="Playlist_Reordered">
                             <ListView.Resources>
                                 <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#14FFFFFF" />
@@ -184,42 +185,21 @@
                     VerticalAlignment="Center"
                     TextAlignment="Right"
                     Text="00:00" />
-                <Grid
+                <Slider
                     x:Name="PositionBar"
                     Grid.Column="1"
                     Height="22"
-                    Background="Transparent"
+                    Minimum="0"
+                    Maximum="0"
+                    Value="0"
+                    StepFrequency="1"
+                    IsTabStop="True"
+                    AutomationProperties.Name="播放进度"
+                    ValueChanged="Position_ValueChanged"
                     PointerPressed="Position_Pressed"
-                    PointerMoved="Position_Moved"
                     PointerReleased="Position_Released"
                     PointerCanceled="Position_Released"
-                    PointerCaptureLost="Position_Released">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="PlayedColumn" Width="0" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border
-                        Grid.ColumnSpan="2"
-                        Height="4"
-                        VerticalAlignment="Center"
-                        CornerRadius="2"
-                        Background="#667F7F7F" />
-                    <Border
-                        Grid.Column="0"
-                        Height="4"
-                        VerticalAlignment="Center"
-                        CornerRadius="2"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}" />
-                    <Border
-                        x:Name="PositionThumb"
-                        Grid.ColumnSpan="2"
-                        Width="14"
-                        Height="14"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Center"
-                        CornerRadius="7"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}" />
-                </Grid>
+                    PointerCaptureLost="Position_Released" />
                 <TextBlock
                     x:Name="DurationTimeText"
                     Grid.Column="2"
