@@ -159,8 +159,14 @@ public sealed class Playlist
             (_shuffle[i], _shuffle[j]) = (_shuffle[j], _shuffle[i]);
         }
 
-        _shuffleCursor = CurrentIndex < 0 ? -1 : Math.Max(0, _shuffle.IndexOf(CurrentIndex));
-        if (_shuffleCursor < 0 && _shuffle.Count > 0)
-            _shuffleCursor = 0;
+        if (CurrentIndex < 0)
+        {
+            _shuffleCursor = -1;
+            return;
+        }
+
+        _shuffle.Remove(CurrentIndex);
+        _shuffle.Insert(0, CurrentIndex);
+        _shuffleCursor = 0;
     }
 }

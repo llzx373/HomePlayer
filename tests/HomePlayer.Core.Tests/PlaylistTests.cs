@@ -153,7 +153,7 @@ public class PlaylistTests
             playlist.CurrentIndex = next;
         }
 
-        Assert.True(visited.Count is > 0 and < 20);
+        Assert.Equal(19, visited.Count);
     }
 
     [Fact]
