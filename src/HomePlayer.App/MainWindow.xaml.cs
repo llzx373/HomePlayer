@@ -341,6 +341,15 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidSizeChange
+            && !_fullscreen
+            && AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Restored }
+            && (AppWindow.Size.Width < 900 || AppWindow.Size.Height < 600))
+        {
+            AppWindow.Resize(new SizeInt32(Math.Max(900, AppWindow.Size.Width), Math.Max(600, AppWindow.Size.Height)));
+            return;
+        }
+
         if (!args.DidVisibilityChange && !args.DidPresenterChange)
             return;
 

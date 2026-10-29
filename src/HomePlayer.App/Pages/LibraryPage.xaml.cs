@@ -91,6 +91,20 @@ public sealed partial class LibraryPage : Page
         _ready = true;
     }
 
+    private void LibraryPage_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = ActualWidth < 1050;
+        Grid.SetColumnSpan(SearchBox, compact ? 5 : 1);
+        Grid.SetRow(FilterBox, compact ? 1 : 0);
+        Grid.SetColumn(FilterBox, compact ? 0 : 1);
+        Grid.SetRow(SortBox, compact ? 1 : 0);
+        Grid.SetColumn(SortBox, compact ? 1 : 2);
+        Grid.SetRow(RandomButton, compact ? 1 : 0);
+        Grid.SetColumn(RandomButton, compact ? 2 : 3);
+        Grid.SetRow(RefreshButton, compact ? 1 : 0);
+        Grid.SetColumn(RefreshButton, compact ? 3 : 4);
+    }
+
     private void QueuePageReload()
     {
         if (!IsLoaded || App.Host.Exiting)
