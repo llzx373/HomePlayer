@@ -291,6 +291,14 @@
                         <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="存储与诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="数据备份" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="备份包包含媒体库、观看进度、播放偏好和设置；其中也会包含本机 TMDB API Key。每次启动还会自动保留最近两代备份。" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="导出备份" Click="ExportBackup_Click" />
+                                    <Button Content="导入备份" Click="ImportBackup_Click" />
+                                    <Button Content="打开备份文件夹" Click="OpenBackups_Click" />
+                                </StackPanel>
+                                <TextBlock x:Name="BackupStatusText" Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" />
                                 <TextBlock x:Name="CacheText" />
                                 <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清除缓存只重建缩略图和海报，不会删除视频或观看进度。" />
                                 <Button Content="清除缩略图缓存" Click="Clear_Click" HorizontalAlignment="Left" />

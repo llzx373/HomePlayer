@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using HomePlayer.Core;
+using HomePlayer.Data;
 using HomePlayer.Playback;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Input;
@@ -9,8 +10,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI.Core;
+using WinRT.Interop;
 
 namespace HomePlayer;
 
@@ -660,6 +663,74 @@ public sealed partial class SettingsPage : Page
 
     private async Task Message(string text) =>
         await new ContentDialog { Title = "HomePlayer", Content = text, CloseButtonText = "确定", XamlRoot = XamlRoot }.ShowAsync();
+
+    private async void ExportBackup_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            App.Host.SaveSettings();
+            var picker = new FileSavePicker
+            {
+                SuggestedFileName = "HomePlayer-backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss")
+            };
+            picker.FileTypeChoices.Add("HomePlayer 备份", [".homeplayer"]);
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
+            var file = await picker.PickSaveFileAsync();
+            if (file == null)
+                return;
+            BackupStatusText.Text = "正在导出数据库快照…";
+            await Task.Run(() => DataBackup.Export(AppPaths.Database, AppPaths.SettingsFile, file.Path));
+            BackupStatusText.Text = "备份已导出到 " + file.Path;
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText.Text = "导出失败：" + ex.Message;
+        }
+    }
+
+    private async void ImportBackup_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker();
+            picker.FileTypeFilter.Add(".homeplayer");
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
+            var file = await picker.PickSingleFileAsync();
+            if (file == null)
+                return;
+            var dialog = new ContentDialog
+            {
+                Title = "导入备份",
+                Content = "将用备份中的媒体库、观看进度、播放偏好和设置替换当前数据。旧数据会自动备份，恢复在下次启动时完成。",
+                PrimaryButtonText = "校验并导入",
+                CloseButtonText = "取消",
+                XamlRoot = XamlRoot
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return;
+            BackupStatusText.Text = "正在校验备份…";
+            await Task.Run(() => DataBackup.StageRestore(file.Path, AppPaths.Root));
+            BackupStatusText.Text = "备份已通过校验。请重启 HomePlayer 完成恢复。";
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText.Text = "导入失败：" + ex.Message;
+        }
+    }
+
+    private void OpenBackups_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var path = Path.Combine(AppPaths.Root, "backups");
+            Directory.CreateDirectory(path);
+            System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
+        }
+        catch (Exception ex)
+        {
+            BackupStatusText.Text = "无法打开备份文件夹：" + ex.Message;
+        }
+    }
 
     private async void Clear_Click(object sender, RoutedEventArgs e)
     {

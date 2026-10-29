@@ -18,7 +18,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         {
             DataSource = databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
+            Cache = SqliteCacheMode.Shared,
+            Pooling = false
         };
         _connection = new SqliteConnection(builder.ConnectionString);
         _connection.Open();
@@ -1025,7 +1026,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         }
     }
 
-    private const int SchemaVersion = 4;
+    public const int SchemaVersion = 4;
 
     private void Migrate()
     {

@@ -39,6 +39,18 @@ public sealed class AppHost : IAsyncDisposable
 
     public static AppHost Create(Action<Action> post)
     {
+        string? backupWarning = null;
+        try
+        {
+            DataBackup.ApplyPendingRestore(AppPaths.Root);
+            DataBackup.CreateAutomaticBackup(AppPaths.Root);
+        }
+        catch (Exception ex)
+        {
+            backupWarning = "数据备份或恢复未完成：" + ex.Message;
+            CrashLog.Write("数据备份失败", ex.ToString());
+        }
+
         var settingsStore = new SettingsStore(AppPaths.SettingsFile);
         var loaded = settingsStore.Load();
         var settings = loaded.Settings;
@@ -50,7 +62,9 @@ public sealed class AppHost : IAsyncDisposable
             historyEnabled: () => settings.RecordPlaybackHistory,
             preferences: repository);
         playback.SetVolume(settings.Volume);
-        var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore, loaded.Warning);
+        var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning }.Where(item => item != null));
+        var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore,
+            warning.Length > 0 ? warning : null);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
         libraries.ItemReset += playback.ForgetProgress;
         return host;
