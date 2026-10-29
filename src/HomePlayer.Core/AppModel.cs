@@ -63,7 +63,8 @@ public enum SortMode
     ModifiedDesc = 1,
     Title = 2,
     YearDesc = 3,
-    AddedDesc = 4
+    AddedDesc = 4,
+    Episode = 5
 }
 
 public enum LibraryFilter
@@ -72,6 +73,27 @@ public enum LibraryFilter
     Failed = 1,
     NeedsReview = 2,
     Unwatched = 3
+}
+
+public enum LibraryLayout
+{
+    Cards = 0,
+    CompactCards = 1,
+    List = 2
+}
+
+public enum LibraryCardSize
+{
+    Small = 0,
+    Medium = 1,
+    Large = 2
+}
+
+public enum LibraryInfoDisplay
+{
+    Title = 0,
+    Path = 1,
+    Technical = 2
 }
 
 public sealed class CodecPreference
@@ -89,6 +111,7 @@ public sealed class AppSettings
     public bool FitWindow { get; set; }
     public bool AlwaysOnTop { get; set; }
     public bool RecordPlaybackHistory { get; set; } = true;
+    public bool AutoPlayNextEpisode { get; set; } = true;
     public double SubtitleFontSize { get; set; } = 28;
     public SubtitleTextColor SubtitleColor { get; set; } = SubtitleTextColor.White;
     public SubtitleVerticalPosition SubtitlePosition { get; set; } = SubtitleVerticalPosition.Bottom;
@@ -109,6 +132,9 @@ public sealed class LibraryViewState
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = PagedView.DefaultPageSize;
     public string SortMode { get; set; } = "";
+    public LibraryLayout Layout { get; set; } = LibraryLayout.Cards;
+    public LibraryCardSize CardSize { get; set; } = LibraryCardSize.Medium;
+    public LibraryInfoDisplay InfoDisplay { get; set; } = LibraryInfoDisplay.Title;
     public List<string> ExpandedFolders { get; set; } = [];
 }
 
@@ -145,6 +171,9 @@ public sealed class MediaItem
     public int? Width { get; set; }
     public int? Height { get; set; }
     public string? VideoCodec { get; set; }
+    public string? AudioCodec { get; set; }
+    public int AudioStreamCount { get; set; }
+    public int SubtitleStreamCount { get; set; }
     public ItemStatus Status { get; set; }
     public string? Error { get; set; }
     public string? SheetPath { get; set; }
@@ -159,6 +188,8 @@ public sealed class MediaItem
     public string? Overview { get; set; }
     public double? Rating { get; set; }
     public string? PosterPath { get; set; }
+    public string? CollectionName { get; set; }
+    public bool MetadataEdited { get; set; }
     public MatchStatus MatchStatus { get; set; }
     public long AddedUtcTicks { get; set; }
 
@@ -175,7 +206,11 @@ public sealed record MediaProbe(
     int Height,
     string? VideoCodec,
     string? AudioCodec,
-    string? Container);
+    string? Container)
+{
+    public int AudioStreamCount { get; init; }
+    public int SubtitleStreamCount { get; init; }
+}
 
 public sealed class VideoFrame
 {

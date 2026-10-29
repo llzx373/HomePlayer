@@ -134,14 +134,23 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         string? relativeDir,
         bool recursive,
         string? search,
-        LibraryFilter filter)
+        LibraryFilter filter) => CountItems(new MediaLibraryQuery
+    {
+        LibraryId = libraryId,
+        RelativeDir = relativeDir,
+        Recursive = recursive,
+        Search = search,
+        Filter = filter
+    });
+
+    public int CountItems(MediaLibraryQuery query)
     {
         lock (_gate)
         {
-            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            var sql = BuildItemQuery(query);
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM MediaItem m" + query.Where + ";";
-            AddParameters(command, query);
+            command.CommandText = "SELECT COUNT(*) FROM MediaItem m" + sql.Where + ";";
+            AddParameters(command, sql);
             return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
     }
@@ -154,7 +163,16 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         LibraryFilter filter,
         SortMode sort,
         int offset,
-        int limit)
+        int limit) => ListItemsPage(new MediaLibraryQuery
+    {
+        LibraryId = libraryId,
+        RelativeDir = relativeDir,
+        Recursive = recursive,
+        Search = search,
+        Filter = filter
+    }, sort, offset, limit);
+
+    public IReadOnlyList<MediaItem> ListItemsPage(MediaLibraryQuery query, SortMode sort, int offset, int limit)
     {
         if (limit < 1)
             return [];
@@ -162,10 +180,10 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             offset = 0;
         lock (_gate)
         {
-            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            var sql = BuildItemQuery(query);
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT * FROM MediaItem m" + query.Where + " ORDER BY " + OrderBy(sort) + " LIMIT $limit OFFSET $offset;";
-            AddParameters(command, query);
+            command.CommandText = "SELECT m.* FROM MediaItem m" + sql.Where + " ORDER BY " + OrderBy(sort) + " LIMIT $limit OFFSET $offset;";
+            AddParameters(command, sql);
             command.Parameters.AddWithValue("$limit", limit);
             command.Parameters.AddWithValue("$offset", offset);
             using var reader = command.ExecuteReader();
@@ -182,29 +200,30 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         bool recursive,
         string? search,
         LibraryFilter filter,
-        SortMode sort)
+        SortMode sort) => ListAllPaths(new MediaLibraryQuery
     {
-        string root;
-        lock (_gate)
-        {
-            using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT RootPath FROM Library WHERE Id = $id;";
-            command.Parameters.AddWithValue("$id", libraryId);
-            if (command.ExecuteScalar() is not string value)
-                return [];
-            root = value;
-        }
+        LibraryId = libraryId,
+        RelativeDir = relativeDir,
+        Recursive = recursive,
+        Search = search,
+        Filter = filter
+    }, sort);
 
+    public IReadOnlyList<string> ListAllPaths(MediaLibraryQuery query, SortMode sort)
+    {
         lock (_gate)
         {
-            var query = BuildItemQuery(libraryId, relativeDir, recursive, search, filter);
+            var sql = BuildItemQuery(query);
             using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT m.RelativePath FROM MediaItem m" + query.Where + " ORDER BY " + OrderBy(sort) + ";";
-            AddParameters(command, query);
+            command.CommandText = """
+                SELECT l.RootPath, m.RelativePath FROM MediaItem m
+                JOIN Library l ON l.Id = m.LibraryId
+                """ + sql.Where + " ORDER BY " + OrderBy(sort) + ";";
+            AddParameters(command, sql);
             using var reader = command.ExecuteReader();
             var list = new List<string>();
             while (reader.Read())
-                list.Add(Path.Combine(root, reader.GetString(0).Replace('/', Path.DirectorySeparatorChar)));
+                list.Add(Path.Combine(reader.GetString(0), reader.GetString(1).Replace('/', Path.DirectorySeparatorChar)));
             return list;
         }
     }
@@ -641,42 +660,45 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
 
     private sealed record ItemQuery(string Where, IReadOnlyList<(string Name, object Value)> Parameters);
 
-    private static ItemQuery BuildItemQuery(
-        string libraryId,
-        string? relativeDir,
-        bool recursive,
-        string? search,
-        LibraryFilter filter)
+    private static ItemQuery BuildItemQuery(MediaLibraryQuery query)
     {
-        var clauses = new List<string> { "m.LibraryId = $library" };
-        var parameters = new List<(string Name, object Value)> { ("$library", libraryId) };
-
-        var dir = NormalizeDir(relativeDir);
-        if (dir.Length == 0)
+        var clauses = new List<string>();
+        var parameters = new List<(string Name, object Value)>();
+        if (!string.IsNullOrWhiteSpace(query.LibraryId))
         {
-            if (!recursive)
-                clauses.Add("m.RelativeDir = ''");
-        }
-        else if (recursive)
-        {
-            clauses.Add("(m.RelativeDir = $dir OR m.RelativeDir LIKE $prefix ESCAPE '\\')");
-            parameters.Add(("$dir", dir));
-            parameters.Add(("$prefix", EscapeLike(dir) + "/%"));
-        }
-        else
-        {
-            clauses.Add("m.RelativeDir = $dir");
-            parameters.Add(("$dir", dir));
+            clauses.Add("m.LibraryId = $library");
+            parameters.Add(("$library", query.LibraryId));
         }
 
-        var term = search?.Trim() ?? "";
+        var dir = NormalizeDir(query.RelativeDir);
+        if (query.LibraryId != null)
+        {
+            if (dir.Length == 0)
+            {
+                if (!query.Recursive)
+                    clauses.Add("m.RelativeDir = ''");
+            }
+            else if (query.Recursive)
+            {
+                clauses.Add("(m.RelativeDir = $dir OR m.RelativeDir LIKE $prefix ESCAPE '\\')");
+                parameters.Add(("$dir", dir));
+                parameters.Add(("$prefix", EscapeLike(dir) + "/%"));
+            }
+            else
+            {
+                clauses.Add("m.RelativeDir = $dir");
+                parameters.Add(("$dir", dir));
+            }
+        }
+
+        var term = query.Search?.Trim() ?? "";
         if (term.Length > 0)
         {
             clauses.Add("(COALESCE(m.Title, '') LIKE $search ESCAPE '\\' OR m.FileName LIKE $search ESCAPE '\\')");
             parameters.Add(("$search", "%" + EscapeLike(term) + "%"));
         }
 
-        switch (filter)
+        switch (query.Filter)
         {
             case LibraryFilter.Failed:
                 clauses.Add("m.Status = " + (int)ItemStatus.Failed);
@@ -684,21 +706,111 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             case LibraryFilter.NeedsReview:
                 clauses.Add("m.MatchStatus = " + (int)MatchStatus.NeedsReview);
                 break;
-            case LibraryFilter.Unwatched:
-                clauses.Add("""
-                    NOT EXISTS (
-                        SELECT 1 FROM PlaybackState ps
-                        WHERE ps.Path = (
-                            SELECT l.RootPath || '\' || replace(m.RelativePath, '/', '\')
-                            FROM Library l WHERE l.Id = m.LibraryId
-                        )
-                        AND (ps.Finished = 1 OR ps.PositionSeconds >= 5)
-                    )
-                    """);
+        }
+
+        const string statePath = "(SELECT l.RootPath || '\\' || replace(m.RelativePath, '/', '\\') FROM Library l WHERE l.Id = m.LibraryId)";
+        var watch = query.Watch == WatchFilter.All && query.Filter == LibraryFilter.Unwatched
+            ? WatchFilter.Unwatched
+            : query.Watch;
+        switch (watch)
+        {
+            case WatchFilter.Unwatched:
+                clauses.Add($"NOT EXISTS (SELECT 1 FROM PlaybackState ps WHERE ps.Path = {statePath} AND (ps.Finished = 1 OR ps.PositionSeconds >= 5))");
+                break;
+            case WatchFilter.InProgress:
+                clauses.Add($"EXISTS (SELECT 1 FROM PlaybackState ps WHERE ps.Path = {statePath} AND ps.Finished = 0 AND ps.PositionSeconds >= 5 AND ps.DurationSeconds - ps.PositionSeconds > 5)");
+                break;
+            case WatchFilter.Watched:
+                clauses.Add($"EXISTS (SELECT 1 FROM PlaybackState ps WHERE ps.Path = {statePath} AND ps.Finished = 1)");
                 break;
         }
 
-        return new ItemQuery(" WHERE " + string.Join(" AND ", clauses), parameters);
+        switch (query.MediaType)
+        {
+            case MediaTypeFilter.Movie:
+                clauses.Add("m.MediaType = 'movie'");
+                break;
+            case MediaTypeFilter.Episode:
+                clauses.Add("(m.MediaType = 'tv' OR m.Season IS NOT NULL OR m.Episode IS NOT NULL)");
+                break;
+            case MediaTypeFilter.Unknown:
+                clauses.Add("(m.MediaType IS NULL OR m.MediaType NOT IN ('movie', 'tv'))");
+                break;
+        }
+
+        switch (query.Resolution)
+        {
+            case ResolutionFilter.UltraHd:
+                clauses.Add("(m.Width >= 3800 OR m.Height >= 2000)");
+                break;
+            case ResolutionFilter.FullHd:
+                clauses.Add("(m.Width >= 1900 OR m.Height >= 1000) AND NOT (m.Width >= 3800 OR m.Height >= 2000)");
+                break;
+            case ResolutionFilter.Hd:
+                clauses.Add("(m.Width >= 1280 OR m.Height >= 700) AND m.Width < 1900 AND m.Height < 1000");
+                break;
+            case ResolutionFilter.StandardDefinition:
+                clauses.Add("m.Width IS NOT NULL AND m.Height IS NOT NULL AND m.Width < 1280 AND m.Height < 700");
+                break;
+            case ResolutionFilter.Unknown:
+                clauses.Add("(m.Width IS NULL OR m.Height IS NULL)");
+                break;
+        }
+
+        const string h264 = "lower(COALESCE(m.VideoCodec, '')) IN ('h264', 'avc1')";
+        const string h265 = "lower(COALESCE(m.VideoCodec, '')) IN ('h265', 'hevc')";
+        const string av1 = "lower(COALESCE(m.VideoCodec, '')) = 'av1'";
+        const string vp9 = "lower(COALESCE(m.VideoCodec, '')) = 'vp9'";
+        switch (query.Codec)
+        {
+            case CodecFilter.H264:
+                clauses.Add(h264);
+                break;
+            case CodecFilter.H265:
+                clauses.Add(h265);
+                break;
+            case CodecFilter.Av1:
+                clauses.Add(av1);
+                break;
+            case CodecFilter.Vp9:
+                clauses.Add(vp9);
+                break;
+            case CodecFilter.Other:
+                clauses.Add($"m.VideoCodec IS NOT NULL AND NOT ({h264} OR {h265} OR {av1} OR {vp9})");
+                break;
+        }
+
+        switch (query.Duration)
+        {
+            case DurationFilter.Short:
+                clauses.Add("m.DurationSeconds > 0 AND m.DurationSeconds < 1200");
+                break;
+            case DurationFilter.Medium:
+                clauses.Add("m.DurationSeconds >= 1200 AND m.DurationSeconds <= 3600");
+                break;
+            case DurationFilter.Long:
+                clauses.Add("m.DurationSeconds > 3600");
+                break;
+            case DurationFilter.Unknown:
+                clauses.Add("(m.DurationSeconds IS NULL OR m.DurationSeconds <= 0)");
+                break;
+        }
+
+        if (query.Year is int year)
+        {
+            clauses.Add("m.Year = $year");
+            parameters.Add(("$year", year));
+        }
+        if (query.Subtitles == PresenceFilter.Present)
+            clauses.Add("m.SubtitleStreamCount > 0");
+        else if (query.Subtitles == PresenceFilter.Missing)
+            clauses.Add("m.SubtitleStreamCount = 0");
+        if (query.MultipleAudioTracks)
+            clauses.Add("m.AudioStreamCount > 1");
+        if (query.FavoritesOnly)
+            clauses.Add("EXISTS (SELECT 1 FROM Favorite f WHERE f.MediaItemId = m.Id)");
+
+        return new ItemQuery(clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses), parameters);
     }
 
     private static void AddParameters(SqliteCommand command, ItemQuery query)
@@ -714,6 +826,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         SortMode.Title => "COALESCE(NULLIF(m.Title, ''), m.FileName) COLLATE NOCASE ASC, m.RelativePath COLLATE NOCASE ASC",
         SortMode.YearDesc => "m.Year IS NULL, m.Year DESC, COALESCE(NULLIF(m.Title, ''), m.FileName) COLLATE NOCASE ASC, m.RelativePath COLLATE NOCASE ASC",
         SortMode.AddedDesc => "m.AddedUtcTicks DESC, m.RelativePath COLLATE NOCASE ASC",
+        SortMode.Episode => "COALESCE(NULLIF(m.Title, ''), m.FileName) COLLATE NOCASE ASC, m.Season IS NULL, m.Season ASC, m.Episode IS NULL, m.Episode ASC, m.FileName COLLATE NOCASE ASC",
         _ => "m.RelativePath COLLATE NOCASE ASC"
     };
 
@@ -771,6 +884,93 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         return list;
     }
 
+    public bool IsFavorite(string itemId)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT EXISTS (SELECT 1 FROM Favorite WHERE MediaItemId = $id);";
+            command.Parameters.AddWithValue("$id", itemId);
+            return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
+        }
+    }
+
+    public IReadOnlyDictionary<string, bool> FavoriteStates(IReadOnlyCollection<string> itemIds)
+    {
+        var result = itemIds.Distinct(StringComparer.Ordinal).ToDictionary(id => id, _ => false, StringComparer.Ordinal);
+        if (result.Count == 0)
+            return result;
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            var ids = result.Keys.ToList();
+            for (var offset = 0; offset < ids.Count; offset += MaxQueryIds)
+            {
+                command.Parameters.Clear();
+                var names = new List<string>();
+                foreach (var id in ids.Skip(offset).Take(MaxQueryIds))
+                {
+                    var name = "$id" + names.Count;
+                    names.Add(name);
+                    command.Parameters.AddWithValue(name, id);
+                }
+                command.CommandText = "SELECT MediaItemId FROM Favorite WHERE MediaItemId IN (" + string.Join(',', names) + ");";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    result[reader.GetString(0)] = true;
+            }
+        }
+        return result;
+    }
+
+    public void SetFavorite(string itemId, bool favorite) => SetFavorites([itemId], favorite);
+
+    public void SetFavorites(IReadOnlyCollection<string> itemIds, bool favorite)
+    {
+        if (itemIds.Count == 0)
+            return;
+        lock (_gate)
+        {
+            using var tx = _connection.BeginTransaction();
+            using var command = _connection.CreateCommand();
+            command.Transaction = tx;
+            command.CommandText = favorite
+                ? "INSERT INTO Favorite (MediaItemId, AddedUtcTicks) VALUES ($id, $added) ON CONFLICT(MediaItemId) DO NOTHING;"
+                : "DELETE FROM Favorite WHERE MediaItemId = $id;";
+            var id = command.Parameters.Add("$id", SqliteType.Text);
+            if (favorite)
+                command.Parameters.AddWithValue("$added", DateTime.UtcNow.Ticks);
+            foreach (var itemId in itemIds.Distinct(StringComparer.Ordinal))
+            {
+                id.Value = itemId;
+                command.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+    }
+
+    public void DeleteItems(IReadOnlyCollection<string> itemIds)
+    {
+        if (itemIds.Count == 0)
+            return;
+        lock (_gate)
+        {
+            using var tx = _connection.BeginTransaction();
+            foreach (var id in itemIds.Distinct(StringComparer.Ordinal))
+            {
+                Execute("DELETE FROM WorkItem WHERE MediaItemId = $id;", ("$id", id));
+                Execute("DELETE FROM Favorite WHERE MediaItemId = $id;", ("$id", id));
+                Execute("""
+                    DELETE FROM PlaybackState WHERE Path IN (
+                        SELECT l.RootPath || '\' || replace(m.RelativePath, '/', '\')
+                        FROM MediaItem m JOIN Library l ON l.Id = m.LibraryId WHERE m.Id = $id);
+                    """, ("$id", id));
+                Execute("DELETE FROM MediaItem WHERE Id = $id;", ("$id", id));
+            }
+            tx.Commit();
+        }
+    }
+
     private const int MaxQueryIds = 400;
 
     public void InsertItem(MediaItem item)
@@ -779,6 +979,11 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         {
             var split = RelativePaths.Split(item.RelativePath);
             item.AddedUtcTicks = item.AddedUtcTicks > 0 ? item.AddedUtcTicks : DateTime.UtcNow.Ticks;
+            var parsed = FilenameParser.Parse(split.FileName);
+            item.Season ??= parsed.Season;
+            item.Episode ??= parsed.Episode;
+            if (parsed.IsTv)
+                item.MediaType = "tv";
             using var command = _connection.CreateCommand();
             command.CommandText = """
                 INSERT INTO MediaItem (
@@ -789,7 +994,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 VALUES (
                     $id, $library, $path, $dir, $name, $added,
                     $size, $mtime, NULL, NULL, NULL, NULL,
-                    $status, NULL, NULL, '[]', NULL, NULL, NULL, NULL, NULL, NULL,
+                    $status, NULL, NULL, '[]', $type, NULL, $season, $episode, NULL, NULL,
                     NULL, NULL, NULL, NULL, $match);
                 """;
             command.Parameters.AddWithValue("$id", item.Id);
@@ -801,6 +1006,9 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             command.Parameters.AddWithValue("$size", item.Size);
             command.Parameters.AddWithValue("$mtime", item.MtimeUtcTicks);
             command.Parameters.AddWithValue("$status", (int)item.Status);
+            command.Parameters.AddWithValue("$type", (object?)item.MediaType ?? DBNull.Value);
+            command.Parameters.AddWithValue("$season", (object?)item.Season ?? DBNull.Value);
+            command.Parameters.AddWithValue("$episode", (object?)item.Episode ?? DBNull.Value);
             command.Parameters.AddWithValue("$match", (int)item.MatchStatus);
             command.ExecuteNonQuery();
         }
@@ -830,9 +1038,11 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 """
                 UPDATE MediaItem
                 SET Size = $size, MtimeUtcTicks = $mtime, DurationSeconds = NULL, Width = NULL, Height = NULL,
-                    VideoCodec = NULL, Status = $pending, Error = NULL, SheetPath = NULL, FramePathsJson = '[]',
+                    VideoCodec = NULL, AudioCodec = NULL, AudioStreamCount = 0, SubtitleStreamCount = 0,
+                    Status = $pending, Error = NULL, SheetPath = NULL, FramePathsJson = '[]',
                     MediaType = NULL, TmdbId = NULL, Season = NULL, Episode = NULL, Title = NULL, OriginalTitle = NULL,
-                    Year = NULL, Overview = NULL, Rating = NULL, PosterPath = NULL, MatchStatus = $none
+                    Year = NULL, Overview = NULL, Rating = NULL, PosterPath = NULL, CollectionName = NULL,
+                    MetadataEdited = 0, MatchStatus = $none
                 WHERE Id = $id;
                 """,
                 ("$size", size),
@@ -849,6 +1059,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         {
             using var tx = _connection.BeginTransaction();
             Execute("DELETE FROM WorkItem WHERE MediaItemId = $id;", ("$id", id));
+            Execute("DELETE FROM Favorite WHERE MediaItemId = $id;", ("$id", id));
             Execute(
                 """
                 DELETE FROM PlaybackState WHERE Path IN (
@@ -869,13 +1080,17 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             Execute(
                 """
                 UPDATE MediaItem
-                SET DurationSeconds = $duration, Width = $width, Height = $height, VideoCodec = $codec
+                SET DurationSeconds = $duration, Width = $width, Height = $height, VideoCodec = $codec,
+                    AudioCodec = $audioCodec, AudioStreamCount = $audioCount, SubtitleStreamCount = $subtitleCount
                 WHERE Id = $id;
                 """,
                 ("$duration", probe.DurationSeconds),
                 ("$width", probe.Width),
                 ("$height", probe.Height),
                 ("$codec", (object?)probe.VideoCodec ?? DBNull.Value),
+                ("$audioCodec", (object?)probe.AudioCodec ?? DBNull.Value),
+                ("$audioCount", probe.AudioStreamCount),
+                ("$subtitleCount", probe.SubtitleStreamCount),
                 ("$id", id));
         }
     }
@@ -902,7 +1117,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 UPDATE MediaItem
                 SET MediaType = $type, TmdbId = $tmdb, Season = $season, Episode = $episode, Title = $title,
                     OriginalTitle = $original, Year = $year, Overview = $overview, Rating = $rating,
-                    PosterPath = $poster, MatchStatus = $match, Status = $status, Error = $error
+                    PosterPath = $poster, CollectionName = $collection, MetadataEdited = $edited,
+                    MatchStatus = $match, Status = $status, Error = $error
                 WHERE Id = $id;
                 """,
                 ("$type", (object?)item.MediaType ?? DBNull.Value),
@@ -915,6 +1131,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 ("$overview", (object?)item.Overview ?? DBNull.Value),
                 ("$rating", (object?)item.Rating ?? DBNull.Value),
                 ("$poster", (object?)item.PosterPath ?? DBNull.Value),
+                ("$collection", (object?)item.CollectionName ?? DBNull.Value),
+                ("$edited", item.MetadataEdited ? 1 : 0),
                 ("$match", (int)item.MatchStatus),
                 ("$status", (int)item.Status),
                 ("$error", (object?)item.Error ?? DBNull.Value),
@@ -1026,7 +1244,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         }
     }
 
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 5;
 
     private void Migrate()
     {
@@ -1132,8 +1350,14 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             version = 3;
         }
 
-        if (version < SchemaVersion)
+        if (version < 4)
+        {
             MigrateToVersion4();
+            version = 4;
+        }
+
+        if (version < SchemaVersion)
+            MigrateToVersion5();
     }
 
     private int ReadUserVersion()
@@ -1226,8 +1450,40 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             );
             """;
         command.ExecuteNonQuery();
-        WriteUserVersion(SchemaVersion, tx);
+        WriteUserVersion(4, tx);
         tx.Commit();
+    }
+
+    private void MigrateToVersion5()
+    {
+        using var tx = _connection.BeginTransaction();
+        using var command = _connection.CreateCommand();
+        command.Transaction = tx;
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS Favorite (
+                MediaItemId TEXT PRIMARY KEY,
+                AddedUtcTicks INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS IX_Favorite_Added ON Favorite(AddedUtcTicks DESC);
+            """;
+        command.ExecuteNonQuery();
+        AddColumn("MediaItem", "AudioCodec", "TEXT NULL", tx);
+        AddColumn("MediaItem", "AudioStreamCount", "INTEGER NOT NULL DEFAULT 0", tx);
+        AddColumn("MediaItem", "SubtitleStreamCount", "INTEGER NOT NULL DEFAULT 0", tx);
+        AddColumn("MediaItem", "CollectionName", "TEXT NULL", tx);
+        AddColumn("MediaItem", "MetadataEdited", "INTEGER NOT NULL DEFAULT 0", tx);
+        WriteUserVersion(5, tx);
+        tx.Commit();
+    }
+
+    private void AddColumn(string table, string column, string declaration, SqliteTransaction transaction)
+    {
+        if (HasColumn(table, column, transaction))
+            return;
+        using var command = _connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {declaration};";
+        command.ExecuteNonQuery();
     }
 
     private bool HasColumn(string table, string column, SqliteTransaction? transaction = null)
@@ -1306,6 +1562,9 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             Width = reader.IsDBNull(reader.GetOrdinal("Width")) ? null : reader.GetInt32(reader.GetOrdinal("Width")),
             Height = reader.IsDBNull(reader.GetOrdinal("Height")) ? null : reader.GetInt32(reader.GetOrdinal("Height")),
             VideoCodec = reader.IsDBNull(reader.GetOrdinal("VideoCodec")) ? null : reader.GetString(reader.GetOrdinal("VideoCodec")),
+            AudioCodec = reader.IsDBNull(reader.GetOrdinal("AudioCodec")) ? null : reader.GetString(reader.GetOrdinal("AudioCodec")),
+            AudioStreamCount = reader.GetInt32(reader.GetOrdinal("AudioStreamCount")),
+            SubtitleStreamCount = reader.GetInt32(reader.GetOrdinal("SubtitleStreamCount")),
             Status = (ItemStatus)reader.GetInt32(reader.GetOrdinal("Status")),
             Error = reader.IsDBNull(reader.GetOrdinal("Error")) ? null : reader.GetString(reader.GetOrdinal("Error")),
             SheetPath = reader.IsDBNull(reader.GetOrdinal("SheetPath")) ? null : reader.GetString(reader.GetOrdinal("SheetPath")),
@@ -1320,6 +1579,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             Overview = reader.IsDBNull(reader.GetOrdinal("Overview")) ? null : reader.GetString(reader.GetOrdinal("Overview")),
             Rating = reader.IsDBNull(reader.GetOrdinal("Rating")) ? null : reader.GetDouble(reader.GetOrdinal("Rating")),
             PosterPath = reader.IsDBNull(reader.GetOrdinal("PosterPath")) ? null : reader.GetString(reader.GetOrdinal("PosterPath")),
+            CollectionName = reader.IsDBNull(reader.GetOrdinal("CollectionName")) ? null : reader.GetString(reader.GetOrdinal("CollectionName")),
+            MetadataEdited = reader.GetInt32(reader.GetOrdinal("MetadataEdited")) != 0,
             MatchStatus = (MatchStatus)reader.GetInt32(reader.GetOrdinal("MatchStatus")),
             AddedUtcTicks = reader.GetInt64(reader.GetOrdinal("AddedUtcTicks"))
         };

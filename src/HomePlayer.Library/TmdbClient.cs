@@ -31,6 +31,26 @@ public sealed class TmdbClient
         return ParseSearch(json, tv);
     }
 
+    public async Task<string?> GetMovieCollectionAsync(int movieId, string apiKey, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return null;
+        var key = "movie-details:" + movieId.ToString(CultureInfo.InvariantCulture);
+        var json = _repository.ReadCache(key, TimeSpan.FromDays(30));
+        if (json == null)
+        {
+            var url = $"https://api.themoviedb.org/3/movie/{movieId}?api_key={Uri.EscapeDataString(apiKey)}&language=zh-CN";
+            json = await GetStringAsync(url, cancellationToken);
+            _repository.WriteCache(key, json);
+        }
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("belongs_to_collection", out var collection)
+            && collection.ValueKind == JsonValueKind.Object
+            && collection.TryGetProperty("name", out var name)
+                ? name.GetString()
+                : null;
+    }
+
     public async Task<string?> DownloadPosterAsync(string? posterPath, int tmdbId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(posterPath))

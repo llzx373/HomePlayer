@@ -10,6 +10,7 @@ public class AppSettingsTests
     {
         var settings = new AppSettings
         {
+            AutoPlayNextEpisode = false,
             LibraryView = new LibraryViewState
             {
                 LibraryId = "lib",
@@ -18,6 +19,9 @@ public class AppSettingsTests
                 Page = 3,
                 PageSize = 100,
                 SortMode = "ModifiedDesc",
+                Layout = LibraryLayout.List,
+                CardSize = LibraryCardSize.Large,
+                InfoDisplay = LibraryInfoDisplay.Technical,
                 ExpandedFolders = ["剧集", "剧集/第 1 季"]
             }
         };
@@ -32,6 +36,10 @@ public class AppSettingsTests
         Assert.Equal(3, loaded.LibraryView.Page);
         Assert.Equal(100, loaded.LibraryView.PageSize);
         Assert.Equal("ModifiedDesc", loaded.LibraryView.SortMode);
+        Assert.Equal(LibraryLayout.List, loaded.LibraryView.Layout);
+        Assert.Equal(LibraryCardSize.Large, loaded.LibraryView.CardSize);
+        Assert.Equal(LibraryInfoDisplay.Technical, loaded.LibraryView.InfoDisplay);
+        Assert.False(loaded.AutoPlayNextEpisode);
         Assert.Equal(["剧集", "剧集/第 1 季"], loaded.LibraryView.ExpandedFolders);
     }
 

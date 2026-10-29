@@ -608,9 +608,16 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             _repository.SaveProbe(item.Id, probe);
             item = _repository.GetItem(item.Id) ?? item;
+            var parsed = FilenameParser.Parse(full);
+            item.Season ??= parsed.Season;
+            item.Episode ??= parsed.Episode;
+            if (parsed.IsTv)
+                item.MediaType = "tv";
+            var hasNfo = NfoMetadata.Apply(item, full);
+            _repository.SaveMetadata(item);
             if (library.Kind == LibraryKind.Raw)
                 BuildThumbs(item, full, cancellationToken);
-            else
+            else if (!hasNfo)
                 await MatchAsync(item, full, cancellationToken);
             _repository.MarkWork(item.Id, 2);
         }
@@ -861,6 +868,16 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         item.Overview = hit.Overview;
         item.Rating = hit.Rating;
         item.PosterPath = await _tmdb.DownloadPosterAsync(hit.PosterPath, hit.Id, cancellationToken);
+        if (hit.MediaType == "movie")
+        {
+            try
+            {
+                item.CollectionName = await _tmdb.GetMovieCollectionAsync(hit.Id, _apiKey() ?? "", cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+            }
+        }
         item.MatchStatus = MatchStatus.Matched;
         item.Status = ItemStatus.Ready;
         item.Error = null;

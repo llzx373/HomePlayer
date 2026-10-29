@@ -61,6 +61,7 @@ public sealed class AppHost : IAsyncDisposable
             post, codecPlans.Get, () => settings.AudioOutputId, repository,
             historyEnabled: () => settings.RecordPlaybackHistory,
             preferences: repository);
+        playback.AutoAdvance = settings.AutoPlayNextEpisode;
         playback.SetVolume(settings.Volume);
         var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning }.Where(item => item != null));
         var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore,

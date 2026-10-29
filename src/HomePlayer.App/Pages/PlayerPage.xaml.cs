@@ -371,6 +371,8 @@ public sealed partial class PlayerPage : Page
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
         PipelineMenuItem.IsChecked = PipelineButton.IsChecked == true;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+        PreviousEpisodeItem.IsEnabled = Playback.Playlist.PreviousIndex() != null;
+        NextEpisodeItem.IsEnabled = Playback.Playlist.NextIndex(false) != null;
         StepFrameButton.IsEnabled = Playback.IsOpen;
     }
 
@@ -415,6 +417,16 @@ public sealed partial class PlayerPage : Page
     private void Stop_Click(object sender, RoutedEventArgs e) => Playback.Stop();
     private async void Next_Click(object sender, RoutedEventArgs e) => await Playback.NextAsync();
     private async void Previous_Click(object sender, RoutedEventArgs e) => await Playback.PreviousAsync();
+    private async void PreviousEpisode_Click(object sender, RoutedEventArgs e)
+    {
+        if (Playback.Playlist.PreviousIndex() is int index)
+            await Playback.PlayIndexAsync(index);
+    }
+    private async void NextEpisode_Click(object sender, RoutedEventArgs e)
+    {
+        if (Playback.Playlist.NextIndex(false) is int index)
+            await Playback.PlayIndexAsync(index);
+    }
     private void SeekBack_Click(object sender, RoutedEventArgs e) =>
         Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
     private void SeekForward_Click(object sender, RoutedEventArgs e) =>

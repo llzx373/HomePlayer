@@ -49,6 +49,7 @@ public sealed partial class LibraryPage : Page
         LibraryList.DisplayMemberPath = nameof(MediaLibrary.Name);
         LibraryList.ItemsSource = _libraries;
         Cards.ItemsSource = _cards;
+        InitializeManagement();
         _reloadTimer = DispatcherQueue.CreateTimer();
         _reloadTimer.Interval = TimeSpan.FromMilliseconds(400);
         _reloadTimer.IsRepeating = false;
@@ -98,27 +99,23 @@ public sealed partial class LibraryPage : Page
         if (!_ready || BrowseTabs.SelectedIndex < 0)
             return;
         _browseMode = (LibraryBrowseMode)BrowseTabs.SelectedIndex;
-        var libraryMode = _browseMode == LibraryBrowseMode.Library;
-        LibraryToolbar.Visibility = libraryMode ? Visibility.Visible : Visibility.Collapsed;
-        Pager.Visibility = libraryMode ? Visibility.Visible : Visibility.Collapsed;
-        RecursiveSwitch.IsEnabled = libraryMode;
-        FolderTree.IsEnabled = libraryMode;
         _page = 1;
+        UpdateBrowseChrome();
         LoadPage();
     }
 
     private void LibraryPage_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var compact = ActualWidth < 1050;
-        Grid.SetColumnSpan(SearchBox, compact ? 5 : 1);
+        var compact = ActualWidth < 1150;
+        Grid.SetColumnSpan(SearchBox, 1);
+        Grid.SetRow(ScopeBox, 0);
+        Grid.SetColumn(ScopeBox, 1);
         Grid.SetRow(FilterBox, compact ? 1 : 0);
-        Grid.SetColumn(FilterBox, compact ? 0 : 1);
+        Grid.SetColumn(FilterBox, compact ? 0 : 2);
         Grid.SetRow(SortBox, compact ? 1 : 0);
-        Grid.SetColumn(SortBox, compact ? 1 : 2);
-        Grid.SetRow(RandomButton, compact ? 1 : 0);
-        Grid.SetColumn(RandomButton, compact ? 2 : 3);
-        Grid.SetRow(RefreshButton, compact ? 1 : 0);
-        Grid.SetColumn(RefreshButton, compact ? 3 : 4);
+        Grid.SetColumn(SortBox, compact ? 1 : 3);
+        Grid.SetRow(AdvancedFiltersButton, compact ? 1 : 0);
+        Grid.SetColumn(AdvancedFiltersButton, compact ? 2 : 4);
     }
 
     private void QueuePageReload()
@@ -261,81 +258,7 @@ public sealed partial class LibraryPage : Page
         return operation + "：" + error.Message;
     }
 
-    private void LoadPage()
-    {
-        if (_loading || App.Host.Exiting)
-            return;
-        var library = LibraryList.SelectedItem as MediaLibrary;
-        ConfigureSort(library?.Kind);
-        UpdateScanWarning();
-        var token = ++_loadToken;
-        if (_browseMode != LibraryBrowseMode.Library)
-        {
-            LoadSpecialPage(token);
-            return;
-        }
-
-        _pageLoading = library != null;
-        UpdateEmptyText();
-        if (library == null)
-        {
-            _cards.Clear();
-            _total = 0;
-            Pager.Update(0, 1, _pageSize);
-            UpdateEmptyText();
-            return;
-        }
-
-        var query = SearchBox.Text?.Trim() ?? "";
-        var sort = CurrentSort(library.Kind);
-        var requestedPage = _page;
-        var pageSize = _pageSize;
-        var libraryId = library.Id;
-        var kind = library.Kind;
-        var folderPath = _folderPath;
-        var recursive = RecursiveSwitch.IsOn;
-        var filter = CurrentFilter(library.Kind);
-        _ = Task.Run(() =>
-        {
-            IReadOnlyList<MediaItem> items;
-            int total;
-            string? error = null;
-            var page = requestedPage;
-            try
-            {
-                total = App.Host.Repository.CountItems(libraryId, folderPath, recursive, query, filter);
-                page = PagedView.ClampPage(page, total, pageSize);
-                items = App.Host.Repository.ListItemsPage(
-                    libraryId, folderPath, recursive, query, filter, sort, (page - 1) * pageSize, pageSize);
-                if (items.Count == 0 && total > 0 && page > 1)
-                {
-                    page--;
-                    items = App.Host.Repository.ListItemsPage(
-                        libraryId, folderPath, recursive, query, filter, sort, (page - 1) * pageSize, pageSize);
-                }
-            }
-            catch (Exception ex)
-            {
-                items = [];
-                total = 0;
-                error = LoadFailure("读取媒体条目", ex);
-            }
-
-            var stamps = ComputeImageStamps(items, kind);
-            IReadOnlyDictionary<string, PlaybackState> states;
-            try
-            {
-                states = App.Host.Repository.LoadPlaybackStates(
-                    items.Select(item => item.FullPath(library.RootPath)).ToList());
-            }
-            catch (Exception)
-            {
-                states = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            DispatcherQueue.TryEnqueue(() => ApplyPage(library, page, pageSize, total, items, stamps, states, token, error));
-        });
-    }
+    private void LoadPage() => LoadManagementPage();
 
     private void LoadSpecialPage(int token)
     {
@@ -625,6 +548,8 @@ public sealed partial class LibraryPage : Page
             {
                 LibraryBrowseMode.ContinueWatching => "还没有看到一半的视频。",
                 LibraryBrowseMode.RecentlyAdded => "媒体库里还没有最近添加的视频。",
+                LibraryBrowseMode.Favorites => "还没有收藏，或没有符合筛选条件的收藏。",
+                LibraryBrowseMode.Series => "还没有可聚合的剧集或电影合集。",
                 _ => "还没有播放历史。"
             };
             return;
@@ -661,8 +586,8 @@ public sealed partial class LibraryPage : Page
     }
 
     private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
-        ? SortBox.SelectedIndex == 1 ? SortMode.YearDesc : SortMode.Title
-        : SortBox.SelectedIndex == 1 ? SortMode.ModifiedDesc : SortMode.FileName;
+        ? SortBox.SelectedIndex switch { 1 => SortMode.YearDesc, 2 => SortMode.Episode, 3 => SortMode.AddedDesc, _ => SortMode.Title }
+        : SortBox.SelectedIndex switch { 1 => SortMode.ModifiedDesc, 2 => SortMode.Episode, 3 => SortMode.AddedDesc, _ => SortMode.FileName };
 
     private LibraryFilter CurrentFilter(LibraryKind kind)
     {
@@ -701,6 +626,8 @@ public sealed partial class LibraryPage : Page
                 SortBox.Items.Add("文件名");
                 SortBox.Items.Add("修改时间");
             }
+            SortBox.Items.Add("剧集顺序");
+            SortBox.Items.Add("最近添加");
 
             SortBox.SelectedIndex = 0;
 
@@ -882,6 +809,9 @@ public sealed partial class LibraryPage : Page
             Page = _page,
             PageSize = _pageSize,
             SortMode = library == null ? "" : CurrentSort(library.Kind).ToString(),
+            Layout = (LibraryLayout)Math.Max(0, LayoutBox.SelectedIndex),
+            CardSize = (LibraryCardSize)Math.Max(0, CardSizeBox.SelectedIndex),
+            InfoDisplay = (LibraryInfoDisplay)Math.Max(0, InfoBox.SelectedIndex),
             ExpandedFolders = expanded
         };
     }
@@ -893,6 +823,11 @@ public sealed partial class LibraryPage : Page
         {
             if (view.PageSize is 30 or 60 or 100 or 200)
                 _pageSize = view.PageSize;
+            LayoutBox.SelectedIndex = (int)view.Layout;
+            CardSizeBox.SelectedIndex = (int)view.CardSize;
+            InfoBox.SelectedIndex = (int)view.InfoDisplay;
+            Cards.Visibility = view.Layout == LibraryLayout.List ? Visibility.Collapsed : Visibility.Visible;
+            MediaList.Visibility = view.Layout == LibraryLayout.List ? Visibility.Visible : Visibility.Collapsed;
             RecursiveSwitch.IsOn = view.Recursive;
             RebuildFolderTree(library);
             foreach (var path in view.ExpandedFolders
@@ -942,9 +877,13 @@ public sealed partial class LibraryPage : Page
     {
         var mode = Enum.TryParse<SortMode>(sortMode, out var parsed) ? parsed : SortMode.FileName;
         ConfigureSort(kind);
-        var index = kind == LibraryKind.Catalog
-            ? mode == SortMode.YearDesc ? 1 : 0
-            : mode == SortMode.ModifiedDesc ? 1 : 0;
+        var index = mode switch
+        {
+            SortMode.YearDesc or SortMode.ModifiedDesc => 1,
+            SortMode.Episode => 2,
+            SortMode.AddedDesc => 3,
+            _ => 0
+        };
         _sorting = true;
         try
         {
@@ -1235,7 +1174,12 @@ public sealed partial class LibraryPage : Page
 
     private async Task PlayCardAsync(MediaCard card, bool restart = false)
     {
-        IReadOnlyList<string> paths = _browseMode == LibraryBrowseMode.Library
+        if (card.SeriesGroup != null)
+        {
+            await ShowSeriesAsync(card.SeriesGroup);
+            return;
+        }
+        IReadOnlyList<string> paths = UsesLibraryQuery
             ? await ListViewPathsAsync(card.Library)
             : _cards.Select(item => item.Item.FullPath(item.Library.RootPath)).ToList();
         if (paths.Count == 0)
@@ -1256,13 +1200,9 @@ public sealed partial class LibraryPage : Page
 
     private async Task<IReadOnlyList<string>> ListViewPathsAsync(MediaLibrary library)
     {
-        var folderPath = _folderPath;
-        var recursive = RecursiveSwitch.IsOn;
-        var query = SearchBox.Text?.Trim() ?? "";
+        var query = CurrentQuery();
         var sort = CurrentSort(library.Kind);
-        var filter = CurrentFilter(library.Kind);
-        return await Task.Run(() => App.Host.Repository.ListAllPaths(
-            library.Id, folderPath, recursive, query, filter, sort));
+        return await Task.Run(() => App.Host.Repository.ListAllPaths(query, sort));
     }
 
     private async void Random_Click(object sender, RoutedEventArgs e)
@@ -1278,10 +1218,10 @@ public sealed partial class LibraryPage : Page
 
     private async void Cards_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var card = CardFrom(e.OriginalSource) ?? Cards.SelectedItem as MediaCard;
+        var card = CardFrom(e.OriginalSource) ?? ActiveItems.SelectedItem as MediaCard;
         if (card == null)
             return;
-        Cards.SelectedItem = card;
+        ActiveItems.SelectedItem = card;
         if (e.Key == VirtualKey.Enter)
         {
             e.Handled = true;
@@ -1303,8 +1243,9 @@ public sealed partial class LibraryPage : Page
     {
         if (CardFrom(e.OriginalSource) is not MediaCard card)
             return;
-        Cards.SelectedItem = card;
-        BuildCardMenu(card).ShowAt(Cards, e.GetPosition(Cards));
+        if (MultiSelectToggle.IsChecked != true || !ActiveItems.SelectedItems.Contains(card))
+            ActiveItems.SelectedItem = card;
+        BuildCardMenu(card).ShowAt(ActiveItems, e.GetPosition(ActiveItems));
         e.Handled = true;
     }
 
@@ -1327,7 +1268,15 @@ public sealed partial class LibraryPage : Page
             return Task.CompletedTask;
         }));
         if (card.HasLibraryEntry)
-            menu.Items.Add(Action("查看", () => ShowCardAsync(card)));
+        {
+            menu.Items.Add(Action("查看与编辑", () => ShowCardAsync(card)));
+            menu.Items.Add(Action("编辑标题、季集与合集", () => EditMetadataAsync(card)));
+            menu.Items.Add(Action(card.FavoriteVisibility == Visibility.Visible ? "取消收藏" : "收藏", async () =>
+            {
+                await Task.Run(() => App.Host.Repository.SetFavorite(card.Item.Id, card.FavoriteVisibility != Visibility.Visible));
+                LoadPage();
+            }));
+        }
         menu.Items.Add(Action("在资源管理器中打开", () =>
         {
             System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{card.Item.FullPath(card.Library.RootPath)}\"");
@@ -1588,7 +1537,9 @@ public enum LibraryBrowseMode
     Library,
     ContinueWatching,
     RecentlyAdded,
-    RecentlyPlayed
+    RecentlyPlayed,
+    Favorites,
+    Series
 }
 
 public sealed record SpecialMedia(
@@ -1597,7 +1548,7 @@ public sealed record SpecialMedia(
     PlaybackState? State,
     bool HasLibraryEntry);
 
-public sealed class MediaCard
+public sealed record MediaCard
 {
     public required MediaItem Item { get; init; }
     public required MediaLibrary Library { get; init; }
@@ -1613,4 +1564,16 @@ public sealed class MediaCard
     public bool HasLibraryEntry { get; init; } = true;
     public bool IsHistoryEntry { get; init; }
     public string? HistoryPath { get; init; }
+    public double CardWidth { get; init; } = 220;
+    public double ImageHeight { get; init; } = 150;
+    public Visibility FavoriteVisibility { get; init; } = Visibility.Collapsed;
+    public MediaSeriesGroup? SeriesGroup { get; init; }
+    public string FullPath { get; init; } = "";
+    public string DurationText { get; init; } = "";
+    public string ResolutionText { get; init; } = "";
+    public string CodecText { get; init; } = "";
+    public string SizeText { get; init; } = "";
+    public string AddedText { get; init; } = "";
+    public string WatchText { get; init; } = "";
+    public string LibraryText { get; init; } = "";
 }

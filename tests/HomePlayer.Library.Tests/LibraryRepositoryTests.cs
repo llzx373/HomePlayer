@@ -315,6 +315,90 @@ public class LibraryRepositoryTests
         Assert.Empty(fixture.Repository.LoadAll(10));
     }
 
+    [Fact]
+    public void Cross_library_queries_combine_metadata_stream_and_favorite_filters()
+    {
+        using var fixture = new RepositoryFixture();
+        var first = fixture.AddLibrary("Movies", LibraryKind.Catalog);
+        var second = fixture.AddLibrary("Shows", LibraryKind.Catalog);
+        var movie = fixture.AddItem(first, "movie.mkv");
+        movie.MediaType = "movie";
+        movie.Title = "A Movie";
+        movie.Year = 2024;
+        fixture.Repository.SaveMetadata(movie);
+        fixture.Repository.SaveProbe(movie.Id, new MediaProbe(7200, 3840, 2160, "hevc", "aac", "matroska")
+        {
+            AudioStreamCount = 2,
+            SubtitleStreamCount = 1
+        });
+        var episode = fixture.AddItem(second, "show.mkv");
+        episode.MediaType = "tv";
+        episode.Title = "A Show";
+        episode.Season = 1;
+        episode.Episode = 2;
+        fixture.Repository.SaveMetadata(episode);
+        fixture.Repository.SaveProbe(episode.Id, new MediaProbe(1500, 1920, 1080, "h264", "aac", "matroska"));
+        fixture.Repository.SetFavorite(movie.Id, true);
+
+        var query = new MediaLibraryQuery
+        {
+            FavoritesOnly = true,
+            MediaType = MediaTypeFilter.Movie,
+            Resolution = ResolutionFilter.UltraHd,
+            Codec = CodecFilter.H265,
+            Duration = DurationFilter.Long,
+            Year = 2024,
+            Subtitles = PresenceFilter.Present,
+            MultipleAudioTracks = true
+        };
+        Assert.Equal(movie.Id, Assert.Single(fixture.Repository.ListItemsPage(query, SortMode.Title, 0, 10)).Id);
+        Assert.Equal(1, fixture.Repository.CountItems(query));
+        Assert.Equal(episode.Id, Assert.Single(fixture.Repository.ListItemsPage(
+            new MediaLibraryQuery { MediaType = MediaTypeFilter.Episode }, SortMode.Episode, 0, 10)).Id);
+        Assert.Empty(fixture.Repository.ListItemsPage(query with { LibraryId = second.Id }, SortMode.Title, 0, 10));
+    }
+
+    [Fact]
+    public void Watch_filters_and_favorite_updates_round_trip()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        var watched = fixture.AddItem(library, "watched.mkv");
+        var watching = fixture.AddItem(library, "watching.mkv");
+        fixture.AddItem(library, "new.mkv");
+        fixture.Repository.Save(new PlaybackState(watched.FullPath(library.RootPath), 0, 100, true, 1));
+        fixture.Repository.Save(new PlaybackState(watching.FullPath(library.RootPath), 30, 100, false, 2));
+        fixture.Repository.Flush();
+
+        Assert.Equal(watched.Id, Assert.Single(fixture.Repository.ListItemsPage(
+            new MediaLibraryQuery { LibraryId = library.Id, Watch = WatchFilter.Watched }, SortMode.FileName, 0, 10)).Id);
+        Assert.Equal(watching.Id, Assert.Single(fixture.Repository.ListItemsPage(
+            new MediaLibraryQuery { LibraryId = library.Id, Watch = WatchFilter.InProgress }, SortMode.FileName, 0, 10)).Id);
+        Assert.Equal(1, fixture.Repository.CountItems(new MediaLibraryQuery { LibraryId = library.Id, Watch = WatchFilter.Unwatched }));
+        fixture.Repository.SetFavorites([watched.Id, watching.Id], true);
+        Assert.True(fixture.Repository.IsFavorite(watched.Id));
+        Assert.True(fixture.Repository.IsFavorite(watching.Id));
+        fixture.Repository.SetFavorite(watched.Id, false);
+        Assert.False(fixture.Repository.IsFavorite(watched.Id));
+    }
+
+    [Fact]
+    public void Batch_remove_deletes_records_without_touching_disk_files()
+    {
+        using var fixture = new RepositoryFixture();
+        var library = fixture.AddLibrary("Test", LibraryKind.Raw);
+        var item = fixture.AddItem(library, "keep-on-disk.mkv");
+        var path = item.FullPath(library.RootPath);
+        File.WriteAllText(path, "video");
+        fixture.Repository.SetFavorite(item.Id, true);
+
+        fixture.Repository.DeleteItems([item.Id]);
+
+        Assert.Null(fixture.Repository.GetItem(item.Id));
+        Assert.False(fixture.Repository.IsFavorite(item.Id));
+        Assert.True(File.Exists(path));
+    }
+
     private sealed class RepositoryFixture : IDisposable
     {
         private readonly string _directory;

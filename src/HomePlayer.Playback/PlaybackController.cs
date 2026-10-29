@@ -65,6 +65,7 @@ public sealed class PlaybackController : IDisposable
     public double Volume => _volume;
     public double Rate => _rate;
     public bool Muted => _muted;
+    public bool AutoAdvance { get; set; } = true;
     public int VideoWidth => _videoWidth;
     public int VideoHeight => _videoHeight;
     public event Action? Changed;
@@ -577,7 +578,7 @@ public sealed class PlaybackController : IDisposable
         {
             if (token != _token)
                 return;
-            var next = Playlist.NextIndex(true);
+            var next = AutoAdvance ? Playlist.NextIndex(true) : null;
             if (next == null)
             {
                 if (path != null)

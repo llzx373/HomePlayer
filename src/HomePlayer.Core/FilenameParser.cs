@@ -25,18 +25,29 @@ public static partial class FilenameParser
         var tv = SeasonEpisode().Match(spaced);
         if (!tv.Success)
             tv = CrossEpisode().Match(spaced);
+        if (!tv.Success)
+            tv = EpisodeOnly().Match(spaced);
 
         if (tv.Success)
         {
             var title = tv.Groups["title"].Value;
             var year = TakeYear(ref title);
             title = Clean(title);
+            int? season = tv.Groups["s"].Success
+                ? int.Parse(tv.Groups["s"].Value)
+                : SeasonFromDirectory(path);
             return new ParsedName(
                 title,
                 year,
-                int.Parse(tv.Groups["s"].Value),
+                season,
                 int.Parse(tv.Groups["e"].Value),
                 true);
+        }
+
+        if (Ova().IsMatch(spaced))
+        {
+            var title = Clean(Ova().Replace(spaced, " "));
+            return new ParsedName(title, TakeYear(ref title), null, null, true);
         }
 
         var movie = spaced;
@@ -94,6 +105,31 @@ public static partial class FilenameParser
 
     [GeneratedRegex(@"^(?<title>.+?)\s+(?<s>\d{1,2})x(?<e>\d{2,3})\b", RegexOptions.IgnoreCase)]
     private static partial Regex CrossEpisode();
+
+    [GeneratedRegex(@"^(?<title>.+?)\s+(?:[Ee](?<e>\d{1,3})|第\s*(?<e>\d{1,3})\s*集)(?=\s|$)")]
+    private static partial Regex EpisodeOnly();
+
+    [GeneratedRegex(@"(?:[\\/]|^)(?:season|s)\s*(?<s>\d{1,2})(?:[\\/]|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex SeasonDirectory();
+
+    [GeneratedRegex(@"第\s*(?<s>\d{1,2})\s*季")]
+    private static partial Regex ChineseSeasonDirectory();
+
+    [GeneratedRegex(@"(?:[\\/]|^)(?:specials?|特别篇)(?:[\\/]|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex SpecialsDirectory();
+
+    [GeneratedRegex(@"\bOVA\b", RegexOptions.IgnoreCase)]
+    private static partial Regex Ova();
+
+    private static int? SeasonFromDirectory(string path)
+    {
+        if (SpecialsDirectory().IsMatch(path))
+            return 0;
+        var match = SeasonDirectory().Match(path);
+        if (!match.Success)
+            match = ChineseSeasonDirectory().Match(path);
+        return match.Success ? int.Parse(match.Groups["s"].Value) : null;
+    }
 
     [GeneratedRegex(@"\b(?:19|20)\d{2}\b")]
     private static partial Regex YearToken();

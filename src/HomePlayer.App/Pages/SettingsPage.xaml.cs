@@ -48,6 +48,7 @@ public sealed partial class SettingsPage : Page
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
         FitWindowSwitch.IsOn = settings.FitWindow;
         AlwaysOnTopSwitch.IsOn = settings.AlwaysOnTop;
+        AutoPlayNextSwitch.IsOn = settings.AutoPlayNextEpisode;
         SubtitleFontSizeBox.Value = settings.SubtitleFontSize;
         SubtitleColorBox.SelectedIndex = (int)settings.SubtitleColor;
         SubtitlePositionBox.SelectedIndex = (int)settings.SubtitlePosition;
@@ -85,6 +86,7 @@ public sealed partial class SettingsPage : Page
                 HistorySwitch.IsOn = App.Host.Settings.RecordPlaybackHistory;
                 FitWindowSwitch.IsOn = App.Host.Settings.FitWindow;
                 AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
+                AutoPlayNextSwitch.IsOn = App.Host.Settings.AutoPlayNextEpisode;
                 SubtitleFontSizeBox.Value = App.Host.Settings.SubtitleFontSize;
                 SubtitleColorBox.SelectedIndex = (int)App.Host.Settings.SubtitleColor;
                 SubtitlePositionBox.SelectedIndex = (int)App.Host.Settings.SubtitlePosition;
@@ -260,6 +262,15 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
         SaveSettings();
         App.Window.SetAlwaysOnTop(AlwaysOnTopSwitch.IsOn);
+    }
+
+    private void AutoPlayNext_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.AutoPlayNextEpisode = AutoPlayNextSwitch.IsOn;
+        App.Host.Playback.AutoAdvance = AutoPlayNextSwitch.IsOn;
+        SaveSettings();
     }
 
     private void SubtitleFontSize_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args)

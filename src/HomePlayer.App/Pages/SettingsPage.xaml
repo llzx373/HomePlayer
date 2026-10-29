@@ -82,6 +82,8 @@
                                     <ToggleSwitch x:Name="FitWindowSwitch" Header="自适应窗口" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="换片时按原始画面比例调整窗口；全屏时不改变窗口大小。" />
                                     <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
+                                    <ToggleSwitch x:Name="AutoPlayNextSwitch" Header="播完自动连播" OnContent="自动播放下一条" OffContent="播完停止" Toggled="AutoPlayNext_Toggled" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="从剧集与合集入口播放时，会按季集顺序自动连播。" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">

@@ -531,6 +531,9 @@
                         <FontIcon Glyph="&#xE712;" FontSize="16" />
                         <Button.Flyout>
                             <MenuFlyout Placement="Bottom">
+                                <MenuFlyoutItem x:Name="PreviousEpisodeItem" Text="上一集" Click="PreviousEpisode_Click" />
+                                <MenuFlyoutItem x:Name="NextEpisodeItem" Text="下一集" Click="NextEpisode_Click" />
+                                <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem
                                     x:Name="FitWindowMenuItem"
                                     Text="自适应窗口"

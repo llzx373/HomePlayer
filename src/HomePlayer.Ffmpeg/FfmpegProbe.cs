@@ -33,13 +33,28 @@ public static unsafe class FfmpegProbe
                 height = stream->codecpar->height;
             }
 
+            var audioStreams = 0;
+            var subtitleStreams = 0;
+            for (var i = 0; i < format->nb_streams; i++)
+            {
+                var type = format->streams[i]->codecpar->codec_type;
+                if (type == AVMediaType.AVMEDIA_TYPE_AUDIO)
+                    audioStreams++;
+                else if (type == AVMediaType.AVMEDIA_TYPE_SUBTITLE)
+                    subtitleStreams++;
+            }
+
             return new MediaProbe(
                 duration,
                 width,
                 height,
                 videoCodec == null ? null : ffmpeg.avcodec_get_name(videoCodec->id),
                 audioCodec == null ? null : ffmpeg.avcodec_get_name(audioCodec->id),
-                format->iformat == null ? null : Marshal.PtrToStringAnsi((IntPtr)format->iformat->name));
+                format->iformat == null ? null : Marshal.PtrToStringAnsi((IntPtr)format->iformat->name))
+            {
+                AudioStreamCount = audioStreams,
+                SubtitleStreamCount = subtitleStreams
+            };
         }
         finally
         {
