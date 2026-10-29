@@ -17,174 +17,257 @@
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </Page.Resources>
-    <ScrollViewer>
-        <StackPanel Padding="24" Spacing="16" MaxWidth="880">
-            <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
+    <Grid Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
+        <TabView
+            x:Name="SettingsTabs"
+            Grid.Row="1"
+            Margin="0,16,0,0"
+            IsAddTabButtonVisible="False"
+            CanDragTabs="False"
+            CanReorderTabs="False"
+            AllowDropTabs="False">
+            <TabView.TabItems>
+                <TabViewItem Header="常规" IsClosable="False">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="16" Margin="0,16,0,0">
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="常规" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机，输入停顿后自动保存" />
+                                    <TextBlock x:Name="SaveStatusText" Style="{StaticResource SettingsDescriptionStyle}" Text="更改会自动保存。" />
+                                    <ToggleSwitch
+                                        x:Name="TraySwitch"
+                                        Header="点击关闭时"
+                                        OnContent="最小化到系统托盘"
+                                        OffContent="退出程序"
+                                        Toggled="Tray_Toggled" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="托盘图标左键打开窗口，右键可以真正退出。" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="文件关联" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="安装程序会登记支持的视频类型；默认播放器仍需在 Windows 设置中确认。" />
+                                    <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabViewItem>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="常规" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机，输入停顿后自动保存" />
-                    <TextBlock x:Name="SaveStatusText" Style="{StaticResource SettingsDescriptionStyle}" Text="更改会自动保存。" />
-                    <ToggleSwitch
-                        x:Name="TraySwitch"
-                        Header="点击关闭时"
-                        OnContent="最小化到系统托盘"
-                        OffContent="退出程序"
-                        Toggled="Tray_Toggled" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="托盘图标左键打开窗口，右键可以真正退出。" />
-                </StackPanel>
-            </Border>
+                <TabViewItem Header="播放" IsClosable="False">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="16" Margin="0,16,0,0">
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="窗口与播放" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ComboBox x:Name="TitleBarBox" Header="窗口外观" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="经典标题栏" />
+                                        <ComboBoxItem Content="无边框播放" />
+                                    </ComboBox>
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="无边框播放只作用于正在播放页；鼠标移向顶部或底部时显示对应控件。" />
+                                    <ToggleSwitch x:Name="FitWindowSwitch" Header="自适应窗口" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="换片时按原始画面比例调整窗口；全屏时不改变窗口大小。" />
+                                    <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随 Windows 当前的声音出口，改完后从下一次播放开始生效。" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabViewItem>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="窗口与播放" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <ComboBox x:Name="TitleBarBox" Header="窗口外观" HorizontalAlignment="Stretch">
-                        <ComboBoxItem Content="经典标题栏" />
-                        <ComboBoxItem Content="无边框播放" />
-                    </ComboBox>
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="无边框播放只作用于正在播放页；鼠标移向顶部或底部时显示对应控件。" />
-                    <ToggleSwitch x:Name="FitWindowSwitch" Header="自适应窗口" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="换片时按原始画面比例调整窗口；全屏时不改变窗口大小。" />
-                    <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
-                </StackPanel>
-            </Border>
+                <TabViewItem Header="快捷键" IsClosable="False">
+                    <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="点一项后面的按钮再按下新快捷键。同一组键只能分配给一个功能。" />
+                            </StackPanel>
+                            <ScrollViewer Grid.Row="1" Margin="0,12" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="HotkeyList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="8" Padding="0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="168" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="{Binding Display}" Click="Hotkey_Click" HorizontalAlignment="Stretch" />
+                                                <Button Grid.Column="2" Content="清除" Click="HotkeyClear_Click" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <Button Grid.Row="2" Content="恢复默认快捷键" Click="ResetHotkeys_Click" HorizontalAlignment="Left" />
+                        </Grid>
+                    </Border>
+                </TabViewItem>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="文件关联" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="安装程序会登记支持的视频类型；默认播放器仍需在 Windows 设置中确认。" />
-                    <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" HorizontalAlignment="Left" />
-                </StackPanel>
-            </Border>
+                <TabViewItem Header="编解码器" IsClosable="False">
+                    <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="编解码器" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="CodecSummary" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="按从上到下的顺序尝试。先选中一行再调整顺序；不可用的 x86 滤镜会列出但不能勾选。改完后从下一次播放开始生效。" />
+                            </StackPanel>
+                            <TabView
+                                Grid.Row="1"
+                                Margin="0,12"
+                                IsAddTabButtonVisible="False"
+                                CanDragTabs="False"
+                                CanReorderTabs="False"
+                                AllowDropTabs="False">
+                                <TabView.Resources>
+                                    <Style TargetType="TabViewItem">
+                                        <Setter Property="IsClosable" Value="False" />
+                                    </Style>
+                                </TabView.Resources>
+                                <TabViewItem Header="分离器">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <ListView x:Name="SplitterList" SelectionMode="Single">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid ColumnSpacing="8" Padding="0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding Title}" />
+                                                            <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                        <StackPanel Grid.Row="1" Margin="0,12,0,0" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="上移" Click="SplitterUp_Click" />
+                                            <Button Content="下移" Click="SplitterDown_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </TabViewItem>
+                                <TabViewItem Header="视频解码">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <ListView x:Name="VideoList" SelectionMode="Single">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid ColumnSpacing="8" Padding="0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding Title}" />
+                                                            <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                        <StackPanel Grid.Row="1" Margin="0,12,0,0" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="上移" Click="VideoUp_Click" />
+                                            <Button Content="下移" Click="VideoDown_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </TabViewItem>
+                                <TabViewItem Header="音频解码">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <ListView x:Name="AudioList" SelectionMode="Single">
+                                            <ListView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid ColumnSpacing="8" Padding="0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="{Binding Title}" />
+                                                            <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListView.ItemTemplate>
+                                        </ListView>
+                                        <StackPanel Grid.Row="1" Margin="0,12,0,0" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="上移" Click="AudioUp_Click" />
+                                            <Button Content="下移" Click="AudioDown_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </TabViewItem>
+                            </TabView>
+                            <Grid Grid.Row="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Margin="0,0,12,0" VerticalAlignment="Center" Text="分离器和解码都失败时会改用自带 FFmpeg；缩略图始终由 FFmpeg 抽取。" />
+                                <Button Grid.Column="1" Content="恢复默认顺序" Click="ResetCodecs_Click" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </TabViewItem>
 
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="点一项后面的按钮再按下新快捷键。同一组键只能分配给一个功能。" />
-                    <ItemsControl x:Name="HotkeyList">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnSpacing="8" Padding="0,6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="168" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Content="{Binding Display}" Click="Hotkey_Click" HorizontalAlignment="Stretch" />
-                                    <Button Grid.Column="2" Content="清除" Click="HotkeyClear_Click" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button Content="恢复默认快捷键" Click="ResetHotkeys_Click" HorizontalAlignment="Left" />
-                </StackPanel>
-            </Border>
-
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随 Windows 当前的声音出口，改完后从下一次播放开始生效。" />
-                </StackPanel>
-            </Border>
-
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="编解码器" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBlock x:Name="CodecSummary" TextWrapping="Wrap" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="按从上到下的顺序尝试。先选中一行再调整顺序；不可用的 x86 滤镜会列出但不能勾选。改完后从下一次播放开始生效。" />
-
-                    <TextBlock Text="分离器" />
-                    <ListView x:Name="SplitterList" MaxHeight="220" SelectionMode="Single">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnSpacing="8" Padding="0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding Title}" />
-                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="上移" Click="SplitterUp_Click" />
-                        <Button Content="下移" Click="SplitterDown_Click" />
-                    </StackPanel>
-
-                    <TextBlock Text="视频解码" />
-                    <ListView x:Name="VideoList" MaxHeight="220" SelectionMode="Single">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnSpacing="8" Padding="0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding Title}" />
-                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="上移" Click="VideoUp_Click" />
-                        <Button Content="下移" Click="VideoDown_Click" />
-                    </StackPanel>
-
-                    <TextBlock Text="音频解码" />
-                    <ListView x:Name="AudioList" MaxHeight="220" SelectionMode="Single">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnSpacing="8" Padding="0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding Title}" />
-                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="上移" Click="AudioUp_Click" />
-                        <Button Content="下移" Click="AudioDown_Click" />
-                        <Button Content="恢复默认顺序" Click="ResetCodecs_Click" />
-                    </StackPanel>
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="分离器和解码都失败时会改用自带 FFmpeg；缩略图始终由 FFmpeg 抽取。" />
-                </StackPanel>
-            </Border>
-
-            <Border Style="{StaticResource SettingsCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="存储与诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBlock x:Name="CacheText" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清除缓存只重建缩略图和海报，不会删除视频或观看进度。" />
-                    <Button Content="清除缩略图缓存" Click="Clear_Click" HorizontalAlignment="Left" />
-                    <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                    <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
-                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="未处理异常、后台任务异常、原生崩溃和异常退出都会记录到本机数据目录。" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="查看崩溃日志" Click="ViewCrashes_Click" />
-                        <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
-                        <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-    </ScrollViewer>
+                <TabViewItem Header="存储与诊断" IsClosable="False">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="存储与诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="CacheText" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清除缓存只重建缩略图和海报，不会删除视频或观看进度。" />
+                                <Button Content="清除缩略图缓存" Click="Clear_Click" HorizontalAlignment="Left" />
+                                <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="未处理异常、后台任务异常、原生崩溃和异常退出都会记录到本机数据目录。" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="查看崩溃日志" Click="ViewCrashes_Click" />
+                                    <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
+                                    <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </TabViewItem>
+            </TabView.TabItems>
+        </TabView>
+    </Grid>
 </Page>

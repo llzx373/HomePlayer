@@ -25,6 +25,8 @@ public sealed partial class SettingsPage : Page
     private bool _loading = true;
     private bool _codecsReady;
     private int _codecScanVersion;
+    private int _audioLoadVersion;
+    private int _crashSummaryVersion;
 
     public SettingsPage()
     {
@@ -49,13 +51,18 @@ public sealed partial class SettingsPage : Page
         AudioList.ItemsSource = _audios;
         HotkeyList.ItemsSource = _hotkeys;
         LoadHotkeysSafe(settings.Hotkeys);
-        LoadAudioDevicesSafe(settings.AudioOutputId);
+        AudioDeviceBox.ItemsSource = DefaultAudioDevices();
+        AudioDeviceBox.SelectedIndex = 0;
+        AudioDeviceBox.IsEnabled = false;
         CodecSummary.Text = "正在扫描编解码器…";
         _ = ReloadCodecsAsync(settings);
+        SettingsTabs.SelectionChanged += (_, _) => EndCapture();
         AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
         Unloaded += (_, _) =>
         {
             EndCapture();
+            ++_audioLoadVersion;
+            ++_crashSummaryVersion;
             _apiKeyTimer.Stop();
             SaveApiKey();
         };
@@ -68,14 +75,14 @@ public sealed partial class SettingsPage : Page
                 TraySwitch.IsOn = App.Host.Settings.CloseToTray;
                 FitWindowSwitch.IsOn = App.Host.Settings.FitWindow;
                 AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
-                LoadAudioDevicesSafe(App.Host.Settings.AudioOutputId);
             }
             finally
             {
                 _loading = false;
             }
+            _ = LoadAudioDevicesAsync(App.Host.Settings.AudioOutputId);
             _ = RefreshCacheTextAsync();
-            RefreshCrashSummary();
+            _ = RefreshCrashSummaryAsync();
         };
         _loading = false;
         CacheText.Text = "缓存占用计算中…";
@@ -94,19 +101,47 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void LoadAudioDevicesSafe(string? savedId)
+    private async Task LoadAudioDevicesAsync(string? savedId)
     {
+        var version = ++_audioLoadVersion;
+        AudioDeviceBox.IsEnabled = false;
         try
         {
-            LoadAudioDevices(savedId);
+            var items = await Task.Run(() => AudioOutputs.List(savedId));
+            if (version != _audioLoadVersion)
+                return;
+            ApplyAudioDevices(items, savedId);
         }
         catch (Exception ex)
         {
+            if (version != _audioLoadVersion)
+                return;
             CrashLog.Write(CrashLog.UnhandledKind, "枚举播放设备失败" + Environment.NewLine + ex);
-            AudioDeviceBox.ItemsSource = new List<AudioOutput> { new(AudioOutputs.SystemDefaultId, "系统默认", true) };
-            AudioDeviceBox.SelectedIndex = 0;
+            ApplyAudioDevices(DefaultAudioDevices(), null);
+        }
+        finally
+        {
+            if (version == _audioLoadVersion)
+                AudioDeviceBox.IsEnabled = true;
         }
     }
+
+    private void ApplyAudioDevices(IReadOnlyList<AudioOutput> items, string? savedId)
+    {
+        _loading = true;
+        try
+        {
+            AudioDeviceBox.ItemsSource = items;
+            AudioDeviceBox.SelectedItem = items.FirstOrDefault(item => item.Id == (savedId ?? AudioOutputs.SystemDefaultId)) ?? items[0];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static IReadOnlyList<AudioOutput> DefaultAudioDevices() =>
+        [new(AudioOutputs.SystemDefaultId, "系统默认", true)];
 
     private async Task RefreshCacheTextAsync()
     {
@@ -234,13 +269,6 @@ public sealed partial class SettingsPage : Page
             return;
         WriteCodecs();
         SaveSettings();
-    }
-
-    private void LoadAudioDevices(string? savedId)
-    {
-        var items = AudioOutputs.List(savedId);
-        AudioDeviceBox.ItemsSource = items;
-        AudioDeviceBox.SelectedItem = items.FirstOrDefault(item => item.Id == (savedId ?? AudioOutputs.SystemDefaultId)) ?? items[0];
     }
 
     private void WriteAudioDevice()
@@ -430,22 +458,22 @@ public sealed partial class SettingsPage : Page
     private static bool Down(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
-    private void RefreshCrashSummary()
+    private async Task RefreshCrashSummaryAsync()
     {
+        var version = ++_crashSummaryVersion;
         try
         {
-            var items = CrashLog.List();
-            if (items.Count == 0)
-            {
-                CrashSummary.Text = "还没有崩溃记录。";
+            var items = await Task.Run(CrashLog.List);
+            if (version != _crashSummaryVersion)
                 return;
-            }
-
-            CrashSummary.Text = $"共 {items.Count} 条，最近：{items[0].Title}";
+            CrashSummary.Text = items.Count == 0
+                ? "还没有崩溃记录。"
+                : $"共 {items.Count} 条，最近：{items[0].Title}";
         }
         catch (Exception)
         {
-            CrashSummary.Text = "崩溃日志读取失败。";
+            if (version == _crashSummaryVersion)
+                CrashSummary.Text = "崩溃日志读取失败。";
         }
     }
 
@@ -454,7 +482,7 @@ public sealed partial class SettingsPage : Page
         IReadOnlyList<CrashLogItem> items;
         try
         {
-            items = CrashLog.List();
+            items = await Task.Run(CrashLog.List);
         }
         catch (Exception ex)
         {
@@ -465,7 +493,7 @@ public sealed partial class SettingsPage : Page
         if (items.Count == 0)
         {
             await Message("还没有崩溃记录。");
-            RefreshCrashSummary();
+            _ = RefreshCrashSummaryAsync();
             return;
         }
 
@@ -523,7 +551,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "关闭",
             XamlRoot = XamlRoot
         }.ShowAsync();
-        RefreshCrashSummary();
+        _ = RefreshCrashSummaryAsync();
     }
 
     private async void OpenCrashes_Click(object sender, RoutedEventArgs e)
@@ -553,8 +581,8 @@ public sealed partial class SettingsPage : Page
             return;
         try
         {
-            CrashLog.Clear();
-            RefreshCrashSummary();
+            await Task.Run(CrashLog.Clear);
+            _ = RefreshCrashSummaryAsync();
         }
         catch (Exception ex)
         {
