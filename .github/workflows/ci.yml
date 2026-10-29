@@ -32,3 +32,16 @@ jobs:
 
       - name: Build
         run: dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release --nologo
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: pwsh -NoProfile -File installer/build.ps1
+
+      - name: Installer upgrade smoke test
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = @($props.Project.PropertyGroup | ForEach-Object { $_.Version }) | Where-Object { $_ } | Select-Object -First 1
+          pwsh -NoProfile -File installer/smoke-test.ps1 -InstallerPath "artifacts/HomePlayer-Setup-$version.exe"

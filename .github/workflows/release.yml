@@ -50,6 +50,9 @@ jobs:
       - name: Build installer
         run: pwsh -NoProfile -File installer/build.ps1 -Version ${{ steps.version.outputs.version }}
 
+      - name: Installer upgrade smoke test
+        run: pwsh -NoProfile -File installer/smoke-test.ps1 -InstallerPath "artifacts/HomePlayer-Setup-${{ steps.version.outputs.version }}.exe"
+
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,4 +67,7 @@ jobs:
           if (-not $match.Success) { throw "CHANGELOG.md missing section for $($env:VERSION)" }
           $notesFile = "artifacts/release-notes.md"
           [System.IO.File]::WriteAllText((Join-Path $pwd $notesFile), $match.Groups[1].Value.Trim())
-          gh release create $env:GITHUB_REF_NAME $setup --title "HomePlayer $($env:VERSION)" --notes-file $notesFile --latest --verify-tag
+          $checksum = "$setup.sha256"
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText((Join-Path $pwd $checksum), "$hash  $([IO.Path]::GetFileName($setup))")
+          gh release create $env:GITHUB_REF_NAME $setup $checksum --title "HomePlayer $($env:VERSION)" --notes-file $notesFile --latest --verify-tag

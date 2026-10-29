@@ -209,9 +209,15 @@ public sealed record TmdbHit(
 
 public static class AppPaths
 {
-    public static string Root { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "HomePlayer");
+    public static string Root { get; } = ResolveRoot();
+
+    private static string ResolveRoot()
+    {
+        var custom = Environment.GetEnvironmentVariable("HOMEPLAYER_DATA_DIR");
+        return !string.IsNullOrWhiteSpace(custom)
+            ? Path.GetFullPath(custom)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
+    }
 
     public static string Database => Path.Combine(Root, "library.db");
     public static string SettingsFile => Path.Combine(Root, "settings.json");

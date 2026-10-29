@@ -41,6 +41,14 @@ pwsh -File installer/build.ps1
 
 不传 `-Version` 时用当前开发版本。生成文件：`artifacts/HomePlayer-Setup-<版本>.exe`。
 
+管理员权限下可运行安装升级烟雾测试：
+
+```powershell
+pwsh -File installer/smoke-test.ps1
+```
+
+脚本会在临时目录安装旧版、启动应用、覆盖安装当前版、检查文件关联并卸载。应用数据通过 `HOMEPLAYER_DATA_DIR` 隔离到临时目录，不使用当前用户的媒体库。CI 与正式 Release 也会执行该检查。
+
 ## 许可
 
 贡献默认按 [MIT License](LICENSE) 授权。涉及 FFmpeg 的改动请继续遵守 LGPL，见 [NOTICE.md](NOTICE.md)。

@@ -16,6 +16,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\HomePlayer.Playback\HomePlayer.Playback.csproj" />
+    <ProjectReference Include="..\..\src\HomePlayer.Ffmpeg\HomePlayer.Ffmpeg.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\third_party\ffmpeg\*.dll">
+      <Link>ffmpeg\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
