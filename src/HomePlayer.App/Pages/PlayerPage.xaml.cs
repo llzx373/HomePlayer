@@ -363,9 +363,11 @@ public sealed partial class PlayerPage : Page
         UpdateSubtitleChrome();
         UpdateSubtitleOverlay();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
+        FitWindowMenuItem.IsChecked = App.Host.Settings.FitWindow;
         SyncAlwaysOnTopButton();
         SyncSnapshotButton();
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
+        PipelineMenuItem.IsChecked = PipelineButton.IsChecked == true;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
         StepFrameButton.IsEnabled = Playback.IsOpen;
     }
@@ -615,9 +617,13 @@ public sealed partial class PlayerPage : Page
     private void FitWindow_Click(object sender, RoutedEventArgs e) =>
         SetFitWindow(FitWindowButton.IsChecked == true);
 
+    private void FitWindowMenu_Click(object sender, RoutedEventArgs e) =>
+        SetFitWindow(FitWindowMenuItem.IsChecked == true);
+
     private void SetFitWindow(bool enabled)
     {
         FitWindowButton.IsChecked = enabled;
+        FitWindowMenuItem.IsChecked = enabled;
         App.Host.Settings.FitWindow = enabled;
         App.Host.SaveSettings();
         if (enabled)
@@ -626,6 +632,9 @@ public sealed partial class PlayerPage : Page
 
     private void AlwaysOnTop_Click(object sender, RoutedEventArgs e) =>
         ApplyAlwaysOnTop(AlwaysOnTopButton.IsChecked == true);
+
+    private void AlwaysOnTopMenu_Click(object sender, RoutedEventArgs e) =>
+        ApplyAlwaysOnTop(AlwaysOnTopMenuItem.IsChecked == true);
 
     private void Snapshot_Click(object sender, RoutedEventArgs e) => SaveSnapshot();
 
@@ -1126,6 +1135,7 @@ public sealed partial class PlayerPage : Page
         var on = App.Host.Settings.AlwaysOnTop;
         _alwaysOnTopSync = true;
         AlwaysOnTopButton.IsChecked = on;
+        AlwaysOnTopMenuItem.IsChecked = on;
         _alwaysOnTopSync = false;
         if (AlwaysOnTopIcon != null)
             AlwaysOnTopIcon.Opacity = on ? 1 : 0.45;
@@ -1444,6 +1454,7 @@ public sealed partial class PlayerPage : Page
         var open = PipelinePanel.Visibility != Visibility.Visible;
         PipelinePanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         PipelineButton.IsChecked = open;
+        PipelineMenuItem.IsChecked = open;
         if (open)
             _ = RefreshPipelineAsync();
     }

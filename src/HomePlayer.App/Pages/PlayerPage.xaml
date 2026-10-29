@@ -414,7 +414,7 @@
                         </Button.Flyout>
                     </Button>
                     <Rectangle Width="1" Height="20" Fill="#337F7F7F" VerticalAlignment="Center" />
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Visibility="Collapsed">
                         <Button
                             x:Name="RepeatButton"
                             Style="{StaticResource PlayerIconButton}"
@@ -488,6 +488,7 @@
                         <ToggleButton
                             x:Name="FitWindowButton"
                             Style="{StaticResource PlayerIconToggleButton}"
+                            Visibility="Collapsed"
                             AutomationProperties.Name="自适应窗口"
                             ToolTipService.ToolTip="自适应窗口"
                             Click="FitWindow_Click">
@@ -496,6 +497,7 @@
                         <ToggleButton
                             x:Name="AlwaysOnTopButton"
                             Style="{StaticResource PlayerIconToggleButton}"
+                            Visibility="Collapsed"
                             AutomationProperties.Name="置顶"
                             ToolTipService.ToolTip="置顶"
                             Click="AlwaysOnTop_Click">
@@ -514,12 +516,36 @@
                         <ToggleButton
                             x:Name="PipelineButton"
                             Style="{StaticResource PlayerIconToggleButton}"
+                            Visibility="Collapsed"
                             AutomationProperties.Name="管线信息"
                             ToolTipService.ToolTip="管线信息"
                             Click="Pipeline_Click">
                             <FontIcon x:Name="PipelineIcon" Glyph="&#xE946;" FontSize="16" />
                         </ToggleButton>
                     </StackPanel>
+                    <Button
+                        x:Name="MoreButton"
+                        Style="{StaticResource PlayerIconButton}"
+                        AutomationProperties.Name="更多"
+                        ToolTipService.ToolTip="更多">
+                        <FontIcon Glyph="&#xE712;" FontSize="16" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Bottom">
+                                <ToggleMenuFlyoutItem
+                                    x:Name="FitWindowMenuItem"
+                                    Text="自适应窗口"
+                                    Click="FitWindowMenu_Click" />
+                                <ToggleMenuFlyoutItem
+                                    x:Name="AlwaysOnTopMenuItem"
+                                    Text="窗口置顶"
+                                    Click="AlwaysOnTopMenu_Click" />
+                                <ToggleMenuFlyoutItem
+                                    x:Name="PipelineMenuItem"
+                                    Text="管线信息"
+                                    Click="Pipeline_Click" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                     <Button
                         x:Name="FullscreenButton"
                         Style="{StaticResource PlayerIconButton}"
