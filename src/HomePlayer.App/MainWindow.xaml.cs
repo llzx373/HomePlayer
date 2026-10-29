@@ -504,6 +504,32 @@ public sealed partial class MainWindow : Window
             await App.Host.Playback.PlayPathsAsync(paths, 0);
             SelectPlayer();
         }
+        catch (Exception ex)
+        {
+            try
+            {
+                CrashLog.Write("打开文件失败", ex.ToString());
+            }
+            catch (Exception)
+            {
+            }
+
+            _ = ShowDropError(ex);
+        }
+    }
+
+    private async Task ShowDropError(Exception error)
+    {
+        try
+        {
+            await new ContentDialog
+            {
+                Title = "无法打开拖放的文件",
+                Content = error.Message,
+                CloseButtonText = "知道了",
+                XamlRoot = Root.XamlRoot
+            }.ShowAsync();
+        }
         catch (Exception)
         {
         }

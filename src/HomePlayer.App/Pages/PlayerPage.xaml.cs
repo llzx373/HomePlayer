@@ -1266,8 +1266,16 @@ public sealed partial class PlayerPage : Page
                 return;
             await Playback.PlayPathsAsync(files.Select(file => file.Path).ToList(), 0);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            ShowStatusHold("打开失败：" + ex.Message);
+            try
+            {
+                CrashLog.Write("打开文件失败", ex.ToString());
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 
