@@ -1,4 +1,3 @@
-using System.Text.Json;
 using HomePlayer.Core;
 using HomePlayer.Data;
 using HomePlayer.Library;
@@ -9,38 +8,46 @@ namespace HomePlayer;
 public sealed class AppHost : IAsyncDisposable
 {
     private readonly CodecPlanCache _codecPlans;
+    private readonly SettingsStore _settingsStore;
 
     private AppHost(
         AppSettings settings,
         LibraryRepository repository,
         LibraryCoordinator libraries,
         PlaybackController playback,
-        CodecPlanCache codecPlans)
+        CodecPlanCache codecPlans,
+        SettingsStore settingsStore,
+        string? settingsWarning)
     {
         Settings = settings;
         Repository = repository;
         Libraries = libraries;
         Playback = playback;
         _codecPlans = codecPlans;
+        _settingsStore = settingsStore;
+        SettingsWarning = settingsWarning;
     }
 
     public AppSettings Settings { get; }
     public LibraryRepository Repository { get; }
     public LibraryCoordinator Libraries { get; }
     public PlaybackController Playback { get; }
+    public string? SettingsWarning { get; private set; }
     public bool Exiting { get; set; }
 
     public void InvalidateCodecPlan() => _codecPlans.Invalidate();
 
     public static AppHost Create(Action<Action> post)
     {
-        var settings = LoadSettings();
+        var settingsStore = new SettingsStore(AppPaths.SettingsFile);
+        var loaded = settingsStore.Load();
+        var settings = loaded.Settings;
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
         var codecPlans = new CodecPlanCache(() => settings);
         var playback = new PlaybackController(post, codecPlans.Get, () => settings.AudioOutputId, repository);
         playback.SetVolume(settings.Volume);
-        var host = new AppHost(settings, repository, libraries, playback, codecPlans);
+        var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore, loaded.Warning);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
         libraries.ItemReset += playback.ForgetProgress;
         return host;
@@ -65,8 +72,8 @@ public sealed class AppHost : IAsyncDisposable
         try
         {
             Settings.Volume = Playback.Volume;
-            var json = JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(AppPaths.SettingsFile, json);
+            _settingsStore.Save(Settings, SettingsWarning != null);
+            SettingsWarning = null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -79,26 +86,6 @@ public sealed class AppHost : IAsyncDisposable
         await Playback.ShutdownAsync();
         await Libraries.DisposeAsync();
         Repository.Dispose();
-    }
-
-    private static AppSettings LoadSettings()
-    {
-        try
-        {
-            if (!File.Exists(AppPaths.SettingsFile))
-                return WithHotkeys(new AppSettings());
-            return WithHotkeys(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(AppPaths.SettingsFile)) ?? new AppSettings());
-        }
-        catch (Exception ex) when (ex is IOException or JsonException)
-        {
-            return WithHotkeys(new AppSettings());
-        }
-    }
-
-    private static AppSettings WithHotkeys(AppSettings settings)
-    {
-        settings.Hotkeys = HotkeyCatalog.Merge(settings.Hotkeys);
-        return settings;
     }
 
     private sealed class CodecPlanCache(Func<AppSettings> settings)

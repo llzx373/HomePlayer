@@ -138,6 +138,25 @@ public sealed partial class MainWindow : Window
         ApplyTitleBar();
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
         UpdateOverlayTimer();
+        if (App.Host.SettingsWarning is string warning)
+            _ = ShowSettingsWarning(warning);
+    }
+
+    private async Task ShowSettingsWarning(string warning)
+    {
+        try
+        {
+            await new ContentDialog
+            {
+                Title = "设置恢复提醒",
+                Content = warning,
+                CloseButtonText = "知道了",
+                XamlRoot = Root.XamlRoot
+            }.ShowAsync();
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void UpdateOverlayTimer()
