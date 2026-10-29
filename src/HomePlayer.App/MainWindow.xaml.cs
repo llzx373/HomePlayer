@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     // 光标位置用轮询是为了在无边框/全屏时判断控制条该不该出现。
     // 10 Hz 足够跟手，比原来的 20 Hz 少一半常驻唤醒。
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private readonly OverlayFade _overlayFade;
     private bool _fullscreen;
     private bool _alwaysOnTop;
     private int _fitRestoreTries;
@@ -61,6 +62,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(bool startOnPlayer)
     {
         InitializeComponent();
+        _overlayFade = new OverlayFade(OverlayTitleBar);
         ApplyWindowChrome();
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         var width = Math.Clamp(work.Width * 3 / 4, 1100, work.Width);
@@ -745,8 +747,7 @@ public sealed partial class MainWindow : Window
             return;
 
         _overlayVisible = open;
-        OverlayTitleBar.Visibility = visible;
-        OverlayTitleBar.IsHitTestVisible = open;
+        _overlayFade.Set(open);
         if (open)
             UpdateMaximizeIcon();
     }

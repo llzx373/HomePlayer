@@ -35,6 +35,7 @@ public sealed partial class PlayerPage : Page
     private const double OverlayTitleBarHeight = 40;
 
     private readonly VideoPresenter _presenter;
+    private readonly OverlayFade _controlsFade;
     private SubtitleSession _subtitles = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
@@ -73,6 +74,7 @@ public sealed partial class PlayerPage : Page
     public PlayerPage()
     {
         InitializeComponent();
+        _controlsFade = new OverlayFade(ControlsBar);
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         _presenter = new VideoPresenter(VideoSurface)
@@ -330,7 +332,7 @@ public sealed partial class PlayerPage : Page
         if (_controlsVisible)
             RememberControlsHeight();
         _controlsVisible = open;
-        ControlsBar.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        _controlsFade.Set(open);
         if (open)
         {
             ControlsBar.UpdateLayout();
