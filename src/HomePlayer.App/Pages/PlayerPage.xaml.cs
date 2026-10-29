@@ -817,6 +817,62 @@ public sealed partial class PlayerPage : Page
         var open = new MenuFlyoutItem { Text = "打开字幕文件…" };
         open.Click += OpenSubtitleFile_Click;
         SubtitleFlyout.Items.Add(open);
+
+        SubtitleFlyout.Items.Add(new MenuFlyoutSeparator());
+        SubtitleFlyout.Items.Add(new MenuFlyoutItem
+        {
+            Text = $"当前延迟：{_subtitles.DelayMilliseconds / 1000d:0.0} 秒",
+            IsEnabled = false
+        });
+        SubtitleFlyout.Items.Add(SubtitleDelayItem("提前 0.5 秒", -500));
+        SubtitleFlyout.Items.Add(SubtitleDelayItem("延后 0.5 秒", 500));
+        SubtitleFlyout.Items.Add(SubtitleDelayItem("重置延迟", 0, true));
+        var reload = new MenuFlyoutItem { Text = "重新加载外挂字幕" };
+        reload.Click += (_, _) =>
+        {
+            _subtitles.ReloadSidecars();
+            FinishSubtitleChoice();
+        };
+        SubtitleFlyout.Items.Add(reload);
+
+        var encoding = new MenuFlyoutSubItem { Text = "外挂字幕编码" };
+        AddEncodingItem(encoding, "自动检测", "");
+        AddEncodingItem(encoding, "UTF-8", "utf-8");
+        AddEncodingItem(encoding, "GB18030", "gb18030");
+        AddEncodingItem(encoding, "UTF-16 LE", "utf-16");
+        AddEncodingItem(encoding, "UTF-16 BE", "utf-16BE");
+        SubtitleFlyout.Items.Add(encoding);
+    }
+
+    private MenuFlyoutItem SubtitleDelayItem(string text, int milliseconds, bool reset = false)
+    {
+        var item = new MenuFlyoutItem { Text = text, Tag = milliseconds };
+        item.Click += (_, _) => AdjustSubtitleDelay(reset ? 0 : milliseconds, reset);
+        return item;
+    }
+
+    private void AddEncodingItem(MenuFlyoutSubItem menu, string text, string name)
+    {
+        var item = new RadioMenuFlyoutItem
+        {
+            Text = text,
+            GroupName = "SubtitleEncoding",
+            IsChecked = string.Equals(_subtitles.SidecarEncoding ?? "", name, StringComparison.OrdinalIgnoreCase)
+        };
+        item.Click += (_, _) =>
+        {
+            _subtitles.SetSidecarEncoding(name);
+            FinishSubtitleChoice();
+        };
+        menu.Items.Add(item);
+    }
+
+    private void AdjustSubtitleDelay(int milliseconds, bool reset = false)
+    {
+        _subtitles.SetDelay(reset ? 0 : _subtitles.DelayMilliseconds + milliseconds);
+        SaveSubtitlePreference();
+        UpdateSubtitleOverlay();
+        ShowStatusHold($"字幕延迟 {_subtitles.DelayMilliseconds / 1000d:0.0} 秒");
     }
 
     private RadioMenuFlyoutItem SubtitleRadio(string text, string tag, bool selected)
@@ -1037,9 +1093,30 @@ public sealed partial class PlayerPage : Page
         var width = VideoHost.ActualWidth;
         if (height < 1 || width < 1)
             return;
-        SubtitleText.FontSize = Math.Clamp(28 * (height / 720.0), 18, 44);
+        var settings = App.Host.Settings;
+        SubtitleText.FontSize = Math.Clamp(settings.SubtitleFontSize * (height / 720.0), 12, 96);
+        SubtitleText.Foreground = settings.SubtitleColor switch
+        {
+            SubtitleTextColor.Yellow => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 220, 100)),
+            SubtitleTextColor.LightGreen => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 160, 230, 170)),
+            _ => new SolidColorBrush(Microsoft.UI.Colors.White)
+        };
+        var alpha = (byte)Math.Round(Math.Clamp(settings.SubtitleBackgroundOpacity, 0, 1) * 255);
+        SubtitlePill.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, 0, 0, 0));
         SubtitlePill.MaxWidth = Math.Max(160, width * 0.8);
-        SubtitlePill.Margin = new Thickness(0, 0, 0, Math.Clamp(height * 0.06, 24, 80));
+        var edge = Math.Clamp(height * 0.06, 24, 80);
+        SubtitlePill.VerticalAlignment = settings.SubtitlePosition switch
+        {
+            SubtitleVerticalPosition.Top => VerticalAlignment.Top,
+            SubtitleVerticalPosition.Center => VerticalAlignment.Center,
+            _ => VerticalAlignment.Bottom
+        };
+        SubtitlePill.Margin = settings.SubtitlePosition switch
+        {
+            SubtitleVerticalPosition.Top => new Thickness(0, edge, 0, 0),
+            SubtitleVerticalPosition.Center => new Thickness(0),
+            _ => new Thickness(0, 0, 0, edge)
+        };
     }
 
     private void UpdateSubtitleOverlay()
@@ -1468,6 +1545,12 @@ public sealed partial class PlayerPage : Page
                 break;
             case HotkeyCatalog.ToggleSubtitle:
                 ToggleSubtitle();
+                break;
+            case HotkeyCatalog.SubtitleEarlier:
+                AdjustSubtitleDelay(-500);
+                break;
+            case HotkeyCatalog.SubtitleLater:
+                AdjustSubtitleDelay(500);
                 break;
             case HotkeyCatalog.FitWindow:
                 SetFitWindow(!App.Host.Settings.FitWindow);

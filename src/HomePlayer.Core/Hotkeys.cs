@@ -23,6 +23,8 @@ public static class HotkeyCatalog
     public const string CycleAudioTrack = "CycleAudioTrack";
     public const string CycleSubtitle = "CycleSubtitle";
     public const string ToggleSubtitle = "ToggleSubtitle";
+    public const string SubtitleEarlier = "SubtitleEarlier";
+    public const string SubtitleLater = "SubtitleLater";
     public const string FitWindow = "FitWindow";
     public const string CycleAspect = "CycleAspect";
     public const string ToggleAlwaysOnTop = "ToggleAlwaysOnTop";
@@ -53,6 +55,8 @@ public static class HotkeyCatalog
         new(CycleAudioTrack, "循环音轨", ""),
         new(CycleSubtitle, "循环字幕", "S"),
         new(ToggleSubtitle, "字幕开/关", ""),
+        new(SubtitleEarlier, "字幕提前 0.5 秒", ""),
+        new(SubtitleLater, "字幕延后 0.5 秒", ""),
         new(FitWindow, "自适应窗口", ""),
         new(CycleAspect, "循环画面比例", ""),
         new(ToggleAlwaysOnTop, "置顶", ""),

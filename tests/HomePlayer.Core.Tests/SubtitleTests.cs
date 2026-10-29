@@ -1,3 +1,4 @@
+using System.Text;
 using HomePlayer.Core;
 
 namespace HomePlayer.Core.Tests;
@@ -95,6 +96,26 @@ public class SubtitleTextTests
         Assert.Equal(TimeSpan.FromSeconds(1), cues[0].Start);
         Assert.Equal(TimeSpan.FromSeconds(2.5), cues[0].End);
         Assert.Equal("Hello\nWorld", cues[0].Text);
+    }
+
+    [Fact]
+    public void Parse_file_honours_manual_legacy_encoding()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var path = Path.Combine(Path.GetTempPath(), "HomePlayer-" + Guid.NewGuid().ToString("N") + ".srt");
+        const string text = "1\n00:00:01,000 --> 00:00:03,000\n中文字幕\n";
+        try
+        {
+            File.WriteAllBytes(path, Encoding.GetEncoding("gb18030").GetBytes(text));
+
+            var cue = Assert.Single(SubtitleText.ParseFile(path, "gb18030"));
+
+            Assert.Equal("中文字幕", cue.Text);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }
 

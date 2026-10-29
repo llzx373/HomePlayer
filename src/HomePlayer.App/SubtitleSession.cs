@@ -21,6 +21,8 @@ internal sealed class SubtitleSession
     private string? _manualSidecar;
     private int _embedded = -1;
     private MediaPreference? _preferred;
+    private int _delayMs;
+    private string? _sidecarEncoding;
     private SubtitleTrack _track = SubtitleTrack.Empty;
     private readonly HashSet<string> _unreadable = new(StringComparer.OrdinalIgnoreCase);
 
@@ -29,6 +31,8 @@ internal sealed class SubtitleSession
     public IReadOnlyList<FfmpegSubtitleStream> Embedded { get; private set; } = [];
     public Choice Mode => _choice;
     public string? SidecarPath => _sidecar;
+    public string? SidecarEncoding => _sidecarEncoding;
+    public int DelayMilliseconds => _delayMs;
     public int EmbeddedIndex => _embedded;
     public string? Error { get; private set; }
     public bool IsOff => _choice == Choice.Off;
@@ -63,6 +67,8 @@ internal sealed class SubtitleSession
         _manualSidecar = null;
         _embedded = -1;
         _preferred = null;
+        _delayMs = 0;
+        _sidecarEncoding = null;
         _track = SubtitleTrack.Empty;
         _unreadable.Clear();
         Error = null;
@@ -74,6 +80,7 @@ internal sealed class SubtitleSession
 
     public void ApplyPreference(MediaPreference preference)
     {
+        _delayMs = Math.Clamp(preference.SubtitleDelayMs, -600_000, 600_000);
         switch (preference.SubtitleMode)
         {
             case SubtitlePreferenceMode.Off:
@@ -111,7 +118,8 @@ internal sealed class SubtitleSession
             SubtitleTrackIndex = _choice == Choice.Embedded ? _embedded : null,
             SubtitleTrackTitle = _choice == Choice.Embedded ? track?.Title : null,
             SubtitleTrackLanguage = _choice == Choice.Embedded ? track?.Language : null,
-            SubtitlePath = _choice == Choice.Sidecar ? _sidecar : null
+            SubtitlePath = _choice == Choice.Sidecar ? _sidecar : null,
+            SubtitleDelayMs = _delayMs
         };
     }
 
@@ -199,8 +207,27 @@ internal sealed class SubtitleSession
         Error = error;
     }
 
+    public void SetDelay(int milliseconds) => _delayMs = Math.Clamp(milliseconds, -600_000, 600_000);
+
+    public void SetSidecarEncoding(string? encodingName)
+    {
+        _sidecarEncoding = string.IsNullOrWhiteSpace(encodingName) ? null : encodingName;
+        ReloadSidecars();
+    }
+
+    public void ReloadSidecars()
+    {
+        if (VideoPath == null)
+            return;
+        Sidecars = SubtitleFiles.Find(VideoPath);
+        if (_choice == Choice.Sidecar && _sidecar != null)
+            LoadSidecar(_sidecar);
+        else if (_choice == Choice.Auto)
+            ResolveAuto();
+    }
+
     public string? TextAt(TimeSpan position) =>
-        _choice == Choice.Off ? null : _track.At(position)?.Text;
+        _choice == Choice.Off ? null : _track.At(position - TimeSpan.FromMilliseconds(_delayMs))?.Text;
 
     public bool OffChecked => _choice == Choice.Off;
     public bool AutoChecked => _choice == Choice.Auto;
@@ -281,7 +308,7 @@ internal sealed class SubtitleSession
     {
         try
         {
-            var cues = SubtitleText.ParseFile(path);
+            var cues = SubtitleText.ParseFile(path, _sidecarEncoding);
             _track = new SubtitleTrack(cues);
             _unreadable.Remove(path);
             Error = cues.Count == 0 ? Path.GetFileName(path) + " 没有可显示的字幕" : null;

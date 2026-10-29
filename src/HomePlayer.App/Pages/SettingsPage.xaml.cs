@@ -7,6 +7,7 @@ using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using Windows.UI.Core;
@@ -44,6 +45,10 @@ public sealed partial class SettingsPage : Page
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
         FitWindowSwitch.IsOn = settings.FitWindow;
         AlwaysOnTopSwitch.IsOn = settings.AlwaysOnTop;
+        SubtitleFontSizeBox.Value = settings.SubtitleFontSize;
+        SubtitleColorBox.SelectedIndex = (int)settings.SubtitleColor;
+        SubtitlePositionBox.SelectedIndex = (int)settings.SubtitlePosition;
+        SubtitleOpacitySlider.Value = settings.SubtitleBackgroundOpacity * 100;
         TitleBarBox.SelectionChanged += TitleBar_Changed;
         FitWindowSwitch.Toggled += FitWindow_Toggled;
         AlwaysOnTopSwitch.Toggled += AlwaysOnTop_Toggled;
@@ -77,6 +82,10 @@ public sealed partial class SettingsPage : Page
                 HistorySwitch.IsOn = App.Host.Settings.RecordPlaybackHistory;
                 FitWindowSwitch.IsOn = App.Host.Settings.FitWindow;
                 AlwaysOnTopSwitch.IsOn = App.Host.Settings.AlwaysOnTop;
+                SubtitleFontSizeBox.Value = App.Host.Settings.SubtitleFontSize;
+                SubtitleColorBox.SelectedIndex = (int)App.Host.Settings.SubtitleColor;
+                SubtitlePositionBox.SelectedIndex = (int)App.Host.Settings.SubtitlePosition;
+                SubtitleOpacitySlider.Value = App.Host.Settings.SubtitleBackgroundOpacity * 100;
             }
             finally
             {
@@ -248,6 +257,31 @@ public sealed partial class SettingsPage : Page
         App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
         SaveSettings();
         App.Window.SetAlwaysOnTop(AlwaysOnTopSwitch.IsOn);
+    }
+
+    private void SubtitleFontSize_Changed(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (_loading || double.IsNaN(sender.Value))
+            return;
+        App.Host.Settings.SubtitleFontSize = Math.Clamp(sender.Value, 16, 64);
+        SaveSettings();
+    }
+
+    private void SubtitleStyle_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || SubtitleColorBox.SelectedIndex < 0 || SubtitlePositionBox.SelectedIndex < 0)
+            return;
+        App.Host.Settings.SubtitleColor = (SubtitleTextColor)SubtitleColorBox.SelectedIndex;
+        App.Host.Settings.SubtitlePosition = (SubtitleVerticalPosition)SubtitlePositionBox.SelectedIndex;
+        SaveSettings();
+    }
+
+    private void SubtitleOpacity_Changed(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (_loading)
+            return;
+        App.Host.Settings.SubtitleBackgroundOpacity = Math.Clamp(e.NewValue / 100, 0, 1);
+        SaveSettings();
     }
 
     private async void DefaultApps_Click(object sender, RoutedEventArgs e)

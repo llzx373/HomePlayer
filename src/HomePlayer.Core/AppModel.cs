@@ -43,6 +43,20 @@ public enum TitleBarMode
     Overlay = 1
 }
 
+public enum SubtitleVerticalPosition
+{
+    Top = 0,
+    Center = 1,
+    Bottom = 2
+}
+
+public enum SubtitleTextColor
+{
+    White = 0,
+    Yellow = 1,
+    LightGreen = 2
+}
+
 public enum SortMode
 {
     FileName = 0,
@@ -75,6 +89,10 @@ public sealed class AppSettings
     public bool FitWindow { get; set; }
     public bool AlwaysOnTop { get; set; }
     public bool RecordPlaybackHistory { get; set; } = true;
+    public double SubtitleFontSize { get; set; } = 28;
+    public SubtitleTextColor SubtitleColor { get; set; } = SubtitleTextColor.White;
+    public SubtitleVerticalPosition SubtitlePosition { get; set; } = SubtitleVerticalPosition.Bottom;
+    public double SubtitleBackgroundOpacity { get; set; } = 0.6;
     public string? AudioOutputId { get; set; }
     public List<CodecPreference> SplitterOrder { get; set; } = [];
     public List<CodecPreference> VideoDecoderOrder { get; set; } = [];

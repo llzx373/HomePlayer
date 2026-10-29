@@ -6,8 +6,8 @@ namespace HomePlayer.Core;
 
 public static partial class SubtitleText
 {
-    public static IReadOnlyList<SubtitleCue> ParseFile(string path)
-        => Parse(ReadAll(path), Path.GetExtension(path));
+    public static IReadOnlyList<SubtitleCue> ParseFile(string path, string? encodingName = null)
+        => Parse(ReadAll(path, encodingName), Path.GetExtension(path));
 
     public static IReadOnlyList<SubtitleCue> Parse(string text, string extension)
     {
@@ -281,7 +281,7 @@ public static partial class SubtitleText
         .Replace('\r', '\n')
         .Split('\n');
 
-    private static string ReadAll(string path)
+    private static string ReadAll(string path, string? encodingName)
     {
         var bytes = File.ReadAllBytes(path);
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
@@ -290,7 +290,10 @@ public static partial class SubtitleText
             return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
         if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
             return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
-        return Encoding.UTF8.GetString(bytes);
+        if (string.IsNullOrWhiteSpace(encodingName))
+            return Encoding.UTF8.GetString(bytes);
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return Encoding.GetEncoding(encodingName).GetString(bytes);
     }
 
     [GeneratedRegex(@"\{[^}]*\}", RegexOptions.CultureInvariant)]

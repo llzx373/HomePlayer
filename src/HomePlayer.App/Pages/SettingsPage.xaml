@@ -91,6 +91,37 @@
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随 Windows 当前的声音出口，改完后从下一次播放开始生效。" />
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="字幕外观" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <NumberBox
+                                        x:Name="SubtitleFontSizeBox"
+                                        Header="基准字号"
+                                        Minimum="16"
+                                        Maximum="64"
+                                        SmallChange="2"
+                                        SpinButtonPlacementMode="Compact"
+                                        ValueChanged="SubtitleFontSize_Changed" />
+                                    <ComboBox x:Name="SubtitleColorBox" Header="文字颜色" HorizontalAlignment="Stretch" SelectionChanged="SubtitleStyle_Changed">
+                                        <ComboBoxItem Content="白色" />
+                                        <ComboBoxItem Content="黄色" />
+                                        <ComboBoxItem Content="浅绿色" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="SubtitlePositionBox" Header="显示位置" HorizontalAlignment="Stretch" SelectionChanged="SubtitleStyle_Changed">
+                                        <ComboBoxItem Content="顶部" />
+                                        <ComboBoxItem Content="居中" />
+                                        <ComboBoxItem Content="底部" />
+                                    </ComboBox>
+                                    <Slider
+                                        x:Name="SubtitleOpacitySlider"
+                                        Header="背景不透明度"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        StepFrequency="5"
+                                        ValueChanged="SubtitleOpacity_Changed" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="字号会随播放窗口高度缩放；样式修改立即应用于当前字幕。" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabViewItem>
