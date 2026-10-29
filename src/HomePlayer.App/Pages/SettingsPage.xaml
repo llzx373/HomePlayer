@@ -64,6 +64,20 @@
                                     <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" HorizontalAlignment="Left" />
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="更新" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ComboBox x:Name="UpdateChannelBox" Header="更新通道" HorizontalAlignment="Stretch">
+                                        <ComboBoxItem Content="稳定版" Tag="stable" />
+                                        <ComboBoxItem Content="测试版" Tag="beta" />
+                                    </ComboBox>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="CheckUpdateButton" Content="检查更新" Click="CheckUpdate_Click" />
+                                        <Button x:Name="UpdateDownloadButton" Content="打开发布页" Click="OpenUpdate_Click" Visibility="Collapsed" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="UpdateStatusText" Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabViewItem>
@@ -88,9 +102,23 @@
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel Spacing="12">
+                                    <TextBlock Text="会话与导航" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ToggleSwitch x:Name="RestorePlaylistSwitch" Header="启动时恢复上次播放列表" OnContent="恢复队列但不自动播放" OffContent="启动时空队列" />
+                                    <NumberBox x:Name="ResumeRewindBox" Header="续播倒退秒数" Minimum="0" Maximum="10" SmallChange="1" SpinButtonPlacementMode="Compact" />
+                                    <NumberBox x:Name="SeekStepBox" Header="小步快进快退秒数" Minimum="1" Maximum="120" SmallChange="1" SpinButtonPlacementMode="Compact" />
+                                    <NumberBox x:Name="LargeSeekStepBox" Header="大步快进快退秒数" Minimum="5" Maximum="600" SmallChange="5" SpinButtonPlacementMode="Compact" />
+                                    <ToggleSwitch x:Name="RememberVolumeSwitch" Header="按文件记住音量" />
+                                    <ToggleSwitch x:Name="RememberRateSwitch" Header="按文件记住倍速（默认关闭）" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
                                     <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
                                     <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随 Windows 当前的声音出口，改完后从下一次播放开始生效。" />
+                                    <TextBox x:Name="PreferredAudioLanguageBox" Header="首选音轨语言" PlaceholderText="例如 ja、en、zh；留空为自动" />
+                                    <ToggleSwitch x:Name="AudioNormalizationSwitch" Header="音量归一化" />
+                                    <ToggleSwitch x:Name="AudioNightModeSwitch" Header="夜间模式（压缩动态范围）" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">
@@ -122,6 +150,7 @@
                                         StepFrequency="5"
                                         ValueChanged="SubtitleOpacity_Changed" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="字号会随播放窗口高度缩放；样式修改立即应用于当前字幕。" />
+                                    <ToggleSwitch x:Name="SnapshotSubtitlesSwitch" Header="截图包含当前字幕" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -304,6 +333,8 @@
                                 <TextBlock x:Name="CacheText" />
                                 <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清除缓存只重建缩略图和海报，不会删除视频或观看进度。" />
                                 <Button Content="清除缩略图缓存" Click="Clear_Click" HorizontalAlignment="Left" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清理没有关联媒体的数据库行，以及本地磁盘上已不存在的库外历史记录；当前媒体库和离线路径会保留。" TextWrapping="Wrap" />
+                                <Button Content="清理孤立记录" Click="CleanupOrphans_Click" HorizontalAlignment="Left" />
                                 <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
                                 <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
                                 <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="未处理异常、后台任务异常、原生崩溃和异常退出都会记录到本机数据目录。" />
@@ -312,6 +343,10 @@
                                     <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
                                     <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
                                 </StackPanel>
+                                <TextBlock Text="诊断包" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认包含版本、系统、播放管线和脱敏后的最近错误，不包含完整媒体路径或 API Key。" TextWrapping="Wrap" />
+                                <CheckBox x:Name="DiagnosticSensitiveCheck" Content="包含完整日志和设置（可能包含媒体路径与 API Key）" />
+                                <Button Content="导出诊断包" Click="ExportDiagnostics_Click" HorizontalAlignment="Left" />
                             </StackPanel>
                         </Border>
                     </ScrollViewer>

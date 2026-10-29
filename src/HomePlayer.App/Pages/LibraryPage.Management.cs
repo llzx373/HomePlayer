@@ -23,6 +23,7 @@ public sealed partial class LibraryPage
         SubtitleBox.SelectedIndex = 0;
         SetSelectionMode(false);
         UpdateSelectionActions();
+        InitializeCollectionFilters();
     }
 
     private bool UsesLibraryQuery => _browseMode is LibraryBrowseMode.Library or LibraryBrowseMode.Favorites or LibraryBrowseMode.Series;
@@ -32,7 +33,7 @@ public sealed partial class LibraryPage
     private MediaLibraryQuery CurrentQuery()
     {
         var library = LibraryList.SelectedItem as MediaLibrary;
-        return new MediaLibraryQuery
+        return ApplyCollectionQuery(new MediaLibraryQuery
         {
             LibraryId = AllLibraries ? null : library?.Id,
             RelativeDir = AllLibraries ? null : _folderPath,
@@ -48,7 +49,7 @@ public sealed partial class LibraryPage
             Subtitles = (PresenceFilter)Math.Max(0, SubtitleBox.SelectedIndex),
             MultipleAudioTracks = MultiAudioSwitch.IsOn,
             FavoritesOnly = _browseMode == LibraryBrowseMode.Favorites
-        };
+        });
     }
 
     private void UpdateBrowseChrome()
@@ -344,6 +345,8 @@ public sealed partial class LibraryPage
             SubtitleBox.SelectedIndex = 0;
             YearBox.Text = "";
             MultiAudioSwitch.IsOn = false;
+            TagFilterBox.SelectedIndex = 0;
+            CollectionFilterBox.SelectedIndex = 0;
         }
         finally
         {

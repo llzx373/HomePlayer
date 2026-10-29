@@ -53,6 +53,9 @@ public static class AudioOutputs
         return string.IsNullOrWhiteSpace(match?.Name) ? "系统默认" : match.Name;
     }
 
+    public static bool IsAvailable(string? id) =>
+        string.IsNullOrWhiteSpace(id) || List().Any(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+
     public static MMDevice? OpenWasapi(string? id)
     {
         try

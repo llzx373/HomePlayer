@@ -68,6 +68,10 @@ public sealed record MediaLibraryQuery
     public PresenceFilter Subtitles { get; init; }
     public bool MultipleAudioTracks { get; init; }
     public bool FavoritesOnly { get; init; }
+    public string? Tag { get; init; }
+    public string? CollectionId { get; init; }
+    public string? AdditionalSearch { get; init; }
+    public string? AdditionalTag { get; init; }
 
     public static MediaLibraryQuery ForLibrary(string libraryId) => new() { LibraryId = libraryId };
 }

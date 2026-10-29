@@ -38,7 +38,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private string? _videoCodecName;
     private string? _audioCodecName;
     private int _channels;
+    private int _outputChannels;
     private int _sampleRate;
+    private readonly PcmTimeStretcher _timeStretcher = new();
     private bool _endedRaised;
     private readonly FrameBufferPool _framePool = new(4);
     private int _frameBytes;
@@ -58,6 +60,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     public TimeSpan Duration { get; private set; }
     public TimeSpan Position => TimeSpan.FromTicks(Volatile.Read(ref _positionTicks));
     public bool HasAudio => _audioIndex >= 0;
+    public int OutputChannels => Math.Max(1, _outputChannels);
     public double Rate => Volatile.Read(ref _rate);
 
     public void Open(string path)
@@ -224,6 +227,26 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         Interlocked.Increment(ref _audioEpoch);
     }
 
+    public IReadOnlyList<MediaChapter> GetChapters()
+    {
+        lock (_gate)
+        {
+            if (_format == null || _format->nb_chapters == 0)
+                return [];
+            var chapters = new List<MediaChapter>((int)_format->nb_chapters);
+            for (var i = 0; i < (int)_format->nb_chapters; i++)
+            {
+                var chapter = _format->chapters[i];
+                if (chapter == null)
+                    continue;
+                var baseTime = chapter->time_base.den == 0 ? 0 : chapter->time_base.num / (double)chapter->time_base.den;
+                var title = DictGet(chapter->metadata, "title");
+                chapters.Add(new MediaChapter(string.IsNullOrWhiteSpace(title) ? $"章节 {i + 1}" : title, TimeSpan.FromSeconds(Math.Max(0, chapter->start * baseTime))));
+            }
+            return chapters;
+        }
+    }
+
     public PipelineInfo GetPipeline()
     {
         long? size = File.Exists(_path) ? new FileInfo(_path).Length : null;
@@ -246,12 +269,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             Hardware = "未使用",
             AudioCodec = _audioCodecName,
             AudioDecoder = _audioCodecName == null ? null : $"{_audioCodecName}（FFmpeg 软件解码）",
-            Channels = HasAudio ? 2 : null,
+            Channels = HasAudio ? OutputChannels : null,
             SampleRate = HasAudio ? 48000 : null,
             AudioTracks = FormatAudioTracks(),
             SubtitleTracks = FormatSubtitleTracks(),
             Filters = ["FFmpeg demuxer", "FFmpeg video decoder", "swscale → BGRA", HasAudio ? "FFmpeg audio decoder → WASAPI" : "无音频"],
-            Connections = [$"视频 {_videoCodecName} {_width}×{_height}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz stereo s16" : "无音频"]
+            Connections = [$"视频 {_videoCodecName} {_width}×{_height}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"]
         };
     }
 
@@ -552,9 +575,11 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, decoder, null), "打开音频解码器");
             _audioCodecName = ffmpeg.avcodec_get_name(decoder->id);
             _channels = _audioCodec->ch_layout.nb_channels;
+            _outputChannels = _channels > 0 ? _channels : 2;
             _sampleRate = _audioCodec->sample_rate;
+            _timeStretcher.Reset();
             AVChannelLayout outputLayout;
-            ffmpeg.av_channel_layout_default(&outputLayout, 2);
+            ffmpeg.av_channel_layout_default(&outputLayout, _outputChannels);
             try
             {
                 var inputLayout = _audioCodec->ch_layout;
@@ -598,7 +623,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _audioCodec = null;
         _audioCodecName = null;
         _channels = 0;
+        _outputChannels = 0;
         _sampleRate = 0;
+        _timeStretcher.Reset();
     }
 
     private void LoadAudioTracks()
@@ -792,7 +819,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         {
             var queued = Math.Max(0, UnplayedBytes());
             var played = Math.Max(0, Interlocked.Read(ref _audioWritten) - queued);
-            return _clockOrigin + played / 192000d;
+            return _clockOrigin + played / (48000d * OutputChannels * 2);
         }
 
         return _clockOrigin + _clock.Elapsed.TotalSeconds * rate;
@@ -826,7 +853,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             48000,
             frame->sample_rate,
             AVRounding.AV_ROUND_UP);
-        var bytes = outSamples * 2 * 2;
+        var bytes = outSamples * OutputChannels * 2;
         var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(bytes * 2, 4));
         try
         {
@@ -839,48 +866,20 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, frame->nb_samples);
                 if (converted <= 0)
                     return;
-                count = converted * 4;
+                count = converted * OutputChannels * 2;
             }
 
             if (epoch != Volatile.Read(ref _audioEpoch))
                 return;
-            count = StretchPcm(buffer, count, Volatile.Read(ref _rate));
-            if (count <= 0)
+            var output = _timeStretcher.Process(buffer, count, OutputChannels, Volatile.Read(ref _rate));
+            if (output.Length <= 0)
                 return;
-            Interlocked.Add(ref _audioWritten, count);
-            AudioPcm?.Invoke(buffer, count);
+            Interlocked.Add(ref _audioWritten, output.Length);
+            AudioPcm?.Invoke(output, output.Length);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    private static int StretchPcm(byte[] buffer, int count, double rate)
-    {
-        if (count < 4 || Math.Abs(rate - 1) < 0.0001)
-            return count;
-        var inFrames = count / 4;
-        var outFrames = Math.Max(0, (int)Math.Round(inFrames / rate));
-        if (outFrames == 0)
-            return 0;
-        outFrames = Math.Min(outFrames, buffer.Length / 4);
-        var outCount = outFrames * 4;
-        var output = ArrayPool<byte>.Shared.Rent(outCount);
-        try
-        {
-            for (var j = 0; j < outFrames; j++)
-            {
-                var i = Math.Min(inFrames - 1, (int)(j * rate));
-                Buffer.BlockCopy(buffer, i * 4, output, j * 4, 4);
-            }
-
-            Buffer.BlockCopy(output, 0, buffer, 0, outCount);
-            return outCount;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(output);
         }
     }
 

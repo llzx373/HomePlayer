@@ -53,6 +53,7 @@ public sealed partial class SettingsPage : Page
         SubtitleColorBox.SelectedIndex = (int)settings.SubtitleColor;
         SubtitlePositionBox.SelectedIndex = (int)settings.SubtitlePosition;
         SubtitleOpacitySlider.Value = settings.SubtitleBackgroundOpacity * 100;
+        InitializePlaybackFeatureSettings();
         TitleBarBox.SelectionChanged += TitleBar_Changed;
         FitWindowSwitch.Toggled += FitWindow_Toggled;
         AlwaysOnTopSwitch.Toggled += AlwaysOnTop_Toggled;
@@ -91,6 +92,7 @@ public sealed partial class SettingsPage : Page
                 SubtitleColorBox.SelectedIndex = (int)App.Host.Settings.SubtitleColor;
                 SubtitlePositionBox.SelectedIndex = (int)App.Host.Settings.SubtitlePosition;
                 SubtitleOpacitySlider.Value = App.Host.Settings.SubtitleBackgroundOpacity * 100;
+                InitializePlaybackFeatureSettings();
             }
             finally
             {

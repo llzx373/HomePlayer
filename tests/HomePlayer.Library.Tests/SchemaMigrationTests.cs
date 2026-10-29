@@ -12,11 +12,17 @@ public class SchemaMigrationTests
         using var temp = new TempDatabase();
         using var repository = new LibraryRepository(temp.DatabasePath);
 
-        Assert.Equal(5, temp.UserVersion());
+        Assert.Equal(LibraryRepository.SchemaVersion, temp.UserVersion());
         Assert.True(temp.HasColumn("MediaItem", "RelativeDir"));
         Assert.True(temp.HasColumn("MediaItem", "FileName"));
         Assert.True(temp.HasColumn("MediaItem", "AddedUtcTicks"));
         Assert.True(temp.HasColumn("MediaPreference", "SubtitleDelayMs"));
+        Assert.True(temp.HasColumn("MediaPreference", "Volume"));
+        Assert.True(temp.HasColumn("MediaPreference", "PlaybackRate"));
+        Assert.True(temp.HasColumn("MediaPreference", "AudioDelayMs"));
+        Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM MediaBookmark;"));
+        Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM Tag;"));
+        Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM MediaCollection;"));
         Assert.True(temp.HasColumn("MediaItem", "AudioStreamCount"));
         Assert.True(temp.HasColumn("MediaItem", "SubtitleStreamCount"));
         Assert.True(temp.HasColumn("MediaItem", "CollectionName"));
@@ -39,7 +45,7 @@ public class SchemaMigrationTests
         temp.CreateVersion1Database();
         using var repository = new LibraryRepository(temp.DatabasePath);
 
-        Assert.Equal(5, temp.UserVersion());
+        Assert.Equal(LibraryRepository.SchemaVersion, temp.UserVersion());
         Assert.Equal("a/b", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'nested';"));
         Assert.Equal("c.mkv", temp.Text("SELECT FileName FROM MediaItem WHERE Id = 'nested';"));
         Assert.Equal("", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'root';"));
@@ -61,7 +67,7 @@ public class SchemaMigrationTests
         {
         }
 
-        Assert.Equal(5, temp.UserVersion());
+        Assert.Equal(LibraryRepository.SchemaVersion, temp.UserVersion());
         Assert.Equal("a/b", temp.Text("SELECT RelativeDir FROM MediaItem WHERE Id = 'nested';"));
     }
 

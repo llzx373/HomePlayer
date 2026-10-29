@@ -18,7 +18,10 @@ public sealed record MediaPreference(
     string? SubtitleTrackTitle,
     string? SubtitleTrackLanguage,
     string? SubtitlePath,
-    int SubtitleDelayMs)
+    int SubtitleDelayMs,
+    double? Volume = null,
+    double? PlaybackRate = null,
+    int AudioDelayMs = 0)
 {
     public static MediaPreference Empty(string path) => new(
         path, null, null, null, SubtitlePreferenceMode.Auto, null, null, null, null, 0);
@@ -33,22 +36,29 @@ public interface IMediaPreferenceStore
 
 public static class MediaPreferenceSelection
 {
-    public static int? AudioTrack(MediaPreference? preference, IReadOnlyList<MediaTrack> tracks)
+    public static int? AudioTrack(MediaPreference? preference, IReadOnlyList<MediaTrack> tracks, string? preferredLanguage = null)
     {
-        if (preference?.AudioTrackIndex is not int savedIndex || tracks.Count == 0)
+        if (tracks.Count == 0)
             return null;
-        var exact = tracks.FirstOrDefault(track =>
-            string.Equals(track.Title, preference.AudioTrackTitle, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(track.Language, preference.AudioTrackLanguage, StringComparison.OrdinalIgnoreCase));
-        if (exact != null)
-            return exact.Index;
-        if (!string.IsNullOrWhiteSpace(preference.AudioTrackLanguage))
+        if (preference?.AudioTrackIndex is int savedIndex)
         {
-            var language = tracks.FirstOrDefault(track =>
-                string.Equals(track.Language, preference.AudioTrackLanguage, StringComparison.OrdinalIgnoreCase));
-            if (language != null)
-                return language.Index;
+            var exact = tracks.FirstOrDefault(track =>
+                string.Equals(track.Title, preference.AudioTrackTitle, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(track.Language, preference.AudioTrackLanguage, StringComparison.OrdinalIgnoreCase));
+            if (exact != null)
+                return exact.Index;
+            if (!string.IsNullOrWhiteSpace(preference.AudioTrackLanguage))
+            {
+                var language = tracks.FirstOrDefault(track =>
+                    string.Equals(track.Language, preference.AudioTrackLanguage, StringComparison.OrdinalIgnoreCase));
+                if (language != null)
+                    return language.Index;
+            }
+            if (tracks.Any(track => track.Index == savedIndex))
+                return savedIndex;
         }
-        return tracks.Any(track => track.Index == savedIndex) ? savedIndex : null;
+        return tracks.FirstOrDefault(track =>
+            !string.IsNullOrWhiteSpace(preferredLanguage)
+            && string.Equals(track.Language, preferredLanguage, StringComparison.OrdinalIgnoreCase))?.Index;
     }
 }

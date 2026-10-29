@@ -7,6 +7,7 @@ public static class FolderTree
 {
     public static IReadOnlyList<MediaFolder> Build(MediaLibrary library, IEnumerable<string> filePaths)
     {
+        using var measure = PerformanceMetrics.Measure("library.folder-tree");
         var counts = new Dictionary<string, (int Direct, int Recursive)>(StringComparer.OrdinalIgnoreCase);
         foreach (var filePath in filePaths)
         {

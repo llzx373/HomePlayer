@@ -149,7 +149,7 @@ public static partial class SubtitleText
             var payload = line["Dialogue:".Length..].TrimStart();
             if (!TryDialogueTimes(payload, textField, out var start, out var end, out var body))
                 continue;
-            AddCue(cues, start, end, Plain(body));
+            AddCue(cues, start, end, Plain(body), body);
         }
 
         return cues;
@@ -208,12 +208,12 @@ public static partial class SubtitleText
         return null;
     }
 
-    private static void AddCue(List<SubtitleCue> cues, TimeSpan start, TimeSpan end, string text)
+    private static void AddCue(List<SubtitleCue> cues, TimeSpan start, TimeSpan end, string text, string? assEvent = null)
     {
         text = text.Trim();
         if (text.Length == 0 || end <= start)
             return;
-        cues.Add(new SubtitleCue(start, end, text));
+        cues.Add(new SubtitleCue(start, end, text, AssEvent: assEvent));
     }
 
     private static bool TrySplitTimes(string line, out TimeSpan start, out TimeSpan end)

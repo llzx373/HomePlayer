@@ -1,6 +1,16 @@
 namespace HomePlayer.Core;
 
-public sealed record SubtitleCue(TimeSpan Start, TimeSpan End, string Text);
+public sealed record SubtitleBitmap(int X, int Y, int Width, int Height, byte[] Bgra);
+
+public sealed record SubtitleCue(
+    TimeSpan Start,
+    TimeSpan End,
+    string Text,
+    IReadOnlyList<SubtitleBitmap>? Bitmaps = null,
+    string? AssEvent = null)
+{
+    public IReadOnlyList<SubtitleBitmap> Bitmaps { get; init; } = Bitmaps ?? [];
+}
 
 public static class SubtitleCues
 {

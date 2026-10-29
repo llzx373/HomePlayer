@@ -62,7 +62,15 @@ public sealed class AppHost : IAsyncDisposable
             historyEnabled: () => settings.RecordPlaybackHistory,
             preferences: repository);
         playback.AutoAdvance = settings.AutoPlayNextEpisode;
+        playback.RememberVolumePerFile = () => settings.RememberVolumePerFile;
+        playback.RememberPlaybackRatePerFile = () => settings.RememberPlaybackRatePerFile;
+        playback.ResumeRewindSeconds = () => settings.ResumeRewindSeconds;
+        playback.PreferredAudioLanguage = () => settings.PreferredAudioLanguage;
+        playback.AudioNormalization = () => settings.AudioNormalization;
+        playback.AudioNightMode = () => settings.AudioNightMode;
         playback.SetVolume(settings.Volume);
+        if (settings.RestorePlaylist && settings.LastPlaylist.Count > 0)
+            playback.RestorePlaylist(settings.LastPlaylist, settings.LastPlaylistIndex);
         var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning }.Where(item => item != null));
         var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore,
             warning.Length > 0 ? warning : null);
@@ -90,6 +98,8 @@ public sealed class AppHost : IAsyncDisposable
         try
         {
             Settings.Volume = Playback.Volume;
+            Settings.LastPlaylist = Playback.Playlist.Items.Select(item => item.Path).ToList();
+            Settings.LastPlaylistIndex = Playback.Playlist.CurrentIndex;
             _settingsStore.Save(Settings, SettingsWarning != null);
             SettingsWarning = null;
         }

@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace HomePlayer.Data;
 
-public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMediaPreferenceStore
+public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore, IMediaPreferenceStore
 {
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
@@ -96,6 +96,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         {
             using var tx = _connection.BeginTransaction();
             Execute("DELETE FROM WorkItem WHERE MediaItemId IN (SELECT Id FROM MediaItem WHERE LibraryId = $id);", ("$id", id));
+            Execute("DELETE FROM MediaTag WHERE MediaItemId IN (SELECT Id FROM MediaItem WHERE LibraryId = $id);", ("$id", id));
+            Execute("DELETE FROM MediaCollectionItem WHERE MediaItemId IN (SELECT Id FROM MediaItem WHERE LibraryId = $id);", ("$id", id));
             Execute("DELETE FROM MediaItem WHERE LibraryId = $id;", ("$id", id));
             Execute("DELETE FROM Folder WHERE LibraryId = $id;", ("$id", id));
             Execute("DELETE FROM Library WHERE Id = $id;", ("$id", id));
@@ -129,6 +131,29 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         }
     }
 
+    public IReadOnlyList<MediaItem> ListItemsInDirectory(string libraryId, string relativePath)
+    {
+        var path = relativePath.Replace('\\', '/').Trim('/');
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT * FROM MediaItem
+                WHERE LibraryId = $library
+                  AND (replace(RelativePath, '\', '/') = $path COLLATE NOCASE
+                       OR replace(RelativePath, '\', '/') LIKE $prefix ESCAPE '\');
+                """;
+            command.Parameters.AddWithValue("$library", libraryId);
+            command.Parameters.AddWithValue("$path", path);
+            command.Parameters.AddWithValue("$prefix", EscapeLike(path) + "/%");
+            using var reader = command.ExecuteReader();
+            var list = new List<MediaItem>();
+            while (reader.Read())
+                list.Add(ReadItem(reader));
+            return list;
+        }
+    }
+
     public int CountItems(
         string libraryId,
         string? relativeDir,
@@ -145,6 +170,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
 
     public int CountItems(MediaLibraryQuery query)
     {
+        using var measure = PerformanceMetrics.Measure("library.search-count");
         lock (_gate)
         {
             var sql = BuildItemQuery(query);
@@ -174,6 +200,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
 
     public IReadOnlyList<MediaItem> ListItemsPage(MediaLibraryQuery query, SortMode sort, int offset, int limit)
     {
+        using var measure = PerformanceMetrics.Measure("library.page");
         if (limit < 1)
             return [];
         if (offset < 0)
@@ -476,6 +503,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
 
     public IReadOnlyDictionary<string, PlaybackState> LoadPlaybackStates(IReadOnlyCollection<string> paths)
     {
+        using var measure = PerformanceMetrics.Measure("library.progress-load");
         var map = new Dictionary<string, PlaybackState>(StringComparer.OrdinalIgnoreCase);
         if (paths.Count == 0)
             return map;
@@ -597,7 +625,10 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 reader.IsDBNull(reader.GetOrdinal("SubtitleTrackTitle")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackTitle")),
                 reader.IsDBNull(reader.GetOrdinal("SubtitleTrackLanguage")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackLanguage")),
                 reader.IsDBNull(reader.GetOrdinal("SubtitlePath")) ? null : reader.GetString(reader.GetOrdinal("SubtitlePath")),
-                reader.GetInt32(reader.GetOrdinal("SubtitleDelayMs")));
+                reader.GetInt32(reader.GetOrdinal("SubtitleDelayMs")),
+                reader.IsDBNull(reader.GetOrdinal("Volume")) ? null : reader.GetDouble(reader.GetOrdinal("Volume")),
+                reader.IsDBNull(reader.GetOrdinal("PlaybackRate")) ? null : reader.GetDouble(reader.GetOrdinal("PlaybackRate")),
+                reader.GetInt32(reader.GetOrdinal("AudioDelayMs")));
         }
     }
 
@@ -610,10 +641,10 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 INSERT INTO MediaPreference (
                     Path, AudioTrackIndex, AudioTrackTitle, AudioTrackLanguage,
                     SubtitleMode, SubtitleTrackIndex, SubtitleTrackTitle, SubtitleTrackLanguage,
-                    SubtitlePath, SubtitleDelayMs)
+                    SubtitlePath, SubtitleDelayMs, Volume, PlaybackRate, AudioDelayMs)
                 VALUES ($path, $audioIndex, $audioTitle, $audioLanguage,
                     $subtitleMode, $subtitleIndex, $subtitleTitle, $subtitleLanguage,
-                    $subtitlePath, $subtitleDelay)
+                    $subtitlePath, $subtitleDelay, $volume, $rate, $audioDelay)
                 ON CONFLICT(Path) DO UPDATE SET
                     AudioTrackIndex = excluded.AudioTrackIndex,
                     AudioTrackTitle = excluded.AudioTrackTitle,
@@ -623,7 +654,10 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                     SubtitleTrackTitle = excluded.SubtitleTrackTitle,
                     SubtitleTrackLanguage = excluded.SubtitleTrackLanguage,
                     SubtitlePath = excluded.SubtitlePath,
-                    SubtitleDelayMs = excluded.SubtitleDelayMs;
+                    SubtitleDelayMs = excluded.SubtitleDelayMs,
+                    Volume = excluded.Volume,
+                    PlaybackRate = excluded.PlaybackRate,
+                    AudioDelayMs = excluded.AudioDelayMs;
                 """,
                 ("$path", preference.Path),
                 ("$audioIndex", (object?)preference.AudioTrackIndex ?? DBNull.Value),
@@ -634,7 +668,10 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
                 ("$subtitleTitle", (object?)preference.SubtitleTrackTitle ?? DBNull.Value),
                 ("$subtitleLanguage", (object?)preference.SubtitleTrackLanguage ?? DBNull.Value),
                 ("$subtitlePath", (object?)preference.SubtitlePath ?? DBNull.Value),
-                ("$subtitleDelay", preference.SubtitleDelayMs));
+                ("$subtitleDelay", preference.SubtitleDelayMs),
+                ("$volume", (object?)preference.Volume ?? DBNull.Value),
+                ("$rate", (object?)preference.PlaybackRate ?? DBNull.Value),
+                ("$audioDelay", preference.AudioDelayMs));
         }
     }
 
@@ -809,6 +846,26 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             clauses.Add("m.AudioStreamCount > 1");
         if (query.FavoritesOnly)
             clauses.Add("EXISTS (SELECT 1 FROM Favorite f WHERE f.MediaItemId = m.Id)");
+        if (!string.IsNullOrWhiteSpace(query.Tag))
+        {
+            clauses.Add("EXISTS (SELECT 1 FROM MediaTag mt JOIN Tag t ON t.Id = mt.TagId WHERE mt.MediaItemId = m.Id AND t.Name = $tag COLLATE NOCASE)");
+            parameters.Add(("$tag", query.Tag));
+        }
+        if (!string.IsNullOrWhiteSpace(query.CollectionId))
+        {
+            clauses.Add("EXISTS (SELECT 1 FROM MediaCollectionItem ci WHERE ci.MediaItemId = m.Id AND ci.CollectionId = $collection)");
+            parameters.Add(("$collection", query.CollectionId));
+        }
+        if (!string.IsNullOrWhiteSpace(query.AdditionalSearch))
+        {
+            clauses.Add("(COALESCE(m.Title, '') LIKE $additionalSearch ESCAPE '\\' OR m.FileName LIKE $additionalSearch ESCAPE '\\')");
+            parameters.Add(("$additionalSearch", "%" + EscapeLike(query.AdditionalSearch.Trim()) + "%"));
+        }
+        if (!string.IsNullOrWhiteSpace(query.AdditionalTag))
+        {
+            clauses.Add("EXISTS (SELECT 1 FROM MediaTag mt JOIN Tag t ON t.Id = mt.TagId WHERE mt.MediaItemId = m.Id AND t.Name = $additionalTag COLLATE NOCASE)");
+            parameters.Add(("$additionalTag", query.AdditionalTag));
+        }
 
         return new ItemQuery(clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses), parameters);
     }
@@ -960,6 +1017,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             {
                 Execute("DELETE FROM WorkItem WHERE MediaItemId = $id;", ("$id", id));
                 Execute("DELETE FROM Favorite WHERE MediaItemId = $id;", ("$id", id));
+                Execute("DELETE FROM MediaTag WHERE MediaItemId = $id;", ("$id", id));
+                Execute("DELETE FROM MediaCollectionItem WHERE MediaItemId = $id;", ("$id", id));
                 Execute("""
                     DELETE FROM PlaybackState WHERE Path IN (
                         SELECT l.RootPath || '\' || replace(m.RelativePath, '/', '\')
@@ -1060,6 +1119,8 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             using var tx = _connection.BeginTransaction();
             Execute("DELETE FROM WorkItem WHERE MediaItemId = $id;", ("$id", id));
             Execute("DELETE FROM Favorite WHERE MediaItemId = $id;", ("$id", id));
+            Execute("DELETE FROM MediaTag WHERE MediaItemId = $id;", ("$id", id));
+            Execute("DELETE FROM MediaCollectionItem WHERE MediaItemId = $id;", ("$id", id));
             Execute(
                 """
                 DELETE FROM PlaybackState WHERE Path IN (
@@ -1244,7 +1305,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
         }
     }
 
-    public const int SchemaVersion = 5;
+    public const int SchemaVersion = 8;
 
     private void Migrate()
     {
@@ -1356,8 +1417,26 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMedia
             version = 4;
         }
 
-        if (version < SchemaVersion)
+        if (version < 5)
+        {
             MigrateToVersion5();
+            version = 5;
+        }
+
+        if (version < 6)
+        {
+            MigrateToVersion6();
+            version = 6;
+        }
+
+        if (version < 7)
+        {
+            MigrateToVersion7();
+            version = 7;
+        }
+
+        if (version < SchemaVersion)
+            MigrateToVersion8();
     }
 
     private int ReadUserVersion()

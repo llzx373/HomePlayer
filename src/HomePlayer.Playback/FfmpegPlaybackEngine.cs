@@ -5,10 +5,11 @@ using NAudio.Wave;
 
 namespace HomePlayer.Playback;
 
-public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
+public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackChapterSource, IPlaybackAudioEnhancements, IPlaybackAudioOutputEvents
 {
     private readonly object _gate = new();
     private readonly string? _audioOutputId;
+    private readonly PcmAudioEffects _effects = new();
     private FfmpegPlayer? _player;
     private WasapiOut? _output;
     private MMDevice? _device;
@@ -17,6 +18,10 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     private double _volume = 0.8;
     private double _rate = 1.0;
     private bool _muted;
+    private bool _normalize;
+    private bool _nightMode;
+    private int _delayBytes;
+    private int _skipBytes;
 
     public FfmpegPlaybackEngine(string? audioOutputId = null) => _audioOutputId = audioOutputId;
 
@@ -30,6 +35,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
+    public event Action<Exception>? AudioOutputFailed;
 
     public void Open(string path)
     {
@@ -54,7 +60,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
             player.Open(path);
             if (player.HasAudio)
             {
-                var buffer = new BufferedWaveProvider(new WaveFormat(48000, 16, 2))
+                var buffer = new BufferedWaveProvider(new WaveFormatExtensible(48000, 16, player.OutputChannels))
                 {
                     DiscardOnBufferOverflow = true,
                     BufferDuration = TimeSpan.FromSeconds(2)
@@ -83,6 +89,11 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
                     }
 
                     output.Init(buffer);
+                    output.PlaybackStopped += (_, args) =>
+                    {
+                        if (args.Exception != null)
+                            AudioOutputFailed?.Invoke(args.Exception);
+                    };
                     output.Volume = _muted ? 0 : (float)_volume;
                     _buffer = buffer;
                     _output = output;
@@ -146,7 +157,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void Seek(TimeSpan position)
     {
-        _buffer?.ClearBuffer();
+        SetAudioDelay(_audioDelayMs);
         _player?.Seek(position);
     }
 
@@ -184,13 +195,15 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void SetAudioTrack(int index)
     {
-        _buffer?.ClearBuffer();
+        SetAudioDelay(_audioDelayMs);
         _player?.SetAudioTrack(index);
     }
 
     public IReadOnlyList<MediaTrack> GetSubtitleTracks() => _player?.GetSubtitleTracks() ?? [];
 
     public int SubtitleTrackIndex => _player?.SubtitleTrackIndex ?? -1;
+
+    public IReadOnlyList<MediaChapter> GetChapters() => _player?.GetChapters() ?? [];
 
     public void SetSubtitleTrack(int index) => _player?.SetSubtitleTrack(index);
 
@@ -203,10 +216,44 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void Dispose() => Stop();
 
+    private int _audioDelayMs;
+
+    public void SetAudioDelay(int milliseconds)
+    {
+        _audioDelayMs = Math.Clamp(milliseconds, -10_000, 10_000);
+        var frameBytes = (_player?.OutputChannels ?? 2) * 2;
+        var bytes = (int)(Math.Abs((long)_audioDelayMs) * 48000L * frameBytes / 1000);
+        bytes -= bytes % frameBytes;
+        _delayBytes = _audioDelayMs > 0 ? bytes : 0;
+        _skipBytes = _audioDelayMs < 0 ? bytes : 0;
+        _buffer?.ClearBuffer();
+    }
+
+    public void SetNormalization(bool enabled) => _normalize = enabled;
+
+    public void SetNightMode(bool enabled) => _nightMode = enabled;
+
     private void OnPcm(byte[] data, int count)
     {
         try
         {
+            if (_delayBytes > 0)
+            {
+                var silence = new byte[_delayBytes];
+                _effects.Apply(silence, silence.Length, false, false);
+                _buffer?.AddSamples(silence, 0, silence.Length);
+                _delayBytes = 0;
+            }
+            var offset = Math.Min(count, _skipBytes);
+            _skipBytes -= offset;
+            if (offset >= count)
+                return;
+            if (offset > 0)
+            {
+                data = data[offset..count];
+                count = data.Length;
+            }
+            _effects.Apply(data, count, _normalize, _nightMode);
             _buffer?.AddSamples(data, 0, count);
         }
         catch (InvalidOperationException)

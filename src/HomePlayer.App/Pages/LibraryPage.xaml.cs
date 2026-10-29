@@ -78,6 +78,11 @@ public sealed partial class LibraryPage : Page
             LoadPage();
         };
         App.Host.Libraries.Changed += (_, _) => DispatcherQueue.TryEnqueue(QueuePageReload);
+        App.Host.Libraries.ScanStatusChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsLoaded)
+                UpdateScanWarning();
+        });
         Loaded += (_, _) =>
         {
             _ready = true;
@@ -130,9 +135,36 @@ public sealed partial class LibraryPage : Page
     private void UpdateScanWarning()
     {
         var libraryId = (LibraryList.SelectedItem as MediaLibrary)?.Id;
-        var warning = libraryId == null ? null : App.Host.Libraries.ScanWarning(libraryId);
-        ScanWarningBar.Message = warning ?? "";
-        ScanWarningBar.IsOpen = warning != null;
+        var status = libraryId == null ? LibraryScanStatus.Idle : App.Host.Libraries.ScanStatus(libraryId);
+        var active = status.Stage is LibraryScanStage.Scanning or LibraryScanStage.Processing;
+        var warning = status.Stage is LibraryScanStage.Incomplete or LibraryScanStage.Unavailable;
+        ScanWarningBar.IsOpen = active || warning;
+        ScanWarningBar.Severity = warning ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+        ScanWarningBar.Title = status.Stage switch
+        {
+            LibraryScanStage.Unavailable => "媒体库暂时不可用",
+            LibraryScanStage.Incomplete => "扫描不完整",
+            LibraryScanStage.Processing => "正在处理媒体",
+            _ => "正在扫描"
+        };
+        ScanRetryButton.Visibility = warning ? Visibility.Visible : Visibility.Collapsed;
+        var message = status.Message ?? "";
+        if (status.DiscoveredCount > 0 && active)
+            message += $" 已发现 {status.DiscoveredCount:N0} 个文件，待处理 {status.PendingCount:N0} 项。";
+        if (status.Failures.Count > 0)
+        {
+            message += Environment.NewLine + string.Join(Environment.NewLine,
+                status.Failures.Take(5).Select(failure => $"{failure.Path}：{failure.Error}"));
+            if (status.Failures.Count > 5)
+                message += Environment.NewLine + $"另有 {status.Failures.Count - 5} 个失败目录。";
+        }
+        ScanWarningBar.Message = message;
+    }
+
+    private void ScanRetry_Click(object sender, RoutedEventArgs e)
+    {
+        if (LibraryList.SelectedItem is MediaLibrary library)
+            App.Host.Libraries.Refresh(library.Id);
     }
 
     private void ShowPendingUpdates()

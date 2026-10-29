@@ -2,7 +2,7 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Playback;
 
-public sealed class PlaybackController : IDisposable
+public sealed partial class PlaybackController : IDisposable
 {
     private readonly Action<Action> _post;
     private readonly Func<CodecPlan> _codecs;
@@ -24,6 +24,8 @@ public sealed class PlaybackController : IDisposable
     private bool _muted;
     private int _videoWidth;
     private int _videoHeight;
+    private DateTime _openStartedUtc;
+    private bool _firstFramePending;
 
     public PlaybackController(
         Action<Action> post,
@@ -53,6 +55,7 @@ public sealed class PlaybackController : IDisposable
         }
 
         _flushLoop = Task.Run(() => FlushLoopAsync(_flushStop.Token));
+        _ = Task.Run(() => MonitorAudioDeviceAsync(_flushStop.Token));
     }
 
     public Playlist Playlist { get; } = new();
@@ -78,6 +81,7 @@ public sealed class PlaybackController : IDisposable
     {
         _volume = Math.Clamp(volume, 0, 1);
         _engine?.SetVolume(_volume);
+        SavePlaybackPreference();
         Notify();
     }
 
@@ -101,6 +105,7 @@ public sealed class PlaybackController : IDisposable
                     : Status;
         }
 
+        SavePlaybackPreference();
         Notify();
     }
 
@@ -363,8 +368,12 @@ public sealed class PlaybackController : IDisposable
     private async Task PlayCurrentAsync(bool forceFfmpeg, bool restart = false)
     {
         RememberPosition();
+        if (!string.Equals(_playingPath, Playlist.Current?.Path, StringComparison.OrdinalIgnoreCase))
+            ClearLoop();
         _playingPath = null;
         _rate = 1.0;
+        _openStartedUtc = DateTime.UtcNow;
+        _firstFramePending = true;
         Notify();
         var token = ++_token;
         var previous = _engine;
@@ -422,14 +431,17 @@ public sealed class PlaybackController : IDisposable
                         engine.SetMuted(_muted);
                         engine.SetRate(_rate);
                         ApplyAudioPreference(engine, item.Path);
+                        ApplyAudioSettings(engine, item.Path);
+                        ApplyPlaybackPreferences(engine, item.Path);
                         if (!restart)
                             ApplyResume(engine, item.Path);
                         engine.Play();
-                        Status = Math.Abs(engine.Rate - _rate) > 0.01
+                        Status = _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
                             ? "当前滤镜不支持倍速"
                             : engine is LavPlaybackEngine { AudioMissing: true }
                                 ? "正在播放，音频没有接上"
-                                : "正在播放";
+                                : "正在播放");
+                        _audioFallbackNotice = null;
                         EngineLabel = engine.Name;
                         CaptureVideoSize(engine);
                         Notify();
@@ -480,7 +492,7 @@ public sealed class PlaybackController : IDisposable
         var plan = _codecs();
         if (!forceFfmpeg && plan.Splitters.Count > 0 && plan.VideoDecoders.Count > 0)
         {
-            var lav = new LavPlaybackEngine(plan, _audioOutput());
+            var lav = new LavPlaybackEngine(plan, (_useDefaultAudio ? null : _audioOutput()));
             try
             {
                 lav.Open(path);
@@ -498,7 +510,7 @@ public sealed class PlaybackController : IDisposable
             }
         }
 
-        var ffmpeg = new FfmpegPlaybackEngine(_audioOutput());
+        var ffmpeg = new FfmpegPlaybackEngine((_useDefaultAudio ? null : _audioOutput()));
         try
         {
             ffmpeg.Open(path);
@@ -520,6 +532,8 @@ public sealed class PlaybackController : IDisposable
         engine.Ended += OnEnded;
         if (engine is IPlaybackFaultSource faults)
             faults.Faulted += OnFaulted;
+        if (engine is IPlaybackAudioOutputEvents audioEvents)
+            audioEvents.AudioOutputFailed += OnAudioOutputFailed;
     }
 
     private void Discard(IPlaybackEngine engine)
@@ -540,10 +554,17 @@ public sealed class PlaybackController : IDisposable
         engine.Ended -= OnEnded;
         if (engine is IPlaybackFaultSource faults)
             faults.Faulted -= OnFaulted;
+        if (engine is IPlaybackAudioOutputEvents audioEvents)
+            audioEvents.AudioOutputFailed -= OnAudioOutputFailed;
     }
 
     private void OnFrame(VideoFrame frame)
     {
+        if (_firstFramePending)
+        {
+            _firstFramePending = false;
+            PerformanceMetrics.Record("playback.first-frame", (DateTime.UtcNow - _openStartedUtc).TotalMilliseconds);
+        }
         RememberVideoSize(frame.Width, frame.Height, true);
         var handler = FrameArrived;
         if (handler == null)
@@ -692,11 +713,10 @@ public sealed class PlaybackController : IDisposable
 
     private void ApplyAudioPreference(IPlaybackEngine engine, string path)
     {
-        if (_preferences == null)
-            return;
         try
         {
-            var index = MediaPreferenceSelection.AudioTrack(_preferences.LoadPreference(path), engine.GetAudioTracks());
+            var preference = _preferences?.LoadPreference(path);
+            var index = MediaPreferenceSelection.AudioTrack(preference, engine.GetAudioTracks(), PreferredAudioLanguage());
             if (index is int selected)
                 engine.SetAudioTrack(selected);
         }
@@ -754,7 +774,8 @@ public sealed class PlaybackController : IDisposable
         var resume = PlaybackResume.Position(TimeSpan.FromSeconds(state.PositionSeconds), engine.Duration);
         if (resume == null)
             return;
-        engine.Seek(resume.Value);
+        var rewind = TimeSpan.FromSeconds(Math.Clamp(ResumeRewindSeconds(), 0, 10));
+        engine.Seek(resume.Value - rewind);
     }
 
     private async Task FlushLoopAsync(CancellationToken cancellationToken)

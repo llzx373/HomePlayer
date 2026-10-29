@@ -65,6 +65,7 @@
             </TreeView>
             <StackPanel Grid.Row="4" Spacing="8">
                 <Button Content="添加库" Click="Add_Click" HorizontalAlignment="Stretch" />
+                <Button Content="更改所选库位置" Click="MigrateRoot_Click" HorizontalAlignment="Stretch" />
                 <Button Content="移除所选库" Click="Remove_Click" HorizontalAlignment="Stretch" />
             </StackPanel>
         </Grid>
@@ -134,6 +135,9 @@
                                     <ComboBoxItem Content="全部" /><ComboBoxItem Content="有字幕" /><ComboBoxItem Content="无字幕" />
                                 </ComboBox>
                                 <ToggleSwitch x:Name="MultiAudioSwitch" Header="多音轨" OnContent="仅显示多音轨" OffContent="不限" Toggled="MultiAudio_Toggled" />
+                                <ComboBox x:Name="TagFilterBox" Header="标签" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
+                                <ComboBox x:Name="CollectionFilterBox" Header="自定义合集" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
+                                <Button Content="管理自定义合集" Click="ManageCollections_Click" HorizontalAlignment="Stretch" />
                                 <Button Content="清除组合筛选" Click="ClearAdvancedFilters_Click" HorizontalAlignment="Stretch" />
                             </StackPanel>
                         </Flyout>
@@ -165,6 +169,8 @@
                     <Button Content="标为未看" Click="BulkWatched_Click" Tag="False" />
                     <Button Content="收藏" Click="BulkFavorite_Click" Tag="True" />
                     <Button Content="取消收藏" Click="BulkFavorite_Click" Tag="False" />
+                    <Button Content="设置标签" Click="BulkTags_Click" />
+                    <Button Content="加入合集" Click="BulkCollection_Click" />
                     <Button Content="重新处理" Click="BulkReprocess_Click" />
                     <Button Content="重新匹配 TMDB" Click="BulkMatch_Click" />
                     <Button Content="从媒体库移除" Click="BulkRemove_Click" />
@@ -173,7 +179,11 @@
             <InfoBar x:Name="UpdateBar" Grid.Row="4" Severity="Informational" IsOpen="False" IsClosable="False" Title="媒体库有更新">
                 <InfoBar.ActionButton><Button Content="刷新" Click="RefreshPending_Click" /></InfoBar.ActionButton>
             </InfoBar>
-            <InfoBar x:Name="ScanWarningBar" Grid.Row="5" Severity="Warning" IsOpen="False" IsClosable="False" Title="扫描不完整" />
+            <InfoBar x:Name="ScanWarningBar" Grid.Row="5" Severity="Warning" IsOpen="False" IsClosable="False" Title="扫描状态">
+                <InfoBar.ActionButton>
+                    <Button x:Name="ScanRetryButton" Content="重试" Click="ScanRetry_Click" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <InfoBar x:Name="LibraryErrorBar" Grid.Row="6" Severity="Error" IsOpen="False" IsClosable="False" Title="媒体库读取失败">
                 <InfoBar.ActionButton><Button Content="重试" Click="RetryLoad_Click" /></InfoBar.ActionButton>
             </InfoBar>

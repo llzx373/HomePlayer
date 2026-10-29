@@ -4,9 +4,11 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Playback;
 
-public sealed class LavPlaybackEngine : IPlaybackEngine
+public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhancements
 {
     private readonly StaThread _sta = new("LAV playback");
+    private bool _normalize;
+    private bool _nightMode;
     private readonly List<object> _com = [];
     private BgraSinkFilter? _sink;
     private IMediaControl? _control;
@@ -142,6 +144,30 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
     }
 
     public void SetRate(double rate) => _sta.Invoke(() => ApplyRate(PlaybackRates.Clamp(rate)));
+
+    public void SetAudioDelay(int milliseconds) => _sta.Invoke(() =>
+    {
+        if (_audioFilter is ILavAudioSettings settings)
+            settings.SetAudioDelay(milliseconds == 0 ? 0 : 1, Math.Clamp(milliseconds, -10_000, 10_000));
+    });
+
+    public void SetNormalization(bool enabled)
+    {
+        _normalize = enabled;
+        ApplyDynamicRange();
+    }
+
+    public void SetNightMode(bool enabled)
+    {
+        _nightMode = enabled;
+        ApplyDynamicRange();
+    }
+
+    private void ApplyDynamicRange() => _sta.Invoke(() =>
+    {
+        if (_audioFilter is ILavAudioSettings settings)
+            settings.SetDRC(_normalize || _nightMode ? 1 : 0, _nightMode ? 100 : 50);
+    });
 
     public void StepFrame() => _sta.Invoke(() =>
     {
@@ -1235,9 +1261,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine
         settings.SetSampleFormat(0, 1);
         for (var format = 1; format <= 4; format++)
             settings.SetSampleFormat(format, 0);
-        settings.SetMixingEnabled(1);
-        settings.SetMixingLayout(3);
-        settings.SetMixingFlags(5);
+        settings.SetMixingEnabled(0);
     }
 
     private static IPin? FindPin(IBaseFilter filter, bool output, bool video, bool anyOutput = false)

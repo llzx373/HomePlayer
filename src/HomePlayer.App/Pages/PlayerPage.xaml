@@ -199,7 +199,17 @@
                     PointerPressed="Position_Pressed"
                     PointerReleased="Position_Released"
                     PointerCanceled="Position_Released"
-                    PointerCaptureLost="Position_Released" />
+                    PointerCaptureLost="Position_Released"
+                    PointerEntered="Position_PointerEntered"
+                    PointerMoved="Position_PointerMoved"
+                    PointerExited="Position_PointerExited" />
+                <Border x:Name="SeekPreview" Grid.Column="1" Width="176" Padding="4" Margin="0,-112,0,0" VerticalAlignment="Top" HorizontalAlignment="Center" Background="#E6202020" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="4" Visibility="Collapsed" IsHitTestVisible="False" Canvas.ZIndex="10">
+                    <Grid RowSpacing="4">
+                        <Grid.RowDefinitions><RowDefinition Height="90" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Image x:Name="SeekPreviewImage" Stretch="UniformToFill" />
+                        <TextBlock x:Name="SeekPreviewTime" Grid.Row="1" Text="00:00" Foreground="White" FontFamily="Consolas" FontSize="12" HorizontalAlignment="Center" />
+                    </Grid>
+                </Border>
                 <TextBlock
                     x:Name="DurationTimeText"
                     Grid.Column="2"
@@ -530,9 +540,16 @@
                         ToolTipService.ToolTip="更多">
                         <FontIcon Glyph="&#xE712;" FontSize="16" />
                         <Button.Flyout>
-                            <MenuFlyout Placement="Bottom">
+                            <MenuFlyout Placement="Bottom" Opening="MoreMenu_Opening">
                                 <MenuFlyoutItem x:Name="PreviousEpisodeItem" Text="上一集" Click="PreviousEpisode_Click" />
                                 <MenuFlyoutItem x:Name="NextEpisodeItem" Text="下一集" Click="NextEpisode_Click" />
+                                <MenuFlyoutItem Text="后退 30 秒" Click="SeekBackLarge_Click" />
+                                <MenuFlyoutItem Text="前进 30 秒" Click="SeekForwardLarge_Click" />
+                                <MenuFlyoutItem Text="设置 A 点" Click="SetLoopA_Click" />
+                                <MenuFlyoutItem Text="设置 B 点并循环" Click="SetLoopB_Click" />
+                                <MenuFlyoutItem Text="清除 A-B 循环" Click="ClearLoop_Click" />
+                                <MenuFlyoutSubItem x:Name="ChaptersMenu" Text="章节" />
+                                <MenuFlyoutSubItem x:Name="BookmarksMenu" Text="书签" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem
                                     x:Name="FitWindowMenuItem"

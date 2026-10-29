@@ -6,13 +6,15 @@ using HomePlayer.Ffmpeg;
 
 namespace HomePlayer.Library;
 
-public sealed class LibraryCoordinator : IAsyncDisposable
+public sealed partial class LibraryCoordinator : IAsyncDisposable
 {
     private readonly LibraryRepository _repository;
     private readonly TmdbClient _tmdb;
     private readonly Func<string?> _apiKey;
     private readonly Func<string, VideoScanResult> _scan;
     private readonly ConcurrentDictionary<string, string> _scanWarnings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, LibraryScanStatus> _scanStatuses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PendingLibraryChanges> _changes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Channel<(string LibraryId, string RelativePath)> _coverQueue = Channel.CreateUnbounded<(string, string)>();
     private readonly HashSet<string> _coverQueued = new(StringComparer.OrdinalIgnoreCase);
@@ -51,6 +53,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     }
 
     public event EventHandler? Changed;
+    public event EventHandler? ScanStatusChanged;
 
     /// <summary>
     /// 条目的文件内容变了或被删掉，播放侧要丢掉对应的旧进度。
@@ -60,6 +63,9 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     public int PendingCount => _repository.PendingCount();
 
     public string? ScanWarning(string libraryId) => _scanWarnings.GetValueOrDefault(libraryId);
+
+    public LibraryScanStatus ScanStatus(string libraryId) =>
+        _scanStatuses.GetValueOrDefault(libraryId) ?? LibraryScanStatus.Idle;
 
     public (bool All, string[] Ids) TakeDirtyItems()
     {
@@ -80,6 +86,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         for (var i = 0; i < 2; i++)
             _workers.Add(Task.Run(() => WorkerAsync(_shutdown.Token)));
         _workers.Add(Task.Run(() => CoverWorkerAsync(_shutdown.Token)));
+        _workers.Add(Task.Run(() => AvailabilityWorkerAsync(_shutdown.Token)));
         IReadOnlyList<MediaLibrary> libraries;
         try
         {
@@ -152,13 +159,17 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     public async Task RemoveAsync(string libraryId)
     {
         _scanWarnings.TryRemove(libraryId, out _);
+        _scanStatuses.TryRemove(libraryId, out _);
         FileSystemWatcher? watcher;
         lock (_watchersGate)
             _watchers.Remove(libraryId, out watcher);
         watcher?.Dispose();
         CancellationTokenSource? debounce = null;
         lock (_debounce)
+        {
             _debounce.Remove(libraryId, out debounce);
+            _changes.Remove(libraryId);
+        }
         if (debounce != null)
         {
             debounce.Cancel();
@@ -218,6 +229,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     public long CacheBytes()
     {
+        using var measure = PerformanceMetrics.Measure("library.cache-bytes");
         if (!Directory.Exists(AppPaths.Cache))
             return 0;
         try
@@ -333,12 +345,11 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
             InternalBufferSize = 64 * 1024
         };
-        FileSystemEventHandler onChange = (_, _) => Debounce(library.Id);
-        watcher.Created += onChange;
-        watcher.Changed += onChange;
-        watcher.Deleted += onChange;
-        watcher.Renamed += (_, _) => Debounce(library.Id);
-        watcher.Error += (_, _) => ReconcileInBackground(library.Id);
+        watcher.Created += (_, e) => QueueChange(library.Id, e.FullPath, null, e.ChangeType);
+        watcher.Changed += (_, e) => QueueChange(library.Id, e.FullPath, null, e.ChangeType);
+        watcher.Deleted += (_, e) => QueueChange(library.Id, e.FullPath, null, e.ChangeType);
+        watcher.Renamed += (_, e) => QueueChange(library.Id, e.FullPath, e.OldFullPath, e.ChangeType);
+        watcher.Error += (_, _) => QueueChange(library.Id, null, null, null, fullScan: true);
         lock (_watchersGate)
         {
             if (_shutdown.IsCancellationRequested || _watchers.ContainsKey(library.Id))
@@ -359,10 +370,19 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         }
     }
 
-    private void Debounce(string libraryId)
+    private void QueueChange(string libraryId, string? path, string? oldPath, WatcherChangeTypes? type, bool fullScan = false)
     {
         lock (_debounce)
         {
+            if (!_changes.TryGetValue(libraryId, out var pending))
+            {
+                pending = new PendingLibraryChanges();
+                _changes[libraryId] = pending;
+            }
+
+            pending.FullScan |= fullScan;
+            if (path != null && type != null)
+                pending.Changes.Add(new LibraryChange(path, oldPath, type.Value));
             if (_debounce.Remove(libraryId, out var previous))
             {
                 previous.Cancel();
@@ -376,7 +396,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 try
                 {
                     await Task.Delay(2000, source.Token);
-                    Reconcile(libraryId);
+                    ReconcileQueued(libraryId);
                 }
                 catch (OperationCanceledException)
                 {
@@ -392,6 +412,36 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                     source.Dispose();
                 }
             }));
+        }
+    }
+
+    private void ReconcileQueued(string libraryId)
+    {
+        PendingLibraryChanges? pending;
+        lock (_debounce)
+        {
+            _changes.Remove(libraryId, out pending);
+        }
+        if (pending == null)
+            return;
+        if (pending.FullScan)
+        {
+            Reconcile(libraryId);
+            return;
+        }
+
+        lock (LibraryLock(libraryId))
+        {
+            if (_shutdown.IsCancellationRequested)
+                return;
+            try
+            {
+                ReconcileChanges(libraryId, pending.Changes);
+            }
+            catch (Exception)
+            {
+                ReconcileCore(libraryId);
+            }
         }
     }
 
@@ -416,12 +466,18 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private void ReconcileCore(string libraryId)
     {
         var library = _repository.GetLibrary(libraryId);
-        if (library == null || !Directory.Exists(library.RootPath))
+        if (library == null)
             return;
+        if (!Directory.Exists(library.RootPath))
+        {
+            SetUnavailable(library);
+            return;
+        }
+
+        SetScanStatus(library.Id, LibraryScanStage.Scanning, 0, [], "正在枚举文件…");
         var existing = _repository.ListItems(libraryId);
         var byPath = existing.ToDictionary(item => item.RelativePath, StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var relativePaths = new List<string>();
         var scan = _scan(library.RootPath);
         foreach (var file in scan.Files)
         {
@@ -429,61 +485,12 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 return;
             var relative = Path.GetRelativePath(library.RootPath, file);
             seen.Add(relative);
-            relativePaths.Add(relative);
-            long size;
-            long ticks;
-            try
-            {
-                var info = new FileInfo(file);
-                size = info.Length;
-                ticks = SecondTicks(info.LastWriteTimeUtc);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-            {
-                continue;
-            }
-
-            if (!byPath.TryGetValue(relative, out var item))
-            {
-                item = new MediaItem
-                {
-                    Id = Guid.NewGuid().ToString("N"),
-                    LibraryId = library.Id,
-                    RelativePath = relative,
-                    Size = size,
-                    MtimeUtcTicks = ticks,
-                    Status = ItemStatus.Pending
-                };
-                _repository.InsertItem(item);
-                _repository.Enqueue(item.Id, library.Kind);
-                EnqueueAncestorCovers(library.Id, relative);
-                MarkDirty(item.Id);
-                Submit(item.Id);
-            }
-            else if (item.Size != size || Math.Abs(item.MtimeUtcTicks - ticks) > TimeSpan.TicksPerSecond)
-            {
-                _repository.MarkChanged(item, size, ticks);
-                _repository.Enqueue(item.Id, library.Kind);
-                EnqueueAncestorCovers(library.Id, item.RelativePath);
-                ResetProgress(library, item.RelativePath);
-                MarkDirty(item.Id);
-                Submit(item.Id);
-            }
+            UpsertFile(library, file, byPath.GetValueOrDefault(relative));
         }
 
         if (!scan.IsComplete)
         {
-            _scanWarnings[library.Id] = $"本次扫描不完整：{scan.Failures.Count} 个文件夹无法读取，已保留未确认的条目。";
-            try
-            {
-                CrashLog.Write(
-                    "扫描不完整",
-                    library.Name + Environment.NewLine + string.Join(Environment.NewLine, scan.Failures.Select(failure => $"{failure.Path}: {failure.Error}")));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-            }
-
+            RecordScanWarning(library, scan.Failures, scan.Files.Count);
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -491,16 +498,139 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         _scanWarnings.TryRemove(library.Id, out _);
         foreach (var item in existing)
         {
-            if (seen.Contains(item.RelativePath))
-                continue;
-            TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
-            _repository.DeleteItem(item.Id);
-            ResetProgress(library, item.RelativePath);
-            EnqueueAncestorCovers(library.Id, item.RelativePath);
-            MarkDirty(item.Id);
+            if (!seen.Contains(item.RelativePath))
+                RemoveItem(library, item);
         }
 
-        var folders = FolderTree.Build(library, relativePaths);
+        RebuildFolders(library);
+        _repository.TouchScan(library.Id, DateTime.UtcNow);
+        SetCompleteStatus(library.Id, scan.Files.Count);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ReconcileChanges(string libraryId, IReadOnlyCollection<LibraryChange> changes)
+    {
+        var library = _repository.GetLibrary(libraryId);
+        if (library == null)
+            return;
+        if (!Directory.Exists(library.RootPath))
+        {
+            SetUnavailable(library);
+            return;
+        }
+
+        SetScanStatus(library.Id, LibraryScanStage.Scanning, changes.Count, [], "正在处理文件变化…");
+        var failures = new List<DirectoryScanFailure>();
+        var discovered = 0;
+        foreach (var change in changes)
+        {
+            if (change.OldPath != null)
+                RemovePath(library, change.OldPath);
+            if (change.Type == WatcherChangeTypes.Deleted)
+            {
+                RemovePath(library, change.Path);
+                continue;
+            }
+
+            if (Directory.Exists(change.Path))
+            {
+                if (change.Type != WatcherChangeTypes.Changed)
+                {
+                    var scan = _scan(change.Path);
+                    discovered += scan.Files.Count;
+                    failures.AddRange(scan.Failures);
+                    foreach (var file in scan.Files)
+                        UpsertFile(library, file);
+                }
+            }
+            else if (File.Exists(change.Path) && VideoFiles.IsVideo(change.Path))
+            {
+                discovered++;
+                UpsertFile(library, change.Path);
+            }
+            else if (!File.Exists(change.Path))
+            {
+                RemovePath(library, change.Path);
+            }
+        }
+
+        RebuildFolders(library);
+        if (failures.Count > 0)
+            RecordScanWarning(library, failures, discovered);
+        else
+        {
+            _scanWarnings.TryRemove(library.Id, out _);
+            SetCompleteStatus(library.Id, discovered);
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpsertFile(MediaLibrary library, string file, MediaItem? knownItem = null)
+    {
+        var relative = Path.GetRelativePath(library.RootPath, file);
+        long size;
+        long ticks;
+        try
+        {
+            var info = new FileInfo(file);
+            size = info.Length;
+            ticks = SecondTicks(info.LastWriteTimeUtc);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return;
+        }
+
+        var item = knownItem ?? _repository.FindItemByPath(file);
+        if (item == null)
+        {
+            item = new MediaItem
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                LibraryId = library.Id,
+                RelativePath = relative,
+                Size = size,
+                MtimeUtcTicks = ticks,
+                Status = ItemStatus.Pending
+            };
+            _repository.InsertItem(item);
+            _repository.Enqueue(item.Id, library.Kind);
+            EnqueueAncestorCovers(library.Id, relative);
+            MarkDirty(item.Id);
+            Submit(item.Id);
+        }
+        else if (item.Size != size || Math.Abs(item.MtimeUtcTicks - ticks) > TimeSpan.TicksPerSecond)
+        {
+            _repository.MarkChanged(item, size, ticks);
+            _repository.Enqueue(item.Id, library.Kind);
+            EnqueueAncestorCovers(library.Id, item.RelativePath);
+            ResetProgress(library, item.RelativePath);
+            MarkDirty(item.Id);
+            Submit(item.Id);
+        }
+    }
+
+    private void RemovePath(MediaLibrary library, string path)
+    {
+        var relative = Path.GetRelativePath(library.RootPath, path);
+        if (relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return;
+        foreach (var item in _repository.ListItemsInDirectory(library.Id, relative))
+            RemoveItem(library, item);
+    }
+
+    private void RemoveItem(MediaLibrary library, MediaItem item)
+    {
+        TryDeleteDirectory(Path.Combine(AppPaths.Thumbs, item.Id));
+        _repository.DeleteItem(item.Id);
+        ResetProgress(library, item.RelativePath);
+        EnqueueAncestorCovers(library.Id, item.RelativePath);
+        MarkDirty(item.Id);
+    }
+
+    private void RebuildFolders(MediaLibrary library)
+    {
+        var folders = FolderTree.Build(library, _repository.ListItems(library.Id).Select(item => item.RelativePath));
         var removedFolders = _repository.SyncFolders(library.Id, folders);
         foreach (var path in removedFolders)
             TryDeleteDirectory(FolderCovers.CacheDirectory(library.Id, path));
@@ -509,8 +639,51 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             if (string.IsNullOrEmpty(folder.CoverPath))
                 EnqueueCover(library.Id, folder.RelativePath);
         }
-        _repository.TouchScan(library.Id, DateTime.UtcNow);
-        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RecordScanWarning(MediaLibrary library, IReadOnlyList<DirectoryScanFailure> failures, int discovered)
+    {
+        var message = $"本次扫描不完整：{failures.Count} 个文件夹无法读取，已保留未确认的条目。";
+        _scanWarnings[library.Id] = message;
+        SetScanStatus(library.Id, LibraryScanStage.Incomplete, discovered, failures, message);
+        try
+        {
+            CrashLog.Write(
+                "扫描不完整",
+                library.Name + Environment.NewLine + string.Join(Environment.NewLine, failures.Select(failure => $"{failure.Path}: {failure.Error}")));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private void SetUnavailable(MediaLibrary library)
+    {
+        var message = "媒体库文件夹当前不可用，已保留现有媒体和观看进度；恢复连接后会自动重试。";
+        _scanWarnings[library.Id] = message;
+        SetScanStatus(library.Id, LibraryScanStage.Unavailable, 0, [], message);
+    }
+
+    private void SetCompleteStatus(string libraryId, int discovered)
+    {
+        var pending = _repository.PendingCount();
+        SetScanStatus(
+            libraryId,
+            pending > 0 ? LibraryScanStage.Processing : LibraryScanStage.Complete,
+            discovered,
+            [],
+            pending > 0 ? $"扫描完成，正在处理 {pending:N0} 项元数据和封面。" : "扫描完成。");
+    }
+
+    private void SetScanStatus(
+        string libraryId,
+        LibraryScanStage stage,
+        int discovered,
+        IReadOnlyList<DirectoryScanFailure> failures,
+        string message)
+    {
+        _scanStatuses[libraryId] = new LibraryScanStatus(stage, discovered, _repository.PendingCount(), failures, message);
+        ScanStatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Submit(string itemId)
@@ -544,6 +717,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 _inFlight.Add(itemId);
             }
 
+            var libraryId = _repository.GetItem(itemId)?.LibraryId;
             try
             {
                 var acquired = false;
@@ -568,6 +742,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                     if (resubmit && !cancellationToken.IsCancellationRequested)
                         Submit(itemId);
                 }
+                if (libraryId != null && ScanStatus(libraryId).Stage == LibraryScanStage.Processing)
+                    SetCompleteStatus(libraryId, ScanStatus(libraryId).DiscoveredCount);
             }
             catch (OperationCanceledException)
             {
@@ -886,6 +1062,30 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    private async Task AvailabilityWorkerAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                foreach (var (libraryId, status) in _scanStatuses)
+                {
+                    if (status.Stage != LibraryScanStage.Unavailable)
+                        continue;
+                    var library = _repository.GetLibrary(libraryId);
+                    if (library == null || !Directory.Exists(library.RootPath))
+                        continue;
+                    Watch(library);
+                    ReconcileInBackground(libraryId);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private async Task AcquireAsync(CancellationToken cancellationToken)
     {
         while (true)
@@ -960,5 +1160,13 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
+    }
+
+    private sealed record LibraryChange(string Path, string? OldPath, WatcherChangeTypes Type);
+
+    private sealed class PendingLibraryChanges
+    {
+        public bool FullScan { get; set; }
+        public HashSet<LibraryChange> Changes { get; } = [];
     }
 }

@@ -45,7 +45,7 @@
   <Target Name="CopyFfmpegDlls" AfterTargets="Build">
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
-      <_FfmpegLicense Include="$(FfmpegDir)\LICENSE.txt" />
+      <_FfmpegLicense Include="$(FfmpegDir)\*LICENSE*.txt" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />
@@ -53,7 +53,7 @@
   <Target Name="PublishFfmpegDlls" AfterTargets="Publish">
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
-      <_FfmpegLicense Include="$(FfmpegDir)\LICENSE.txt" />
+      <_FfmpegLicense Include="$(FfmpegDir)\*LICENSE*.txt" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />

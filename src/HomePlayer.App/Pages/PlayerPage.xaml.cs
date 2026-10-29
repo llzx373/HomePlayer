@@ -37,6 +37,7 @@ public sealed partial class PlayerPage : Page
     private readonly VideoPresenter _presenter;
     private readonly OverlayFade _controlsFade;
     private SubtitleSession _subtitles = new();
+    private readonly AssSubtitlePresenter _assPresenter = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
     private int _pipelineTicks;
@@ -87,12 +88,14 @@ public sealed partial class PlayerPage : Page
             LayoutSubtitle();
         };
         var playback = App.Host.Playback;
+        _assPresenter.Changed += () => DispatcherQueue.TryEnqueue(UpdateSubtitleOverlay);
         playback.FrameArrived += OnVideoFrame;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         playback.Stopped += () => DispatcherQueue.TryEnqueue(() =>
         {
             _presenter.Clear();
+            _assPresenter.Reset();
             SyncSnapshotButton();
         });
         PlaylistView.ItemsSource = playback.Playlist.Items;
@@ -117,6 +120,7 @@ public sealed partial class PlayerPage : Page
                 return;
             LayoutProgress(_scrubbing || _pointerDown ? _scrubSeconds : ShownSeconds());
             SyncSnapshotButton();
+            Playback.EnforceLoop();
             UpdateSubtitleOverlay();
             if (_statusHold != null)
                 ApplyStatusText();
@@ -428,9 +432,9 @@ public sealed partial class PlayerPage : Page
             await Playback.PlayIndexAsync(index);
     }
     private void SeekBack_Click(object sender, RoutedEventArgs e) =>
-        Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
+        Playback.Seek(Playback.Position - TimeSpan.FromSeconds(App.Host.Settings.SeekStepSeconds));
     private void SeekForward_Click(object sender, RoutedEventArgs e) =>
-        Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
+        Playback.Seek(Playback.Position + TimeSpan.FromSeconds(App.Host.Settings.SeekStepSeconds));
     private void StepFrame_Click(object sender, RoutedEventArgs e) => Playback.StepFrame();
 
     private void Position_Pressed(object sender, PointerRoutedEventArgs e)
@@ -652,18 +656,20 @@ public sealed partial class PlayerPage : Page
 
     private void Snapshot_Click(object sender, RoutedEventArgs e) => SaveSnapshot();
 
-    private void SaveSnapshot()
+    private async void SaveSnapshot()
     {
         if (!_presenter.TryCopyLastFrame(out var width, out var height, out var stride, out var bottomUp, out var data))
             return;
-        _ = WriteSnapshotAsync(width, height, stride, bottomUp, data);
+        var overlay = await CaptureSubtitleOverlayAsync();
+        _ = WriteSnapshotAsync(width, height, stride, bottomUp, data, overlay);
     }
 
-    private async Task WriteSnapshotAsync(int width, int height, int stride, bool bottomUp, byte[] data)
+    private async Task WriteSnapshotAsync(int width, int height, int stride, bool bottomUp, byte[] data, BgraOverlay? overlay = null)
     {
         try
         {
             var pixels = PackTopDownBgra(width, height, stride, bottomUp, data);
+            SnapshotComposer.Apply(pixels, width, height, overlay);
             var folderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "HomePlayer");
             Directory.CreateDirectory(folderPath);
             var title = SanitizeFileName(Playback.Playlist.Current?.DisplayName);
@@ -749,6 +755,17 @@ public sealed partial class PlayerPage : Page
         var automatic = new MenuFlyoutItem { Text = "下次打开时恢复自动选择" };
         automatic.Click += (_, _) => Playback.ClearAudioPreference();
         AudioFlyout.Items.Add(automatic);
+        AudioFlyout.Items.Add(new MenuFlyoutSeparator());
+        AudioFlyout.Items.Add(new MenuFlyoutItem { Text = $"音频延迟：{Playback.AudioDelayMs / 1000.0:0.0} 秒", IsEnabled = false });
+        var earlier = new MenuFlyoutItem { Text = "音频提前 0.5 秒" };
+        earlier.Click += (_, _) => Playback.SetAudioDelay(Playback.AudioDelayMs - 500);
+        AudioFlyout.Items.Add(earlier);
+        var later = new MenuFlyoutItem { Text = "音频延后 0.5 秒" };
+        later.Click += (_, _) => Playback.SetAudioDelay(Playback.AudioDelayMs + 500);
+        AudioFlyout.Items.Add(later);
+        var reset = new MenuFlyoutItem { Text = "重置音频延迟" };
+        reset.Click += (_, _) => Playback.SetAudioDelay(0);
+        AudioFlyout.Items.Add(reset);
     }
 
     private void AudioItem_Click(object sender, RoutedEventArgs e)
@@ -821,7 +838,7 @@ public sealed partial class PlayerPage : Page
         {
             var track = _subtitles.Embedded[i];
             var item = SubtitleRadio(SubtitleTrackText(track, i + 1), "embed|" + track.Index, _subtitles.EmbeddedChecked(track.Index));
-            item.IsEnabled = track.IsText;
+            item.IsEnabled = true;
             SubtitleFlyout.Items.Add(item);
         }
 
@@ -1129,6 +1146,7 @@ public sealed partial class PlayerPage : Page
             SubtitleVerticalPosition.Center => new Thickness(0),
             _ => new Thickness(0, 0, 0, edge)
         };
+        LayoutBitmapHost();
     }
 
     private void UpdateSubtitleOverlay()
@@ -1136,25 +1154,48 @@ public sealed partial class PlayerPage : Page
         if (SubtitleLayer == null || SubtitleText == null)
             return;
         LayoutSubtitle();
-        string? text = null;
+        SubtitleCue? cue = null;
         if (Playback.IsOpen && !_subtitles.IsOff)
-            text = _subtitles.TextAt(Playback.Position);
-        if (string.IsNullOrEmpty(text))
+        {
+            if (_subtitles.CurrentIsAss)
+            {
+                _assPresenter.Update(_subtitles, Playback.Position, Playback.VideoWidth, Playback.VideoHeight);
+                if (_assPresenter.Current is SubtitleBitmap assFrame)
+                    cue = new SubtitleCue(Playback.Position, Playback.Position + TimeSpan.FromMilliseconds(100), "", [assFrame]);
+            }
+            else
+            {
+                _assPresenter.Reset();
+                cue = _subtitles.CueAt(Playback.Position);
+            }
+        }
+        else
+        {
+            _assPresenter.Reset();
+        }
+        if (!_subtitles.CurrentIsAss)
+            ApplyAssStyle(cue?.AssEvent);
+        var text = cue?.Text;
+        var hasText = !string.IsNullOrEmpty(text);
+        if (!hasText && cue?.Bitmaps.Count is not > 0)
         {
             if (SubtitleLayer.Visibility != Visibility.Collapsed)
                 SubtitleLayer.Visibility = Visibility.Collapsed;
             if (SubtitleText.Text.Length > 0)
                 SubtitleText.Text = "";
             _shownSubtitle = null;
+            UpdateBitmapSubtitle(null);
             return;
         }
 
         if (text != _shownSubtitle)
         {
             _shownSubtitle = text;
-            SubtitleText.Text = text;
+            SubtitleText.Text = text ?? "";
+            ApplyAssStyle(cue?.AssEvent);
         }
-
+        SubtitlePill.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBitmapSubtitle(cue);
         if (SubtitleLayer.Visibility != Visibility.Visible)
             SubtitleLayer.Visibility = Visibility.Visible;
     }
@@ -1501,10 +1542,16 @@ public sealed partial class PlayerPage : Page
                 _ = Playback.NextAsync();
                 break;
             case HotkeyCatalog.SeekBack:
-                Playback.Seek(Playback.Position - TimeSpan.FromSeconds(5));
+                Playback.Seek(Playback.Position - TimeSpan.FromSeconds(App.Host.Settings.SeekStepSeconds));
                 break;
             case HotkeyCatalog.SeekForward:
-                Playback.Seek(Playback.Position + TimeSpan.FromSeconds(5));
+                Playback.Seek(Playback.Position + TimeSpan.FromSeconds(App.Host.Settings.SeekStepSeconds));
+                break;
+            case HotkeyCatalog.SeekBackLarge:
+                Playback.Seek(Playback.Position - TimeSpan.FromSeconds(App.Host.Settings.LargeSeekStepSeconds));
+                break;
+            case HotkeyCatalog.SeekForwardLarge:
+                Playback.Seek(Playback.Position + TimeSpan.FromSeconds(App.Host.Settings.LargeSeekStepSeconds));
                 break;
             case HotkeyCatalog.StepFrame:
                 Playback.StepFrame();

@@ -102,7 +102,7 @@ public sealed class CodecPreference
     public bool Enabled { get; set; } = true;
 }
 
-public sealed class AppSettings
+public sealed partial class AppSettings
 {
     public string? TmdbApiKey { get; set; }
     public bool CloseToTray { get; set; } = true;

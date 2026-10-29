@@ -76,9 +76,6 @@ public static unsafe class FfmpegSubtitles
         var stream = format->streams[streamIndex];
         if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_SUBTITLE)
             return [];
-        if (!IsText(stream->codecpar->codec_id))
-            return [];
-
         AVCodecContext* codec = null;
         AVPacket* packet = null;
         try
@@ -143,8 +140,10 @@ public static unsafe class FfmpegSubtitles
                 if (end <= start)
                     end = start + TimeSpan.FromSeconds(3);
                 var text = RectText(&sub);
-                if (!string.IsNullOrWhiteSpace(text))
-                    cues.Add(new SubtitleCue(start, end, text));
+                var bitmaps = RectBitmaps(&sub);
+                var assEvent = FirstAssEvent(&sub);
+                if (!string.IsNullOrWhiteSpace(text) || bitmaps.Count > 0)
+                    cues.Add(new SubtitleCue(start, end, text, bitmaps, assEvent));
             }
             finally
             {
@@ -178,6 +177,40 @@ public static unsafe class FfmpegSubtitles
             ? startFallback + TimeSpan.FromSeconds(packet->duration * Q2d(timeBase))
             : startFallback + TimeSpan.FromSeconds(3);
         cues.Add(new SubtitleCue(startFallback, endFallback, SubtitleText.Plain(raw)));
+    }
+
+    private static IReadOnlyList<SubtitleBitmap> RectBitmaps(AVSubtitle* sub)
+    {
+        var bitmaps = new List<SubtitleBitmap>();
+        for (uint i = 0; i < sub->num_rects; i++)
+        {
+            var rect = sub->rects[i];
+            if (rect == null || rect->w <= 0 || rect->h <= 0 || rect->data[0] == null || rect->data[1] == null || rect->nb_colors <= 0)
+                continue;
+            var length = checked(rect->w * rect->h);
+            var bgra = new byte[length * 4];
+            for (var pixel = 0; pixel < length; pixel++)
+            {
+                var color = rect->data[0][pixel] * 4;
+                bgra[pixel * 4] = rect->data[1][color + 2];
+                bgra[pixel * 4 + 1] = rect->data[1][color + 1];
+                bgra[pixel * 4 + 2] = rect->data[1][color];
+                bgra[pixel * 4 + 3] = rect->data[1][color + 3];
+            }
+            bitmaps.Add(new SubtitleBitmap(rect->x, rect->y, rect->w, rect->h, bgra));
+        }
+        return bitmaps;
+    }
+
+    private static string? FirstAssEvent(AVSubtitle* sub)
+    {
+        for (uint i = 0; i < sub->num_rects; i++)
+        {
+            var rect = sub->rects[i];
+            if (rect != null && rect->type == AVSubtitleType.SUBTITLE_ASS && rect->ass != null)
+                return Ptr(rect->ass);
+        }
+        return null;
     }
 
     private static string RectText(AVSubtitle* sub)

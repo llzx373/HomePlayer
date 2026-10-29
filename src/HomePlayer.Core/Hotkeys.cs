@@ -8,6 +8,8 @@ public static class HotkeyCatalog
     public const string Next = "Next";
     public const string SeekBack = "SeekBack";
     public const string SeekForward = "SeekForward";
+    public const string SeekBackLarge = "SeekBackLarge";
+    public const string SeekForwardLarge = "SeekForwardLarge";
     public const string VolumeUp = "VolumeUp";
     public const string VolumeDown = "VolumeDown";
     public const string Mute = "Mute";
@@ -38,8 +40,10 @@ public static class HotkeyCatalog
         new(Previous, "上一个", ""),
         new(Next, "下一个", ""),
         new(StepFrame, "下一帧", "."),
-        new(SeekBack, "后退 5 秒", "Left"),
-        new(SeekForward, "前进 5 秒", "Right"),
+        new(SeekBack, "小步后退", "Left"),
+        new(SeekForward, "小步前进", "Right"),
+        new(SeekBackLarge, "大步后退", "Shift+Left"),
+        new(SeekForwardLarge, "大步前进", "Shift+Right"),
         new(VolumeUp, "音量加", "Up"),
         new(VolumeDown, "音量减", "Down"),
         new(Mute, "静音", ""),

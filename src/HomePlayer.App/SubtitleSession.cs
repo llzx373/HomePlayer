@@ -36,6 +36,22 @@ internal sealed class SubtitleSession
     public int EmbeddedIndex => _embedded;
     public string? Error { get; private set; }
     public bool IsOff => _choice == Choice.Off;
+    public bool CurrentIsAss
+    {
+        get
+        {
+            if (_choice == Choice.Off)
+                return false;
+            if (_sidecar != null)
+                return Path.GetExtension(_sidecar).Equals(".ass", StringComparison.OrdinalIgnoreCase)
+                    || Path.GetExtension(_sidecar).Equals(".ssa", StringComparison.OrdinalIgnoreCase);
+            var track = Embedded.FirstOrDefault(item => item.Index == _embedded);
+            return track != null && (track.Codec.Equals("ass", StringComparison.OrdinalIgnoreCase)
+                || track.Codec.Equals("ssa", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+    public string? AssSidecarPath => CurrentIsAss ? _sidecar : null;
+    public int AssEmbeddedIndex => CurrentIsAss && _sidecar == null ? _embedded : -1;
 
     public IReadOnlyList<string> MenuSidecars
     {
@@ -128,17 +144,15 @@ internal sealed class SubtitleSession
         Embedded = tracks;
         if (_choice == Choice.Embedded && _preferred != null)
         {
-            var exact = tracks.FirstOrDefault(track => track.IsText
-                && string.Equals(track.Title, _preferred.SubtitleTrackTitle, StringComparison.OrdinalIgnoreCase)
+            var exact = tracks.FirstOrDefault(track => string.Equals(track.Title, _preferred.SubtitleTrackTitle, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase));
             var language = !string.IsNullOrWhiteSpace(_preferred.SubtitleTrackLanguage)
-                ? tracks.FirstOrDefault(track => track.IsText
-                    && string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase))
+                ? tracks.FirstOrDefault(track => string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase))
                 : null;
             var selected = exact ?? language
-                ?? tracks.FirstOrDefault(track => track.Index == _preferred.SubtitleTrackIndex && track.IsText);
+                ?? tracks.FirstOrDefault(track => track.Index == _preferred.SubtitleTrackIndex);
             _preferred = null;
-            if (selected is { IsText: true })
+            if (selected != null)
                 _embedded = selected.Index;
             else
                 Auto();
@@ -190,7 +204,7 @@ internal sealed class SubtitleSession
             }
         }
 
-        if (stream == null || !stream.IsText)
+        if (stream == null)
             return false;
         _choice = Choice.Embedded;
         _embedded = index;
@@ -226,8 +240,10 @@ internal sealed class SubtitleSession
             ResolveAuto();
     }
 
-    public string? TextAt(TimeSpan position) =>
-        _choice == Choice.Off ? null : _track.At(position - TimeSpan.FromMilliseconds(_delayMs))?.Text;
+    public SubtitleCue? CueAt(TimeSpan position) =>
+        _choice == Choice.Off ? null : _track.At(position - TimeSpan.FromMilliseconds(_delayMs));
+
+    public string? TextAt(TimeSpan position) => CueAt(position)?.Text;
 
     public bool OffChecked => _choice == Choice.Off;
     public bool AutoChecked => _choice == Choice.Auto;
@@ -297,8 +313,6 @@ internal sealed class SubtitleSession
         Error = null;
         foreach (var track in Embedded)
         {
-            if (!track.IsText)
-                continue;
             _embedded = track.Index;
             return;
         }
@@ -355,10 +369,7 @@ internal sealed class SubtitleSession
         foreach (var path in MenuSidecars)
             tracks.Add((true, path, -1));
         foreach (var track in Embedded)
-        {
-            if (track.IsText)
-                tracks.Add((false, null, track.Index));
-        }
+            tracks.Add((false, null, track.Index));
 
         return tracks;
     }

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-[0-9]+"
 
 permissions:
   contents: write
@@ -20,8 +21,8 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           if ($tag.StartsWith("v")) { $tag = $tag.Substring(1) }
-          if ($tag -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Tag must look like v0.1.0, got $($env:GITHUB_REF_NAME)"
+          if ($tag -notmatch '^\d+\.\d+\.\d+(?:-\d+)?$') {
+            throw "Tag must look like v0.1.0 or v0.1.0-1, got $($env:GITHUB_REF_NAME)"
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$tag"
 
@@ -48,6 +49,9 @@ jobs:
         run: choco install innosetup --no-progress -y
 
       - name: Build installer
+        env:
+          HOMEPLAYER_CERT_SHA1: ${{ secrets.HOMEPLAYER_CERT_SHA1 }}
+          HOMEPLAYER_SIGNTOOL: ${{ secrets.HOMEPLAYER_SIGNTOOL }}
         run: pwsh -NoProfile -File installer/build.ps1 -Version ${{ steps.version.outputs.version }}
 
       - name: Installer upgrade smoke test
@@ -70,4 +74,10 @@ jobs:
           $checksum = "$setup.sha256"
           $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
           [System.IO.File]::WriteAllText((Join-Path $pwd $checksum), "$hash  $([IO.Path]::GetFileName($setup))")
-          gh release create $env:GITHUB_REF_NAME $setup $checksum --title "HomePlayer $($env:VERSION)" --notes-file $notesFile --latest --verify-tag
+          $releaseArgs = @($env:GITHUB_REF_NAME, $setup, $checksum, "--title", "HomePlayer $($env:VERSION)", "--notes-file", $notesFile, "--verify-tag")
+          if ($env:VERSION -match '-\d+$') {
+            $releaseArgs += "--prerelease"
+          } else {
+            $releaseArgs += "--latest"
+          }
+          gh release create @releaseArgs
