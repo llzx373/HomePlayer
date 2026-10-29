@@ -95,6 +95,65 @@ public class LibraryCoordinatorTests
         }
     }
 
+    [Fact]
+    public async Task Partial_scan_preserves_unconfirmed_items_until_a_complete_scan()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "HomePlayer.Tests." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var repository = new LibraryRepository(Path.Combine(directory, "library.db"));
+            var scan = new VideoScanResult([], [new DirectoryScanFailure(directory, "访问被拒绝")]);
+            await using var coordinator = new LibraryCoordinator(repository, () => null, _ => scan);
+            var library = new MediaLibrary
+            {
+                Id = "library",
+                Name = "Test",
+                RootPath = directory,
+                Kind = LibraryKind.Raw
+            };
+            repository.InsertLibrary(library);
+            var item = new MediaItem
+            {
+                Id = "item",
+                LibraryId = library.Id,
+                RelativePath = "missing.mkv",
+                Status = ItemStatus.Ready
+            };
+            repository.InsertItem(item);
+            var fullPath = item.FullPath(directory);
+            repository.Save(new PlaybackState(fullPath, 30, 100, false, DateTime.UtcNow.Ticks));
+            repository.Flush();
+
+            coordinator.Refresh(library.Id);
+            await WaitFor(() => coordinator.ScanWarning(library.Id) != null);
+
+            Assert.NotNull(repository.GetItem(item.Id));
+            Assert.NotNull(repository.LoadPlaybackStates([fullPath]).GetValueOrDefault(fullPath));
+            Assert.Null(repository.GetLibrary(library.Id)?.LastFullScanUtc);
+
+            scan = new VideoScanResult([], []);
+            coordinator.Refresh(library.Id);
+            await WaitFor(() => repository.GetItem(item.Id) == null);
+
+            Assert.Null(coordinator.ScanWarning(library.Id));
+            Assert.Empty(repository.LoadPlaybackStates([fullPath]));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, true);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         for (var i = 0; i < 200; i++)

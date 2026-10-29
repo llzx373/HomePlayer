@@ -71,6 +71,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -99,7 +100,14 @@
                     <Button Content="刷新" Click="RefreshPending_Click" />
                 </InfoBar.ActionButton>
             </InfoBar>
-            <Grid Grid.Row="2">
+            <InfoBar
+                x:Name="ScanWarningBar"
+                Grid.Row="2"
+                Severity="Warning"
+                IsOpen="False"
+                IsClosable="False"
+                Title="扫描不完整" />
+            <Grid Grid.Row="3">
                 <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <GridView
                     x:Name="Cards"
@@ -145,7 +153,7 @@
                     </GridView.ItemTemplate>
                 </GridView>
             </Grid>
-            <local:PagerBar x:Name="Pager" Grid.Row="3" />
+            <local:PagerBar x:Name="Pager" Grid.Row="4" />
         </Grid>
     </Grid>
 </Page>

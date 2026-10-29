@@ -1,5 +1,14 @@
 namespace HomePlayer.Core;
 
+public sealed record DirectoryScanFailure(string Path, string Error);
+
+public sealed record VideoScanResult(
+    IReadOnlyList<string> Files,
+    IReadOnlyList<DirectoryScanFailure> Failures)
+{
+    public bool IsComplete => Failures.Count == 0;
+}
+
 public static class VideoFiles
 {
     public static readonly string[] Extensions =
@@ -14,14 +23,15 @@ public static class VideoFiles
         return Extensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
     }
 
-    public static IEnumerable<string> Enumerate(string root)
+    public static VideoScanResult Scan(string root)
     {
+        var files = new List<string>();
+        var failures = new List<DirectoryScanFailure>();
         var stack = new Stack<string>();
         stack.Push(root);
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
-            var files = new List<string>();
             try
             {
                 foreach (var file in Directory.EnumerateFiles(dir))
@@ -32,10 +42,8 @@ public static class VideoFiles
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                failures.Add(new DirectoryScanFailure(dir, ex.Message));
             }
-
-            foreach (var file in files)
-                yield return file;
 
             try
             {
@@ -44,9 +52,15 @@ public static class VideoFiles
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                if (failures.All(failure => !string.Equals(failure.Path, dir, StringComparison.OrdinalIgnoreCase)))
+                    failures.Add(new DirectoryScanFailure(dir, ex.Message));
             }
         }
+
+        return new VideoScanResult(files, failures);
     }
+
+    public static IEnumerable<string> Enumerate(string root) => Scan(root).Files;
 
     public static List<string> Expand(IEnumerable<string> paths)
     {

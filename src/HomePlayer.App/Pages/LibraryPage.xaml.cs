@@ -94,8 +94,17 @@ public sealed partial class LibraryPage : Page
     {
         if (!IsLoaded || App.Host.Exiting)
             return;
+        UpdateScanWarning();
         if (!_reloadTimer.IsRunning)
             _reloadTimer.Start();
+    }
+
+    private void UpdateScanWarning()
+    {
+        var libraryId = (LibraryList.SelectedItem as MediaLibrary)?.Id;
+        var warning = libraryId == null ? null : App.Host.Libraries.ScanWarning(libraryId);
+        ScanWarningBar.Message = warning ?? "";
+        ScanWarningBar.IsOpen = warning != null;
     }
 
     private void ShowPendingUpdates()
@@ -195,6 +204,7 @@ public sealed partial class LibraryPage : Page
             return;
         var library = LibraryList.SelectedItem as MediaLibrary;
         ConfigureSort(library?.Kind);
+        UpdateScanWarning();
         var token = ++_loadToken;
         if (library == null)
         {

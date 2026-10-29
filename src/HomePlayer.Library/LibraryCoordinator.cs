@@ -11,6 +11,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private readonly LibraryRepository _repository;
     private readonly TmdbClient _tmdb;
     private readonly Func<string?> _apiKey;
+    private readonly Func<string, VideoScanResult> _scan;
+    private readonly ConcurrentDictionary<string, string> _scanWarnings = new(StringComparer.OrdinalIgnoreCase);
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Channel<(string LibraryId, string RelativePath)> _coverQueue = Channel.CreateUnbounded<(string, string)>();
     private readonly HashSet<string> _coverQueued = new(StringComparer.OrdinalIgnoreCase);
@@ -37,11 +39,15 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     private int _maxParallel = 2;
     private int _started;
 
-    public LibraryCoordinator(LibraryRepository repository, Func<string?> apiKey)
+    public LibraryCoordinator(
+        LibraryRepository repository,
+        Func<string?> apiKey,
+        Func<string, VideoScanResult>? scan = null)
     {
         _repository = repository;
         _tmdb = new TmdbClient(repository);
         _apiKey = apiKey;
+        _scan = scan ?? VideoFiles.Scan;
     }
 
     public event EventHandler? Changed;
@@ -52,6 +58,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
     public event Action<string>? ItemReset;
 
     public int PendingCount => _repository.PendingCount();
+
+    public string? ScanWarning(string libraryId) => _scanWarnings.GetValueOrDefault(libraryId);
 
     public (bool All, string[] Ids) TakeDirtyItems()
     {
@@ -143,6 +151,7 @@ public sealed class LibraryCoordinator : IAsyncDisposable
 
     public async Task RemoveAsync(string libraryId)
     {
+        _scanWarnings.TryRemove(libraryId, out _);
         FileSystemWatcher? watcher;
         lock (_watchersGate)
             _watchers.Remove(libraryId, out watcher);
@@ -415,7 +424,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
         var byPath = existing.ToDictionary(item => item.RelativePath, StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var relativePaths = new List<string>();
-        foreach (var file in VideoFiles.Enumerate(library.RootPath))
+        var scan = _scan(library.RootPath);
+        foreach (var file in scan.Files)
         {
             if (_shutdown.IsCancellationRequested)
                 return;
@@ -463,6 +473,24 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             }
         }
 
+        if (!scan.IsComplete)
+        {
+            _scanWarnings[library.Id] = $"本次扫描不完整：{scan.Failures.Count} 个文件夹无法读取，已保留未确认的条目。";
+            try
+            {
+                CrashLog.Write(
+                    "扫描不完整",
+                    library.Name + Environment.NewLine + string.Join(Environment.NewLine, scan.Failures.Select(failure => $"{failure.Path}: {failure.Error}")));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        _scanWarnings.TryRemove(library.Id, out _);
         foreach (var item in existing)
         {
             if (seen.Contains(item.RelativePath))
