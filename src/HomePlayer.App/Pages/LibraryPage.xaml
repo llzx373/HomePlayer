@@ -59,16 +59,16 @@
                                 Height="27"
                                 CornerRadius="3"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                                <Image Source="{Binding Content.Cover}" Stretch="UniformToFill" />
                             </Border>
                             <TextBlock
                                 Grid.Column="1"
-                                Text="{Binding Name}"
+                                Text="{Binding Content.Name}"
                                 VerticalAlignment="Center"
                                 TextTrimming="CharacterEllipsis" />
                             <TextBlock
                                 Grid.Column="2"
-                                Text="{Binding CountText}"
+                                Text="{Binding Content.CountText}"
                                 VerticalAlignment="Center"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
