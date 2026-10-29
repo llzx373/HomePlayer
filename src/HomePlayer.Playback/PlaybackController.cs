@@ -8,6 +8,7 @@ public sealed class PlaybackController : IDisposable
     private readonly Func<CodecPlan> _codecs;
     private readonly Func<string?> _audioOutput;
     private readonly IPlaybackStateStore? _store;
+    private readonly Func<string, bool, (IPlaybackEngine Engine, string Reason)> _openEngine;
     private readonly Dictionary<string, PlaybackState> _states = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _stateGate = new();
     private readonly CancellationTokenSource _flushStop = new();
@@ -26,12 +27,14 @@ public sealed class PlaybackController : IDisposable
         Action<Action> post,
         Func<CodecPlan> codecs,
         Func<string?> audioOutput,
-        IPlaybackStateStore? store = null)
+        IPlaybackStateStore? store = null,
+        Func<string, bool, (IPlaybackEngine Engine, string Reason)>? openEngine = null)
     {
         _post = post;
         _codecs = codecs;
         _audioOutput = audioOutput;
         _store = store;
+        _openEngine = openEngine ?? OpenEngine;
         if (store == null)
             return;
         try
@@ -136,9 +139,16 @@ public sealed class PlaybackController : IDisposable
         }
 
         if (_engine.IsPlaying)
+        {
             _engine.Pause();
+        }
         else
+        {
+            if (Status == "播放结束")
+                _engine.Seek(TimeSpan.Zero);
             _engine.Play();
+        }
+
         Notify();
     }
 
@@ -327,13 +337,14 @@ public sealed class PlaybackController : IDisposable
             Notify();
             try
             {
-                var (engine, reason) = await Task.Run(() => OpenEngine(item.Path, forceFfmpeg));
+                var (engine, reason) = await Task.Run(() => _openEngine(item.Path, forceFfmpeg));
                 if (token != _token)
                 {
                     _ = Task.Run(() => Discard(engine));
                     return;
                 }
 
+                Attach(engine);
                 _post(() =>
                 {
                     if (token != _token)
@@ -412,7 +423,6 @@ public sealed class PlaybackController : IDisposable
             var lav = new LavPlaybackEngine(plan, _audioOutput());
             try
             {
-                Attach(lav);
                 lav.Open(path);
                 var reason = lav.AudioMissing
                     ? "画面已打开，音频没有接上：" + lav.AudioWarning
@@ -431,7 +441,6 @@ public sealed class PlaybackController : IDisposable
         var ffmpeg = new FfmpegPlaybackEngine(_audioOutput());
         try
         {
-            Attach(ffmpeg);
             ffmpeg.Open(path);
             var reason = lavError == null
                 ? (forceFfmpeg ? "已按指定改用 FFmpeg。" : "没有可用的 64 位分离器或视频解码器，已改用 FFmpeg。")

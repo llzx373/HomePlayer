@@ -724,7 +724,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private void SeekTo(double seconds)
     {
         var ticks = (long)(seconds / Q2d(_videoTimeBase));
-        ffmpeg.av_seek_frame(_format, _videoIndex, Math.Max(0, ticks), ffmpeg.AVSEEK_FLAG_BACKWARD);
+        if (ffmpeg.av_seek_frame(_format, _videoIndex, Math.Max(0, ticks), ffmpeg.AVSEEK_FLAG_BACKWARD) >= 0)
+            _endedRaised = false;
         ffmpeg.avcodec_flush_buffers(_videoCodec);
         if (_audioCodec != null)
             ffmpeg.avcodec_flush_buffers(_audioCodec);
