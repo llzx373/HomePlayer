@@ -28,7 +28,7 @@ public sealed partial class LibraryPage
 
     private bool UsesLibraryQuery => _browseMode is LibraryBrowseMode.Library or LibraryBrowseMode.Favorites or LibraryBrowseMode.Series;
     private bool AllLibraries => ScopeBox.SelectedIndex == 1 || _browseMode != LibraryBrowseMode.Library;
-    private ListViewBase ActiveItems => LayoutBox.SelectedIndex == 2 ? MediaList : Cards;
+    private ListViewBase ActiveItems => !UsesLibraryQuery ? RecentCards : LayoutBox.SelectedIndex == 2 ? MediaList : Cards;
 
     private MediaLibraryQuery CurrentQuery()
     {
@@ -72,7 +72,8 @@ public sealed partial class LibraryPage
         FolderTree.IsEnabled = _browseMode == LibraryBrowseMode.Library && !AllLibraries;
         CardSizeBox.IsEnabled = LayoutBox.SelectedIndex != 2;
         var showList = queryMode && LayoutBox.SelectedIndex == 2;
-        Cards.Visibility = showList ? Visibility.Collapsed : Visibility.Visible;
+        Cards.Visibility = queryMode && !showList ? Visibility.Visible : Visibility.Collapsed;
+        RecentCards.Visibility = queryMode ? Visibility.Collapsed : Visibility.Visible;
         MediaList.Visibility = showList ? Visibility.Visible : Visibility.Collapsed;
         if (!queryMode)
             BulkBar.Visibility = Visibility.Collapsed;
@@ -305,6 +306,8 @@ public sealed partial class LibraryPage
 
     private (double Width, double Height) CardDimensions(MediaCard card)
     {
+        if (!UsesLibraryQuery)
+            return (Math.Round(400 * _cardScale), 104);
         var compact = (LibraryLayout)Math.Max(0, LayoutBox.SelectedIndex) == LibraryLayout.CompactCards;
         var size = (LibraryCardSize)Math.Max(0, CardSizeBox.SelectedIndex);
         var portrait = card.Library.Kind == LibraryKind.Catalog;
@@ -436,6 +439,7 @@ public sealed partial class LibraryPage
     private void SetSelectionMode(bool multiple)
     {
         Cards.SelectionMode = multiple ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
+        RecentCards.SelectionMode = ListViewSelectionMode.Single;
         MediaList.SelectionMode = multiple ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Single;
         if (!multiple)
             BulkBar.Visibility = Visibility.Collapsed;

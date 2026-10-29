@@ -269,7 +269,7 @@
                     <TextBox x:Name="SearchBox" Width="300" PlaceholderText="搜索当前媒体库" TextChanged="Search_TextChanged" />
                 </Border>
             </Grid>
-            <RadioButtons x:Name="BrowseTabs" Grid.Row="1" SelectedIndex="0" SelectionChanged="BrowseTabs_SelectionChanged">
+            <RadioButtons x:Name="BrowseTabs" Grid.Row="1" MaxColumns="6" SelectedIndex="0" SelectionChanged="BrowseTabs_SelectionChanged">
                 <RadioButtons.Resources>
                     <Style TargetType="RadioButton" BasedOn="{StaticResource LibraryTabStyle}" />
                 </RadioButtons.Resources>
@@ -448,6 +448,84 @@
                                 </Border>
                                 <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
                                 <TextBlock Grid.Row="2" Text="{Binding Subtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </DataTemplate>
+                    </GridView.ItemTemplate>
+                </GridView>
+                <GridView
+                    x:Name="RecentCards"
+                    Visibility="Collapsed"
+                    DoubleTapped="Cards_DoubleTapped"
+                    RightTapped="Cards_RightTapped"
+                    KeyDown="Cards_KeyDown"
+                    SelectionChanged="Cards_SelectionChanged"
+                    IsItemClickEnabled="False"
+                    ScrollViewer.HorizontalScrollMode="Disabled"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollMode="Enabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    ItemContainerStyle="{StaticResource LibraryGridItemStyle}">
+                    <GridView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </GridView.ItemsPanel>
+                    <GridView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid
+                                Width="{Binding CardWidth}"
+                                DoubleTapped="Card_DoubleTapped"
+                                PointerEntered="Card_PointerEntered"
+                                PointerExited="Card_PointerExited">
+                                <Border Height="{Binding ImageHeight}" Background="{ThemeResource LibraryCardBrush}" BorderBrush="{ThemeResource LibraryBorderBrush}" BorderThickness="1" CornerRadius="7">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="3" />
+                                        </Grid.RowDefinitions>
+                                        <Grid ColumnSpacing="12" Padding="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="128" Height="72" VerticalAlignment="Center" Background="#FF171719" CornerRadius="5">
+                                                <Grid>
+                                                    <FontIcon Glyph="&#xE8B9;" FontSize="22" Opacity="0.2" />
+                                                    <Image Source="{Binding Image}" Stretch="Uniform" />
+                                                    <Border x:Name="CardHoverShade" Background="#52000000" Opacity="0" />
+                                                    <Button
+                                                        x:Name="CardPlayButton"
+                                                        Width="36"
+                                                        Height="36"
+                                                        Padding="0"
+                                                        CornerRadius="18"
+                                                        Background="#E6222226"
+                                                        BorderBrush="#66FFFFFF"
+                                                        BorderThickness="1"
+                                                        Opacity="0"
+                                                        IsHitTestVisible="False"
+                                                        ToolTipService.ToolTip="播放"
+                                                        Click="CardPlay_Click">
+                                                        <FontIcon Glyph="&#xE768;" FontSize="14" Foreground="White" Margin="2,0,0,0" />
+                                                    </Button>
+                                                    <Border Background="{Binding BadgeBackground}" Margin="4" Padding="4,2" CornerRadius="3" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="{Binding BadgeVisibility}">
+                                                        <TextBlock Text="{Binding Badge}" Style="{StaticResource MediaBadgeTextStyle}" />
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="7">
+                                                <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
+                                                <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Spacing="6">
+                                                <FontIcon Glyph="&#xE73E;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" ToolTipService.ToolTip="已看" Visibility="{Binding WatchedVisibility}" />
+                                                <FontIcon Glyph="&#xE735;" FontSize="13" Foreground="{ThemeResource LibraryAccentBrush}" Visibility="{Binding FavoriteVisibility}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <ProgressBar Grid.Row="1" Value="{Binding Progress}" Maximum="1" Height="3" VerticalAlignment="Bottom" Padding="0" BorderThickness="0" Background="Transparent" Foreground="{ThemeResource LibraryAccentBrush}" Visibility="{Binding ProgressVisibility}" />
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </GridView.ItemTemplate>

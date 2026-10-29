@@ -50,6 +50,7 @@ public sealed partial class LibraryPage : Page
         LibraryList.DisplayMemberPath = nameof(MediaLibrary.Name);
         LibraryList.ItemsSource = _libraries;
         Cards.ItemsSource = _cards;
+        RecentCards.ItemsSource = _cards;
         InitializeManagement();
         _reloadTimer = DispatcherQueue.CreateTimer();
         _reloadTimer.Interval = TimeSpan.FromMilliseconds(400);
