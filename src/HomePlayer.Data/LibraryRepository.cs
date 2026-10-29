@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace HomePlayer.Data;
 
-public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
+public sealed class LibraryRepository : IDisposable, IPlaybackStateStore, IMediaPreferenceStore
 {
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
@@ -557,6 +557,67 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
             Execute("DELETE FROM PlaybackState;");
     }
 
+    public MediaPreference? LoadPreference(string path)
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT * FROM MediaPreference WHERE Path = $path;";
+            command.Parameters.AddWithValue("$path", path);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+                return null;
+            return new MediaPreference(
+                reader.GetString(reader.GetOrdinal("Path")),
+                reader.IsDBNull(reader.GetOrdinal("AudioTrackIndex")) ? null : reader.GetInt32(reader.GetOrdinal("AudioTrackIndex")),
+                reader.IsDBNull(reader.GetOrdinal("AudioTrackTitle")) ? null : reader.GetString(reader.GetOrdinal("AudioTrackTitle")),
+                reader.IsDBNull(reader.GetOrdinal("AudioTrackLanguage")) ? null : reader.GetString(reader.GetOrdinal("AudioTrackLanguage")),
+                (SubtitlePreferenceMode)reader.GetInt32(reader.GetOrdinal("SubtitleMode")),
+                reader.IsDBNull(reader.GetOrdinal("SubtitleTrackIndex")) ? null : reader.GetInt32(reader.GetOrdinal("SubtitleTrackIndex")),
+                reader.IsDBNull(reader.GetOrdinal("SubtitleTrackTitle")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackTitle")),
+                reader.IsDBNull(reader.GetOrdinal("SubtitleTrackLanguage")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackLanguage")),
+                reader.IsDBNull(reader.GetOrdinal("SubtitlePath")) ? null : reader.GetString(reader.GetOrdinal("SubtitlePath")),
+                reader.GetInt32(reader.GetOrdinal("SubtitleDelayMs")));
+        }
+    }
+
+    public void SavePreference(MediaPreference preference)
+    {
+        lock (_gate)
+        {
+            Execute(
+                """
+                INSERT INTO MediaPreference (
+                    Path, AudioTrackIndex, AudioTrackTitle, AudioTrackLanguage,
+                    SubtitleMode, SubtitleTrackIndex, SubtitleTrackTitle, SubtitleTrackLanguage,
+                    SubtitlePath, SubtitleDelayMs)
+                VALUES ($path, $audioIndex, $audioTitle, $audioLanguage,
+                    $subtitleMode, $subtitleIndex, $subtitleTitle, $subtitleLanguage,
+                    $subtitlePath, $subtitleDelay)
+                ON CONFLICT(Path) DO UPDATE SET
+                    AudioTrackIndex = excluded.AudioTrackIndex,
+                    AudioTrackTitle = excluded.AudioTrackTitle,
+                    AudioTrackLanguage = excluded.AudioTrackLanguage,
+                    SubtitleMode = excluded.SubtitleMode,
+                    SubtitleTrackIndex = excluded.SubtitleTrackIndex,
+                    SubtitleTrackTitle = excluded.SubtitleTrackTitle,
+                    SubtitleTrackLanguage = excluded.SubtitleTrackLanguage,
+                    SubtitlePath = excluded.SubtitlePath,
+                    SubtitleDelayMs = excluded.SubtitleDelayMs;
+                """,
+                ("$path", preference.Path),
+                ("$audioIndex", (object?)preference.AudioTrackIndex ?? DBNull.Value),
+                ("$audioTitle", (object?)preference.AudioTrackTitle ?? DBNull.Value),
+                ("$audioLanguage", (object?)preference.AudioTrackLanguage ?? DBNull.Value),
+                ("$subtitleMode", (int)preference.SubtitleMode),
+                ("$subtitleIndex", (object?)preference.SubtitleTrackIndex ?? DBNull.Value),
+                ("$subtitleTitle", (object?)preference.SubtitleTrackTitle ?? DBNull.Value),
+                ("$subtitleLanguage", (object?)preference.SubtitleTrackLanguage ?? DBNull.Value),
+                ("$subtitlePath", (object?)preference.SubtitlePath ?? DBNull.Value),
+                ("$subtitleDelay", preference.SubtitleDelayMs));
+        }
+    }
+
     private static PlaybackState ReadPlaybackState(SqliteDataReader reader) => new(
         reader.GetString(0),
         reader.GetDouble(1),
@@ -964,7 +1025,7 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
         }
     }
 
-    private const int SchemaVersion = 3;
+    private const int SchemaVersion = 4;
 
     private void Migrate()
     {
@@ -1023,6 +1084,18 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
                 Finished INTEGER NOT NULL,
                 UpdatedUtcTicks INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS MediaPreference (
+                Path TEXT PRIMARY KEY COLLATE NOCASE,
+                AudioTrackIndex INTEGER NULL,
+                AudioTrackTitle TEXT NULL,
+                AudioTrackLanguage TEXT NULL,
+                SubtitleMode INTEGER NOT NULL DEFAULT 0,
+                SubtitleTrackIndex INTEGER NULL,
+                SubtitleTrackTitle TEXT NULL,
+                SubtitleTrackLanguage TEXT NULL,
+                SubtitlePath TEXT NULL,
+                SubtitleDelayMs INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS Folder (
                 LibraryId TEXT NOT NULL,
                 RelativePath TEXT NOT NULL,
@@ -1052,8 +1125,14 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
             version = 2;
         }
 
-        if (version < SchemaVersion)
+        if (version < 3)
+        {
             MigrateToVersion3();
+            version = 3;
+        }
+
+        if (version < SchemaVersion)
+            MigrateToVersion4();
     }
 
     private int ReadUserVersion()
@@ -1120,6 +1199,30 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
                 PRIMARY KEY (LibraryId, RelativePath)
             );
             CREATE INDEX IF NOT EXISTS IX_Folder_Parent ON Folder(LibraryId, ParentPath);
+            """;
+        command.ExecuteNonQuery();
+        WriteUserVersion(3, tx);
+        tx.Commit();
+    }
+
+    private void MigrateToVersion4()
+    {
+        using var tx = _connection.BeginTransaction();
+        using var command = _connection.CreateCommand();
+        command.Transaction = tx;
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS MediaPreference (
+                Path TEXT PRIMARY KEY COLLATE NOCASE,
+                AudioTrackIndex INTEGER NULL,
+                AudioTrackTitle TEXT NULL,
+                AudioTrackLanguage TEXT NULL,
+                SubtitleMode INTEGER NOT NULL DEFAULT 0,
+                SubtitleTrackIndex INTEGER NULL,
+                SubtitleTrackTitle TEXT NULL,
+                SubtitleTrackLanguage TEXT NULL,
+                SubtitlePath TEXT NULL,
+                SubtitleDelayMs INTEGER NOT NULL DEFAULT 0
+            );
             """;
         command.ExecuteNonQuery();
         WriteUserVersion(SchemaVersion, tx);

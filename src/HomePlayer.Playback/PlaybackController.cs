@@ -10,6 +10,7 @@ public sealed class PlaybackController : IDisposable
     private readonly IPlaybackStateStore? _store;
     private readonly Func<string, bool, (IPlaybackEngine Engine, string Reason)> _openEngine;
     private readonly Func<bool> _historyEnabled;
+    private readonly IMediaPreferenceStore? _preferences;
     private readonly Dictionary<string, PlaybackState> _states = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _stateGate = new();
     private readonly CancellationTokenSource _flushStop = new();
@@ -30,7 +31,8 @@ public sealed class PlaybackController : IDisposable
         Func<string?> audioOutput,
         IPlaybackStateStore? store = null,
         Func<string, bool, (IPlaybackEngine Engine, string Reason)>? openEngine = null,
-        Func<bool>? historyEnabled = null)
+        Func<bool>? historyEnabled = null,
+        IMediaPreferenceStore? preferences = null)
     {
         _post = post;
         _codecs = codecs;
@@ -38,6 +40,7 @@ public sealed class PlaybackController : IDisposable
         _store = store;
         _openEngine = openEngine ?? OpenEngine;
         _historyEnabled = historyEnabled ?? (() => true);
+        _preferences = preferences;
         if (store == null)
             return;
         try
@@ -100,13 +103,18 @@ public sealed class PlaybackController : IDisposable
         Notify();
     }
 
-    public Task PlayPathsAsync(IReadOnlyList<string> paths, int start, bool forceFfmpeg = false)
+    public Task PlayPathsAsync(
+        IReadOnlyList<string> paths,
+        int start,
+        bool forceFfmpeg = false,
+        bool restart = false)
     {
         RememberPosition();
         var playing = _playingPath;
         Playlist.Replace(paths, start);
         var next = Playlist.Current?.Path;
         if (!forceFfmpeg
+            && !restart
             && IsOpen
             && next != null
             && string.Equals(playing, next, StringComparison.OrdinalIgnoreCase)
@@ -118,7 +126,7 @@ public sealed class PlaybackController : IDisposable
             return Task.CompletedTask;
         }
 
-        return PlayCurrentAsync(forceFfmpeg);
+        return PlayCurrentAsync(forceFfmpeg, restart);
     }
 
     public void Enqueue(IEnumerable<string> paths)
@@ -242,7 +250,21 @@ public sealed class PlaybackController : IDisposable
     public void SetAudioTrack(int index)
     {
         _engine?.SetAudioTrack(index);
+        SaveAudioPreference(index);
         Notify();
+    }
+
+    public void ClearAudioPreference()
+    {
+        if (_playingPath == null || _preferences == null)
+            return;
+        var preference = LoadPreference(_playingPath);
+        _preferences.SavePreference(preference with
+        {
+            AudioTrackIndex = null,
+            AudioTrackTitle = null,
+            AudioTrackLanguage = null
+        });
     }
 
     public IReadOnlyList<MediaTrack> GetSubtitleTracks() => _engine?.GetSubtitleTracks() ?? [];
@@ -284,6 +306,30 @@ public sealed class PlaybackController : IDisposable
         _store?.Flush();
     }
 
+    public void SetWatched(string path, bool watched)
+    {
+        PlaybackState? current;
+        lock (_stateGate)
+            _states.TryGetValue(path, out current);
+        if (current == null && _store != null)
+        {
+            try
+            {
+                current = _store.Load(path);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        var state = new PlaybackState(
+            path, 0, current?.DurationSeconds ?? 0, watched, DateTime.UtcNow.Ticks);
+        lock (_stateGate)
+            _states[path] = state;
+        _store?.Save(state);
+        _store?.Flush();
+    }
+
     /// <summary>
     /// 文件内容变了或已被删除时丢掉内存里的旧进度，避免下次从错误位置续播。
     /// </summary>
@@ -313,7 +359,7 @@ public sealed class PlaybackController : IDisposable
         await PlayCurrentAsync(false);
     }
 
-    private async Task PlayCurrentAsync(bool forceFfmpeg)
+    private async Task PlayCurrentAsync(bool forceFfmpeg, bool restart = false)
     {
         RememberPosition();
         _playingPath = null;
@@ -374,7 +420,9 @@ public sealed class PlaybackController : IDisposable
                         engine.SetVolume(_volume);
                         engine.SetMuted(_muted);
                         engine.SetRate(_rate);
-                        ApplyResume(engine, item.Path);
+                        ApplyAudioPreference(engine, item.Path);
+                        if (!restart)
+                            ApplyResume(engine, item.Path);
                         engine.Play();
                         Status = Math.Abs(engine.Rate - _rate) > 0.01
                             ? "当前滤镜不支持倍速"
@@ -627,6 +675,55 @@ public sealed class PlaybackController : IDisposable
         lock (_stateGate)
             _states[path] = state;
         _store?.Save(state);
+    }
+
+    private MediaPreference LoadPreference(string path)
+    {
+        try
+        {
+            return _preferences?.LoadPreference(path) ?? MediaPreference.Empty(path);
+        }
+        catch (Exception)
+        {
+            return MediaPreference.Empty(path);
+        }
+    }
+
+    private void ApplyAudioPreference(IPlaybackEngine engine, string path)
+    {
+        if (_preferences == null)
+            return;
+        try
+        {
+            var index = MediaPreferenceSelection.AudioTrack(_preferences.LoadPreference(path), engine.GetAudioTracks());
+            if (index is int selected)
+                engine.SetAudioTrack(selected);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private void SaveAudioPreference(int index)
+    {
+        if (_playingPath == null || _engine == null || _preferences == null)
+            return;
+        try
+        {
+            var track = _engine.GetAudioTracks().FirstOrDefault(item => item.Index == index);
+            if (track == null)
+                return;
+            var preference = LoadPreference(_playingPath);
+            _preferences.SavePreference(preference with
+            {
+                AudioTrackIndex = track.Index,
+                AudioTrackTitle = track.Title,
+                AudioTrackLanguage = track.Language
+            });
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private void ApplyResume(IPlaybackEngine engine, string path)

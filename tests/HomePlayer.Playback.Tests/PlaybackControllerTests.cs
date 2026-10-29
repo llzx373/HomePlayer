@@ -81,16 +81,67 @@ public class PlaybackControllerTests
         Assert.Empty(store.Saved);
     }
 
+    [Fact]
+    public async Task Restart_ignores_the_saved_resume_position()
+    {
+        var engine = new FakeEngine();
+        var store = new FakeStateStore();
+        store.OnDemand["video.mkv"] = new PlaybackState("video.mkv", 30, 100, false, 1);
+        using var controller = Create(engine, store);
+
+        await controller.PlayPathsAsync(["video.mkv"], 0, restart: true);
+
+        Assert.Equal(0, engine.SeekCount);
+    }
+
+    [Fact]
+    public void Manual_watched_state_is_saved_even_when_history_is_disabled()
+    {
+        var store = new FakeStateStore();
+        using var controller = Create(new FakeEngine(), store, () => false);
+
+        controller.SetWatched("video.mkv", true);
+
+        Assert.True(Assert.Single(store.Saved).Finished);
+    }
+
+    [Fact]
+    public async Task Audio_preference_is_restored_and_updated()
+    {
+        var engine = new FakeEngine();
+        engine.AudioTracks.Add(new MediaTrack(1, MediaTrackKind.Audio, "Japanese", "ja", true));
+        engine.AudioTracks.Add(new MediaTrack(3, MediaTrackKind.Audio, "Commentary", "en", false));
+        var preferences = new FakePreferenceStore
+        {
+            Stored = MediaPreference.Empty("video.mkv") with
+            {
+                AudioTrackIndex = 1,
+                AudioTrackTitle = "Commentary",
+                AudioTrackLanguage = "en"
+            }
+        };
+        using var controller = Create(engine, preferences: preferences);
+
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+
+        Assert.Equal(3, engine.AudioTrackIndex);
+        controller.SetAudioTrack(1);
+        Assert.Equal(1, preferences.Stored?.AudioTrackIndex);
+        Assert.Equal("ja", preferences.Stored?.AudioTrackLanguage);
+    }
+
     private static PlaybackController Create(
         FakeEngine engine,
         IPlaybackStateStore? store = null,
-        Func<bool>? historyEnabled = null) => new(
+        Func<bool>? historyEnabled = null,
+        IMediaPreferenceStore? preferences = null) => new(
         action => action(),
         () => throw new InvalidOperationException("测试不应读取编解码器"),
         () => null,
         store,
         openEngine: (_, _) => (engine, "测试引擎"),
-        historyEnabled: historyEnabled);
+        historyEnabled: historyEnabled,
+        preferences: preferences);
 
     private sealed class FakeStateStore : IPlaybackStateStore
     {
@@ -118,6 +169,15 @@ public class PlaybackControllerTests
         }
     }
 
+    private sealed class FakePreferenceStore : IMediaPreferenceStore
+    {
+        public MediaPreference? Stored { get; set; }
+
+        public MediaPreference? LoadPreference(string path) => Stored;
+
+        public void SavePreference(MediaPreference preference) => Stored = preference;
+    }
+
     private sealed class FakeEngine : IPlaybackEngine, IPlaybackFaultSource
     {
         public string Name => "Fake";
@@ -126,10 +186,12 @@ public class PlaybackControllerTests
         public TimeSpan Position { get; private set; }
         public TimeSpan Duration { get; } = TimeSpan.FromSeconds(100);
         public double Rate { get; private set; } = 1;
-        public int AudioTrackIndex => -1;
+        public int AudioTrackIndex { get; private set; } = -1;
         public int SubtitleTrackIndex => -1;
         public int PlayCount { get; private set; }
+        public int SeekCount { get; private set; }
         public TimeSpan LastSeek { get; private set; }
+        public List<MediaTrack> AudioTracks { get; } = [];
 
         public event Action<VideoFrame>? FrameArrived;
         public event Action? Ended;
@@ -151,6 +213,7 @@ public class PlaybackControllerTests
 
         public void Seek(TimeSpan position)
         {
+            SeekCount++;
             LastSeek = position;
             Position = position;
         }
@@ -169,11 +232,9 @@ public class PlaybackControllerTests
         {
         }
 
-        public IReadOnlyList<MediaTrack> GetAudioTracks() => [];
+        public IReadOnlyList<MediaTrack> GetAudioTracks() => AudioTracks;
 
-        public void SetAudioTrack(int index)
-        {
-        }
+        public void SetAudioTrack(int index) => AudioTrackIndex = index;
 
         public IReadOnlyList<MediaTrack> GetSubtitleTracks() => [];
 

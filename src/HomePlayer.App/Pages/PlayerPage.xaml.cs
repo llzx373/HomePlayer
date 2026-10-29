@@ -732,6 +732,11 @@ public sealed partial class PlayerPage : Page
             item.Click += AudioItem_Click;
             AudioFlyout.Items.Add(item);
         }
+
+        AudioFlyout.Items.Add(new MenuFlyoutSeparator());
+        var automatic = new MenuFlyoutItem { Text = "下次打开时恢复自动选择" };
+        automatic.Click += (_, _) => Playback.ClearAudioPreference();
+        AudioFlyout.Items.Add(automatic);
     }
 
     private void AudioItem_Click(object sender, RoutedEventArgs e)
@@ -882,12 +887,28 @@ public sealed partial class PlayerPage : Page
 
     private void FinishSubtitleChoice()
     {
+        SaveSubtitlePreference();
         if (!string.IsNullOrEmpty(_subtitles.Error) && !_subtitles.IsOff)
             ShowStatusHold(_subtitles.Error);
         UpdateSubtitleChrome();
         UpdateSubtitleOverlay();
         if (_subtitles.Mode == SubtitleSession.Choice.Embedded || _subtitles.AutoEmbedded != null)
             _ = LoadEmbeddedCues(_subtitles.EmbeddedIndex >= 0 ? _subtitles.EmbeddedIndex : _subtitles.AutoEmbedded!.Index);
+    }
+
+    private void SaveSubtitlePreference()
+    {
+        if (_subtitles.VideoPath is not string path)
+            return;
+        try
+        {
+            var preference = App.Host.Repository.LoadPreference(path) ?? MediaPreference.Empty(path);
+            App.Host.Repository.SavePreference(_subtitles.ApplyTo(preference));
+        }
+        catch (Exception ex)
+        {
+            ShowStatusHold("字幕偏好保存失败：" + ex.Message);
+        }
     }
 
     private void SyncSubtitleSource()
@@ -915,6 +936,8 @@ public sealed partial class PlayerPage : Page
             {
                 var next = new SubtitleSession();
                 next.Load(path);
+                if (path != null && App.Host.Repository.LoadPreference(path) is { } preference)
+                    next.ApplyPreference(preference);
                 return next;
             });
         }
@@ -952,7 +975,9 @@ public sealed partial class PlayerPage : Page
         if (token != _subtitleScan)
             return;
         _subtitles.SetEmbeddedList(tracks);
-        if (_subtitles.AutoEmbedded != null)
+        if (_subtitles.Mode == SubtitleSession.Choice.Embedded && _subtitles.EmbeddedIndex >= 0)
+            await LoadEmbeddedCues(_subtitles.EmbeddedIndex, token);
+        else if (_subtitles.AutoEmbedded != null)
             await LoadEmbeddedCues(_subtitles.AutoEmbedded.Index, token);
         UpdateSubtitleChrome();
         UpdateSubtitleOverlay();

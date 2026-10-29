@@ -274,6 +274,31 @@ public class LibraryRepositoryTests
     }
 
     [Fact]
+    public void Media_preferences_round_trip_and_update()
+    {
+        using var fixture = new RepositoryFixture();
+        var path = @"D:\lib\movie.mkv";
+        var preference = MediaPreference.Empty(path) with
+        {
+            AudioTrackIndex = 2,
+            AudioTrackTitle = "Commentary",
+            AudioTrackLanguage = "en",
+            SubtitleMode = SubtitlePreferenceMode.Embedded,
+            SubtitleTrackIndex = 4,
+            SubtitleTrackTitle = "Signs",
+            SubtitleTrackLanguage = "zh",
+            SubtitleDelayMs = 250
+        };
+
+        fixture.Repository.SavePreference(preference);
+        Assert.Equal(preference, fixture.Repository.LoadPreference(path));
+
+        fixture.Repository.SavePreference(preference with { SubtitleMode = SubtitlePreferenceMode.Off });
+        Assert.Equal(SubtitlePreferenceMode.Off, fixture.Repository.LoadPreference(path)?.SubtitleMode);
+        Assert.Equal(2, fixture.Repository.LoadPreference(path)?.AudioTrackIndex);
+    }
+
+    [Fact]
     public void Changed_or_deleted_items_drop_their_playback_state()
     {
         using var fixture = new RepositoryFixture();

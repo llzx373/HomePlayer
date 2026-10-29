@@ -1233,7 +1233,7 @@ public sealed partial class LibraryPage : Page
         await PlayCardAsync(card);
     }
 
-    private async Task PlayCardAsync(MediaCard card)
+    private async Task PlayCardAsync(MediaCard card, bool restart = false)
     {
         IReadOnlyList<string> paths = _browseMode == LibraryBrowseMode.Library
             ? await ListViewPathsAsync(card.Library)
@@ -1250,7 +1250,7 @@ public sealed partial class LibraryPage : Page
             break;
         }
 
-        await App.Host.Playback.PlayPathsAsync(paths, index);
+        await App.Host.Playback.PlayPathsAsync(paths, index, restart: restart);
         App.Window.SelectPlayer();
     }
 
@@ -1312,9 +1312,18 @@ public sealed partial class LibraryPage : Page
     {
         var menu = new MenuFlyout();
         menu.Items.Add(Action("播放", () => PlayCardAsync(card)));
+        menu.Items.Add(Action("从头播放", () => PlayCardAsync(card, restart: true)));
         menu.Items.Add(Action("加入播放列表", () =>
         {
             App.Host.Playback.Enqueue([card.Item.FullPath(card.Library.RootPath)]);
+            return Task.CompletedTask;
+        }));
+        var path = card.Item.FullPath(card.Library.RootPath);
+        var watched = card.WatchedVisibility == Visibility.Visible;
+        menu.Items.Add(Action(watched ? "标记为未看" : "标记为已看", () =>
+        {
+            App.Host.Playback.SetWatched(path, !watched);
+            LoadPage();
             return Task.CompletedTask;
         }));
         if (card.HasLibraryEntry)

@@ -47,7 +47,8 @@ public sealed class AppHost : IAsyncDisposable
         var codecPlans = new CodecPlanCache(() => settings);
         var playback = new PlaybackController(
             post, codecPlans.Get, () => settings.AudioOutputId, repository,
-            historyEnabled: () => settings.RecordPlaybackHistory);
+            historyEnabled: () => settings.RecordPlaybackHistory,
+            preferences: repository);
         playback.SetVolume(settings.Volume);
         var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore, loaded.Warning);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;

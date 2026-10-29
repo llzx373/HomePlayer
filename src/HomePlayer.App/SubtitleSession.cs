@@ -20,6 +20,7 @@ internal sealed class SubtitleSession
     private string? _sidecar;
     private string? _manualSidecar;
     private int _embedded = -1;
+    private MediaPreference? _preferred;
     private SubtitleTrack _track = SubtitleTrack.Empty;
     private readonly HashSet<string> _unreadable = new(StringComparer.OrdinalIgnoreCase);
 
@@ -61,6 +62,7 @@ internal sealed class SubtitleSession
         _sidecar = null;
         _manualSidecar = null;
         _embedded = -1;
+        _preferred = null;
         _track = SubtitleTrack.Empty;
         _unreadable.Clear();
         Error = null;
@@ -70,11 +72,73 @@ internal sealed class SubtitleSession
         Remember();
     }
 
+    public void ApplyPreference(MediaPreference preference)
+    {
+        switch (preference.SubtitleMode)
+        {
+            case SubtitlePreferenceMode.Off:
+                Off();
+                break;
+            case SubtitlePreferenceMode.Sidecar when !string.IsNullOrWhiteSpace(preference.SubtitlePath):
+                UseSidecar(preference.SubtitlePath);
+                break;
+            case SubtitlePreferenceMode.Embedded:
+                _choice = Choice.Embedded;
+                _embedded = preference.SubtitleTrackIndex ?? -1;
+                _sidecar = null;
+                _track = SubtitleTrack.Empty;
+                _preferred = preference;
+                Remember();
+                break;
+            default:
+                Auto();
+                break;
+        }
+    }
+
+    public MediaPreference ApplyTo(MediaPreference preference)
+    {
+        var track = _embedded >= 0 ? Embedded.FirstOrDefault(item => item.Index == _embedded) : null;
+        return preference with
+        {
+            SubtitleMode = _choice switch
+            {
+                Choice.Off => SubtitlePreferenceMode.Off,
+                Choice.Sidecar => SubtitlePreferenceMode.Sidecar,
+                Choice.Embedded => SubtitlePreferenceMode.Embedded,
+                _ => SubtitlePreferenceMode.Auto
+            },
+            SubtitleTrackIndex = _choice == Choice.Embedded ? _embedded : null,
+            SubtitleTrackTitle = _choice == Choice.Embedded ? track?.Title : null,
+            SubtitleTrackLanguage = _choice == Choice.Embedded ? track?.Language : null,
+            SubtitlePath = _choice == Choice.Sidecar ? _sidecar : null
+        };
+    }
+
     public void SetEmbeddedList(IReadOnlyList<FfmpegSubtitleStream> tracks)
     {
         Embedded = tracks;
-        if (_choice == Choice.Auto)
+        if (_choice == Choice.Embedded && _preferred != null)
+        {
+            var exact = tracks.FirstOrDefault(track => track.IsText
+                && string.Equals(track.Title, _preferred.SubtitleTrackTitle, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase));
+            var language = !string.IsNullOrWhiteSpace(_preferred.SubtitleTrackLanguage)
+                ? tracks.FirstOrDefault(track => track.IsText
+                    && string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase))
+                : null;
+            var selected = exact ?? language
+                ?? tracks.FirstOrDefault(track => track.Index == _preferred.SubtitleTrackIndex && track.IsText);
+            _preferred = null;
+            if (selected is { IsText: true })
+                _embedded = selected.Index;
+            else
+                Auto();
+        }
+        else if (_choice == Choice.Auto)
+        {
             ResolveAuto();
+        }
     }
 
     public void Off()
