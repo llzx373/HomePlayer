@@ -209,9 +209,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
             return;
         }
 
-        _repository.MarkChanged(item, size, ticks);
+        _repository.ReprocessItem(item, size, ticks);
         _repository.Enqueue(item.Id, library.Kind);
-        ResetProgress(library, item.RelativePath);
         MarkDirty(item.Id);
         Submit(item.Id);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -256,9 +255,8 @@ public sealed class LibraryCoordinator : IAsyncDisposable
                 {
                     if (_shutdown.IsCancellationRequested)
                         return;
-                    _repository.MarkChanged(item, item.Size, item.MtimeUtcTicks);
+                    _repository.ReprocessItem(item, item.Size, item.MtimeUtcTicks);
                     _repository.Enqueue(item.Id, library.Kind);
-                    ResetProgress(library, item.RelativePath);
                     Submit(item.Id);
                 }
 

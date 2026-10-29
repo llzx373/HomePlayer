@@ -154,6 +154,57 @@ public class LibraryCoordinatorTests
         }
     }
 
+    [Fact]
+    public async Task Manual_requeue_rebuilds_metadata_without_clearing_playback_progress()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "HomePlayer.Tests." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var repository = new LibraryRepository(Path.Combine(directory, "library.db"));
+            await using var coordinator = new LibraryCoordinator(repository, () => null);
+            var library = new MediaLibrary
+            {
+                Id = "library",
+                Name = "Test",
+                RootPath = directory,
+                Kind = LibraryKind.Raw
+            };
+            repository.InsertLibrary(library);
+            var item = new MediaItem
+            {
+                Id = "item",
+                LibraryId = library.Id,
+                RelativePath = "video.mkv",
+                Status = ItemStatus.Ready
+            };
+            repository.InsertItem(item);
+            var fullPath = item.FullPath(directory);
+            File.WriteAllBytes(fullPath, [1, 2, 3]);
+            var state = new PlaybackState(fullPath, 30, 100, false, DateTime.UtcNow.Ticks);
+            repository.Save(state);
+            repository.Flush();
+
+            coordinator.Requeue(item.Id);
+
+            Assert.Equal(ItemStatus.Pending, repository.GetItem(item.Id)?.Status);
+            Assert.Equal(state, repository.LoadPlaybackStates([fullPath])[fullPath]);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, true);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         for (var i = 0; i < 200; i++)

@@ -676,6 +676,22 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
     {
         lock (_gate)
         {
+            ReprocessItem(item, size, mtimeTicks);
+            Execute(
+                """
+                DELETE FROM PlaybackState WHERE Path = (
+                    SELECT l.RootPath || '\' || replace($relative, '/', '\')
+                    FROM Library l WHERE l.Id = $library);
+                """,
+                ("$relative", item.RelativePath),
+                ("$library", item.LibraryId));
+        }
+    }
+
+    public void ReprocessItem(MediaItem item, long size, long mtimeTicks)
+    {
+        lock (_gate)
+        {
             Execute(
                 """
                 UPDATE MediaItem
@@ -690,14 +706,6 @@ public sealed class LibraryRepository : IDisposable, IPlaybackStateStore
                 ("$pending", (int)ItemStatus.Pending),
                 ("$none", (int)MatchStatus.None),
                 ("$id", item.Id));
-            Execute(
-                """
-                DELETE FROM PlaybackState WHERE Path = (
-                    SELECT l.RootPath || '\' || replace($relative, '/', '\')
-                    FROM Library l WHERE l.Id = $library);
-                """,
-                ("$relative", item.RelativePath),
-                ("$library", item.LibraryId));
         }
     }
 
