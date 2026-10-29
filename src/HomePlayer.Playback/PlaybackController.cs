@@ -65,6 +65,7 @@ public sealed class PlaybackController : IDisposable
     public event Action<VideoFrame>? FrameArrived;
     public event Action? VideoSizeChanged;
     public event Action<bool>? PlaybackActiveChanged;
+    public event Action? Stopped;
 
     public void SetVolume(double volume)
     {
@@ -171,6 +172,7 @@ public sealed class PlaybackController : IDisposable
         ClearVideoSize();
         Status = "已停止";
         EngineLabel = "未播放";
+        Stopped?.Invoke();
         Notify();
     }
 

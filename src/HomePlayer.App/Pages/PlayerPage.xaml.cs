@@ -87,6 +87,11 @@ public sealed partial class PlayerPage : Page
         playback.FrameArrived += OnVideoFrame;
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
+        playback.Stopped += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            _presenter.Clear();
+            SyncSnapshotButton();
+        });
         PlaylistView.ItemsSource = playback.Playlist.Items;
         UpdateRepeatButton();
         SetShuffle(playback.Playlist.Shuffle);

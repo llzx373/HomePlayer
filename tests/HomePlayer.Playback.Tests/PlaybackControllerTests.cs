@@ -22,6 +22,19 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public void Stop_notifies_presenter_to_clear_the_last_frame()
+    {
+        using var controller = Create(new FakeEngine());
+        var stopped = 0;
+        controller.Stopped += () => stopped++;
+
+        controller.Stop();
+
+        Assert.Equal(1, stopped);
+        Assert.Equal("已停止", controller.Status);
+    }
+
+    [Fact]
     public async Task Fault_keeps_current_item_and_saves_unfinished_progress()
     {
         var engine = new FakeEngine();

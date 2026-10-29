@@ -248,6 +248,48 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
+    public void Clear()
+    {
+        VideoFrame? pending;
+        VideoFrame? last;
+        lock (_gate)
+        {
+            pending = _pending;
+            _pending = null;
+            last = _lastFrame;
+            _lastFrame = null;
+        }
+
+        pending?.ReturnBuffer();
+        last?.ReturnBuffer();
+        _render.Post(ClearFrame);
+    }
+
+    private void ClearFrame()
+    {
+        _context?.PSSetShaderResources(0, 1, NoFrameViews);
+        _frameView?.Dispose();
+        _frameView = null;
+        _frameTexture?.Dispose();
+        _frameTexture = null;
+        _frameWidth = 0;
+        _frameHeight = 0;
+        if (_context == null || _target == null || _swapChain == null)
+            return;
+        try
+        {
+            _context.OMSetRenderTargets(_target, null);
+            _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
+            _context.OMSetRenderTargets(NoTargets, null);
+            _swapChain.Present(0, PresentFlags.None);
+        }
+        catch (Exception ex)
+        {
+            if (IsDeviceLost(ex) || DeviceIsLost())
+                RecoverDevice();
+        }
+    }
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
