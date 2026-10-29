@@ -55,6 +55,16 @@ public sealed partial class LibraryPage
     private void UpdateBrowseChrome()
     {
         var queryMode = UsesLibraryQuery;
+        LibraryPageTitle.Text = _browseMode switch
+        {
+            LibraryBrowseMode.ContinueWatching => "继续观看",
+            LibraryBrowseMode.RecentlyAdded => "最近添加",
+            LibraryBrowseMode.RecentlyPlayed => "最近播放",
+            LibraryBrowseMode.Favorites => "收藏",
+            LibraryBrowseMode.Series => "剧集与合集",
+            _ => "媒体库"
+        };
+        SearchPanel.Visibility = queryMode ? Visibility.Visible : Visibility.Collapsed;
         LibraryToolbar.Visibility = queryMode ? Visibility.Visible : Visibility.Collapsed;
         ViewToolbar.Visibility = queryMode ? Visibility.Visible : Visibility.Collapsed;
         Pager.Visibility = _browseMode == LibraryBrowseMode.Series ? Visibility.Collapsed : queryMode ? Visibility.Visible : Visibility.Collapsed;
@@ -66,6 +76,25 @@ public sealed partial class LibraryPage
         MediaList.Visibility = showList ? Visibility.Visible : Visibility.Collapsed;
         if (!queryMode)
             BulkBar.Visibility = Visibility.Collapsed;
+        UpdateResultSummary();
+    }
+
+    private void UpdateResultSummary()
+    {
+        var library = LibraryList.SelectedItem as MediaLibrary;
+        ResultSummary.Text = _browseMode switch
+        {
+            LibraryBrowseMode.Library when AllLibraries => "全部媒体库",
+            LibraryBrowseMode.Library when _folderPath.Length > 0 => _folderPath.Split('/').LastOrDefault() ?? "当前文件夹",
+            LibraryBrowseMode.Library => library?.Name ?? "全部媒体",
+            LibraryBrowseMode.ContinueWatching => "从上次的位置继续",
+            LibraryBrowseMode.RecentlyAdded => "新加入媒体库的内容",
+            LibraryBrowseMode.RecentlyPlayed => "最近播放过的内容",
+            LibraryBrowseMode.Favorites => "收藏的影片与视频",
+            LibraryBrowseMode.Series => "按剧集和合集浏览",
+            _ => "全部媒体"
+        };
+        ResultContext.Text = _total > 0 ? $"{_total:N0} 项" : UsesLibraryQuery ? "浏览与筛选" : "最近 12 项";
     }
 
     private void LoadManagementPage()
@@ -194,6 +223,7 @@ public sealed partial class LibraryPage
         UpdateBar.IsOpen = false;
         UpdateEmptyText();
         UpdateSelectionActions();
+        UpdateResultSummary();
         SaveViewState();
     }
 
@@ -239,11 +269,7 @@ public sealed partial class LibraryPage
 
     private MediaCard ManagementCard(MediaCard card, IReadOnlyDictionary<string, bool> favorites, MediaSeriesGroup? group = null)
     {
-        var layout = (LibraryLayout)Math.Max(0, LayoutBox.SelectedIndex);
-        var compact = layout == LibraryLayout.CompactCards;
-        var size = (LibraryCardSize)Math.Max(0, CardSizeBox.SelectedIndex);
-        var width = compact ? 160 : size switch { LibraryCardSize.Small => 180, LibraryCardSize.Large => 300, _ => 220 };
-        var imageHeight = compact ? 100 : size switch { LibraryCardSize.Small => 115, LibraryCardSize.Large => 195, _ => 150 };
+        var (width, imageHeight) = CardDimensions(card);
         var info = (LibraryInfoDisplay)Math.Max(0, InfoBox.SelectedIndex);
         var subtitle = info switch
         {
@@ -275,6 +301,31 @@ public sealed partial class LibraryPage
             WatchText = card.WatchedVisibility == Visibility.Visible ? "已看" : card.Progress > 0 ? "在看" : "未看",
             LibraryText = card.Library.Name
         };
+    }
+
+    private (double Width, double Height) CardDimensions(MediaCard card)
+    {
+        var compact = (LibraryLayout)Math.Max(0, LayoutBox.SelectedIndex) == LibraryLayout.CompactCards;
+        var size = (LibraryCardSize)Math.Max(0, CardSizeBox.SelectedIndex);
+        var portrait = card.Library.Kind == LibraryKind.Catalog;
+        double width = portrait
+            ? compact ? 150 : size switch { LibraryCardSize.Small => 160, LibraryCardSize.Large => 224, _ => 184 }
+            : compact ? 224 : size switch { LibraryCardSize.Small => 240, LibraryCardSize.Large => 336, _ => 280 };
+        width = Math.Round(width * _cardScale);
+        var height = Math.Round(portrait ? width * 1.5 : width * 9 / 16);
+        return (width, height);
+    }
+
+    private void ApplyCardDimensions()
+    {
+        for (var i = 0; i < _cards.Count; i++)
+        {
+            var card = _cards[i];
+            var (width, height) = CardDimensions(card);
+            if (card.CardWidth == width && card.ImageHeight == height)
+                continue;
+            _cards[i] = card with { CardWidth = width, ImageHeight = height };
+        }
     }
 
     private static MediaCard CopyCard(MediaCard card) => new()

@@ -39,7 +39,9 @@ public sealed partial class PagerBar : UserControl
             _page = PagedView.ClampPage(page, _total, _pageSize);
             if (!Equals(PageSizeBox.SelectedItem, _pageSize))
                 PageSizeBox.SelectedItem = _pageSize;
-            TotalText.Text = $"共 {_total:N0} 项";
+            var first = _total == 0 ? 0 : (_page - 1) * _pageSize + 1;
+            var last = Math.Min(_total, _page * _pageSize);
+            TotalText.Text = $"{first:N0}–{last:N0} / {_total:N0} 项";
             if (JumpBox.FocusState == FocusState.Unfocused)
                 JumpBox.Text = _page.ToString();
             RebuildPages();
@@ -79,9 +81,7 @@ public sealed partial class PagerBar : UserControl
         var button = new Button
         {
             Content = (page == 0 ? "…" : page.ToString()),
-            MinWidth = 32,
-            Height = 28,
-            Padding = new Thickness(6, 0, 6, 0)
+            Style = (Style)Resources["PagerButtonStyle"]
         };
         if (page != 0 && page == _page)
         {

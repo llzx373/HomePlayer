@@ -41,6 +41,7 @@ public sealed partial class LibraryPage : Page
     private int _total;
     private string _folderPath = "";
     private LibraryBrowseMode _browseMode;
+    private double _cardScale = 1;
 
     public LibraryPage()
     {
@@ -111,16 +112,13 @@ public sealed partial class LibraryPage : Page
 
     private void LibraryPage_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var compact = ActualWidth < 1150;
-        Grid.SetColumnSpan(SearchBox, 1);
-        Grid.SetRow(ScopeBox, 0);
-        Grid.SetColumn(ScopeBox, 1);
-        Grid.SetRow(FilterBox, compact ? 1 : 0);
-        Grid.SetColumn(FilterBox, compact ? 0 : 2);
-        Grid.SetRow(SortBox, compact ? 1 : 0);
-        Grid.SetColumn(SortBox, compact ? 1 : 3);
-        Grid.SetRow(AdvancedFiltersButton, compact ? 1 : 0);
-        Grid.SetColumn(AdvancedFiltersButton, compact ? 2 : 4);
+        SidebarColumn.Width = new GridLength(ActualWidth < 1180 ? 208 : 240);
+        SearchBox.Width = ActualWidth < 1050 ? 220 : 300;
+        var scale = ActualWidth < 1050 ? 0.85 : ActualWidth > 1680 ? 1.12 : 1;
+        if (Math.Abs(_cardScale - scale) < 0.01)
+            return;
+        _cardScale = scale;
+        ApplyCardDimensions();
     }
 
     private void QueuePageReload()
@@ -385,6 +383,7 @@ public sealed partial class LibraryPage : Page
         Pager.Update(0, 1, _pageSize);
         UpdateBar.IsOpen = false;
         UpdateEmptyText();
+        UpdateResultSummary();
     }
 
     private MediaCard SpecialCard(MediaCard card, SpecialMedia entry)
@@ -403,6 +402,7 @@ public sealed partial class LibraryPage : Page
                     ? $"观看到 {ClockText.FormatSeconds(state.PositionSeconds)} · {source}"
                     : $"最近播放 · {source}"
         };
+        var (width, imageHeight) = CardDimensions(card);
         return new MediaCard
         {
             Item = card.Item,
@@ -418,7 +418,9 @@ public sealed partial class LibraryPage : Page
             WatchedVisibility = card.WatchedVisibility,
             HasLibraryEntry = entry.HasLibraryEntry,
             IsHistoryEntry = _browseMode == LibraryBrowseMode.RecentlyPlayed,
-            HistoryPath = path
+            HistoryPath = path,
+            CardWidth = width,
+            ImageHeight = imageHeight
         };
     }
 
@@ -552,69 +554,95 @@ public sealed partial class LibraryPage : Page
     {
         var busy = _loading || _pageLoading;
         LoadingIndicator.IsActive = busy;
-        LoadingIndicator.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        ScanProgressText.Visibility = Visibility.Collapsed;
-        if (busy)
-        {
-            EmptyText.Visibility = Visibility.Collapsed;
+        LoadingPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        EmptyPanel.Visibility = Visibility.Collapsed;
+        EmptyActionButton.Visibility = Visibility.Collapsed;
+        if (busy || _total > 0)
             return;
-        }
 
         if (_libraries.Count == 0)
         {
-            EmptyText.Visibility = Visibility.Visible;
-            EmptyText.Text = "还没有媒体库。添加一个本地文件夹开始。";
+            ShowEmpty("还没有媒体库", "添加一个本地文件夹，HomePlayer 会为你整理海报和播放进度。", "&#xE8B7;");
+            EmptyActionButton.Content = "添加媒体库";
+            EmptyActionButton.Tag = "add";
+            EmptyActionButton.Visibility = Visibility.Visible;
             return;
         }
 
-        if (_total > 0)
-        {
-            EmptyText.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        EmptyText.Visibility = Visibility.Visible;
         if (_browseMode != LibraryBrowseMode.Library)
         {
-            EmptyText.Text = _browseMode switch
+            var (title, detail) = _browseMode switch
             {
-                LibraryBrowseMode.ContinueWatching => "还没有看到一半的视频。",
-                LibraryBrowseMode.RecentlyAdded => "媒体库里还没有最近添加的视频。",
-                LibraryBrowseMode.Favorites => "还没有收藏，或没有符合筛选条件的收藏。",
-                LibraryBrowseMode.Series => "还没有可聚合的剧集或电影合集。",
-                _ => "还没有播放历史。"
+                LibraryBrowseMode.ContinueWatching => ("暂时没有可继续观看的内容", "播放到中途的视频会出现在这里。"),
+                LibraryBrowseMode.RecentlyAdded => ("还没有最近添加的内容", "扫描媒体库后，新加入的视频会出现在这里。"),
+                LibraryBrowseMode.Favorites => ("还没有收藏", "在影片右键菜单中选择收藏，就能在这里快速找到。"),
+                LibraryBrowseMode.Series => ("还没有剧集或合集", "包含季集信息的影片会自动整理到这里。"),
+                _ => ("还没有播放历史", "播放过的视频会按最近顺序出现在这里。")
             };
+            ShowEmpty(title, detail, "&#xE8B9;");
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(SearchBox.Text))
         {
-            EmptyText.Text = "没有匹配的条目。";
+            ShowEmpty("没有匹配的条目", "试试更短的关键词，或清除搜索后重新浏览。", "&#xE721;");
+            EmptyActionButton.Content = "清除搜索";
+            EmptyActionButton.Tag = "search";
+            EmptyActionButton.Visibility = Visibility.Visible;
             return;
         }
 
         if (LibraryList.SelectedItem is not MediaLibrary library)
         {
-            EmptyText.Text = "选择一个媒体库。";
+            ShowEmpty("选择一个媒体库", "从左侧选择要浏览的内容。", "&#xE8B7;");
             return;
         }
 
         if (CurrentFilter(library.Kind) != LibraryFilter.All)
         {
-            EmptyText.Text = "没有符合筛选条件的条目。";
+            ShowEmpty("没有符合筛选条件的条目", "调整或清除筛选条件后再试。", "&#xE71C;");
+            EmptyActionButton.Content = "清除筛选";
+            EmptyActionButton.Tag = "filters";
+            EmptyActionButton.Visibility = Visibility.Visible;
             return;
         }
 
         var pending = App.Host.Libraries.PendingCount;
         if (pending > 0)
         {
-            EmptyText.Text = "正在扫描和生成预览…";
-            ScanProgressText.Text = $"待处理 {pending:N0} 项";
-            ScanProgressText.Visibility = Visibility.Visible;
+            ShowEmpty("正在扫描和生成预览", $"还有 {pending:N0} 项等待处理，完成后会自动出现在媒体库中。", "&#xE916;");
             return;
         }
 
-        EmptyText.Text = _folderPath.Length > 0 ? "这个文件夹里没有视频。" : "这个库里还没有视频。";
+        ShowEmpty(
+            _folderPath.Length > 0 ? "这个文件夹里没有视频" : "这个库里还没有视频",
+            _folderPath.Length > 0 ? "选择其他文件夹，或开启“包含子文件夹”。" : "检查库位置，或从库管理中重新扫描。",
+            "&#xE8B9;");
+    }
+
+    private void ShowEmpty(string title, string detail, string glyph)
+    {
+        EmptyPanel.Visibility = Visibility.Visible;
+        EmptyText.Text = title;
+        EmptyDetailText.Text = detail;
+        EmptyIcon.Glyph = System.Net.WebUtility.HtmlDecode(glyph);
+    }
+
+    private void EmptyAction_Click(object sender, RoutedEventArgs e)
+    {
+        switch (EmptyActionButton.Tag as string)
+        {
+            case "add":
+                Add_Click(sender, e);
+                break;
+            case "search":
+                SearchBox.Text = "";
+                break;
+            case "filters":
+                FilterBox.SelectedIndex = 0;
+                ClearAdvancedFilters_Click(sender, e);
+                break;
+        }
     }
 
     private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
@@ -1187,6 +1215,38 @@ public sealed partial class LibraryPage : Page
         var image = new BitmapImage { DecodePixelWidth = 96, UriSource = new Uri(path) };
         _coverCache[path] = (stamp, image);
         return image;
+    }
+
+    private void Card_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root)
+            return;
+        if (root.FindName("CardHoverShade") is Border shade)
+            shade.Opacity = 1;
+        if (root.FindName("CardPlayButton") is Button play)
+        {
+            play.Opacity = 1;
+            play.IsHitTestVisible = true;
+        }
+    }
+
+    private void Card_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root)
+            return;
+        if (root.FindName("CardHoverShade") is Border shade)
+            shade.Opacity = 0;
+        if (root.FindName("CardPlayButton") is Button play)
+        {
+            play.Opacity = 0;
+            play.IsHitTestVisible = false;
+        }
+    }
+
+    private async void CardPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is MediaCard card)
+            await PlayCardAsync(card);
     }
 
     private async void Card_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)

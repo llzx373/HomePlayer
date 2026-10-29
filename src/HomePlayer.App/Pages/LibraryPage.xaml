@@ -6,82 +6,273 @@
     xmlns:local="using:HomePlayer"
     SizeChanged="LibraryPage_SizeChanged">
     <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary x:Key="Dark">
+                <SolidColorBrush x:Key="LibraryBackgroundBrush" Color="#141416" />
+                <SolidColorBrush x:Key="LibrarySidebarBrush" Color="#1B1B1E" />
+                <SolidColorBrush x:Key="LibraryCardBrush" Color="#232327" />
+                <SolidColorBrush x:Key="LibraryCardPlaceholderBrush" Color="#2B2B30" />
+                <SolidColorBrush x:Key="LibrarySubtleBrush" Color="#0AFFFFFF" />
+                <SolidColorBrush x:Key="LibraryBorderBrush" Color="#14FFFFFF" />
+                <SolidColorBrush x:Key="LibraryAccentBrush" Color="#E5A00D" />
+                <SolidColorBrush x:Key="LibraryAccentSoftBrush" Color="#26E5A00D" />
+            </ResourceDictionary>
+            <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="LibraryBackgroundBrush" Color="#F7F7F8" />
+                <SolidColorBrush x:Key="LibrarySidebarBrush" Color="#EFEFF1" />
+                <SolidColorBrush x:Key="LibraryCardBrush" Color="#FFFFFFFF" />
+                <SolidColorBrush x:Key="LibraryCardPlaceholderBrush" Color="#E4E4E7" />
+                <SolidColorBrush x:Key="LibrarySubtleBrush" Color="#08000000" />
+                <SolidColorBrush x:Key="LibraryBorderBrush" Color="#12000000" />
+                <SolidColorBrush x:Key="LibraryAccentBrush" Color="#B87500" />
+                <SolidColorBrush x:Key="LibraryAccentSoftBrush" Color="#20B87500" />
+            </ResourceDictionary>
+        </ResourceDictionary.ThemeDictionaries>
+        <Style x:Key="LibrarySectionTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="LibraryToolbarButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{ThemeResource LibraryBorderBrush}" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style x:Key="LibraryIconButtonStyle" TargetType="Button" BasedOn="{StaticResource LibraryToolbarButtonStyle}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style x:Key="LibraryTabStyle" TargetType="RadioButton">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,28,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid MinHeight="42" Background="Transparent">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="2" />
+                            </Grid.RowDefinitions>
+                            <ContentPresenter
+                                x:Name="Content"
+                                Content="{TemplateBinding Content}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                            <Border
+                                x:Name="Indicator"
+                                Grid.Row="1"
+                                Width="24"
+                                Background="{ThemeResource LibraryAccentBrush}"
+                                CornerRadius="1"
+                                Opacity="0" />
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Opacity" Value="0.7" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Opacity" Value="0.35" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Foreground" Value="{ThemeResource LibraryAccentBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused" />
+                                    <VisualState x:Name="PointerFocused">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="CheckStates">
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="Content.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                            <Setter Target="Content.FontWeight" Value="SemiBold" />
+                                            <Setter Target="Indicator.Opacity" Value="1" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Unchecked" />
+                                    <VisualState x:Name="Indeterminate" />
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="MediaBadgeBorderStyle" TargetType="Border">
             <Setter Property="Margin" Value="8" />
-            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Padding" Value="6,3" />
             <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="Background" Value="#B3000000" />
+            <Setter Property="Background" Value="#C4222226" />
         </Style>
         <Style x:Key="MediaBadgeTextStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="11" />
         </Style>
+        <Style x:Key="LibraryGridItemStyle" TargetType="GridViewItem">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,20,24" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        </ResourceDictionary>
     </Page.Resources>
-    <Grid Padding="16" ColumnSpacing="16">
+    <Grid ColumnSpacing="0" Background="{ThemeResource LibraryBackgroundBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="300" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="240" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Grid Grid.Column="0" RowSpacing="8">
+        <Border Grid.Column="0" Background="{ThemeResource LibrarySidebarBrush}" Padding="14,22,14,16">
+            <Grid RowSpacing="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="媒体库" Style="{StaticResource LibrarySectionTextStyle}" Margin="10,0,0,10" />
+                <ListView
+                    x:Name="LibraryList"
+                    Grid.Row="1"
+                    MaxHeight="220"
+                    Margin="0,0,0,20"
+                    SelectionChanged="LibraryList_SelectionChanged">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="MinHeight" Value="38" />
+                            <Setter Property="Padding" Value="12,8" />
+                            <Setter Property="Margin" Value="0,0,0,2" />
+                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+                <Grid Grid.Row="2" Margin="10,0,10,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="文件夹" Style="{StaticResource LibrarySectionTextStyle}" VerticalAlignment="Center" />
+                    <FontIcon Grid.Column="1" Glyph="&#xE8B7;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Grid>
+                <ToggleSwitch
+                    x:Name="RecursiveSwitch"
+                    Grid.Row="3"
+                    Margin="6,0,0,6"
+                    MinHeight="32"
+                    FontSize="12"
+                    IsOn="True"
+                    OnContent="包含子文件夹"
+                    OffContent="仅当前文件夹"
+                    Toggled="Recursive_Toggled" />
+                <TreeView
+                    x:Name="FolderTree"
+                    Grid.Row="4"
+                    SelectionChanged="FolderTree_SelectionChanged"
+                    Expanding="FolderTree_Expanding"
+                    Collapsed="FolderTree_Collapsed"
+                    RightTapped="FolderTree_RightTapped">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="TreeViewItem">
+                            <Setter Property="MinHeight" Value="32" />
+                            <Setter Property="Margin" Value="0" />
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="7" MinHeight="30">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="32" Height="18" CornerRadius="3" Background="{ThemeResource LibraryCardPlaceholderBrush}">
+                                    <Grid>
+                                        <FontIcon Glyph="&#xE8B7;" FontSize="10" Opacity="0.35" />
+                                        <Image Source="{Binding Content.Cover}" Stretch="UniformToFill" />
+                                    </Grid>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="{Binding Content.Name}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Text="{Binding Content.CountText}" FontSize="11" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+                <Button
+                    Grid.Row="5"
+                    Style="{StaticResource LibraryToolbarButtonStyle}"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE712;" FontSize="13" />
+                        <TextBlock Text="库管理" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="添加媒体库" Click="Add_Click" />
+                            <MenuFlyoutItem Text="更改所选库位置" Click="MigrateRoot_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="移除所选库" Click="Remove_Click" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </Border>
+        <Grid Grid.Column="1" Padding="28,20,28,14" RowSpacing="0">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="2*" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBlock Text="媒体库" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <ListView x:Name="LibraryList" Grid.Row="1" SelectionChanged="LibraryList_SelectionChanged" />
-            <ToggleSwitch
-                x:Name="RecursiveSwitch"
-                Grid.Row="2"
-                IsOn="True"
-                OnContent="递归包含子文件夹"
-                OffContent="仅当前文件夹"
-                Toggled="Recursive_Toggled" />
-            <TreeView
-                x:Name="FolderTree"
-                Grid.Row="3"
-                SelectionChanged="FolderTree_SelectionChanged"
-                Expanding="FolderTree_Expanding"
-                Collapsed="FolderTree_Collapsed"
-                RightTapped="FolderTree_RightTapped">
-                <TreeView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Border Width="48" Height="27" CornerRadius="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <Image Source="{Binding Content.Cover}" Stretch="UniformToFill" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Content.Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Column="2" Text="{Binding Content.CountText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-                    </DataTemplate>
-                </TreeView.ItemTemplate>
-            </TreeView>
-            <StackPanel Grid.Row="4" Spacing="8">
-                <Button Content="添加库" Click="Add_Click" HorizontalAlignment="Stretch" />
-                <Button Content="更改所选库位置" Click="MigrateRoot_Click" HorizontalAlignment="Stretch" />
-                <Button Content="移除所选库" Click="Remove_Click" HorizontalAlignment="Stretch" />
-            </StackPanel>
-        </Grid>
-        <Grid Grid.Column="1" RowSpacing="8">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <RadioButtons x:Name="BrowseTabs" SelectedIndex="0" SelectionChanged="BrowseTabs_SelectionChanged">
+            <Grid MinHeight="48" ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="LibraryPageTitle" Text="媒体库" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Border x:Name="SearchPanel" Grid.Column="1" VerticalAlignment="Center">
+                    <TextBox x:Name="SearchBox" Width="300" PlaceholderText="搜索当前媒体库" TextChanged="Search_TextChanged" />
+                </Border>
+            </Grid>
+            <RadioButtons x:Name="BrowseTabs" Grid.Row="1" SelectedIndex="0" SelectionChanged="BrowseTabs_SelectionChanged">
+                <RadioButtons.Resources>
+                    <Style TargetType="RadioButton" BasedOn="{StaticResource LibraryTabStyle}" />
+                </RadioButtons.Resources>
                 <RadioButtons.Items>
                     <x:String>媒体库</x:String>
                     <x:String>继续观看</x:String>
@@ -91,137 +282,172 @@
                     <x:String>剧集与合集</x:String>
                 </RadioButtons.Items>
             </RadioButtons>
-            <Grid x:Name="LibraryToolbar" Grid.Row="1" ColumnSpacing="8" RowSpacing="8">
+            <Grid x:Name="LibraryToolbar" Grid.Row="2" Margin="0,12,0,20" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="140" />
-                    <ColumnDefinition Width="150" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBox x:Name="SearchBox" PlaceholderText="按名称搜索" TextChanged="Search_TextChanged" />
-                <ComboBox x:Name="ScopeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="Scope_SelectionChanged">
-                    <ComboBoxItem Content="当前媒体库" />
-                    <ComboBoxItem Content="全部媒体库" />
-                </ComboBox>
-                <ComboBox x:Name="FilterBox" Grid.Column="2" HorizontalAlignment="Stretch" SelectionChanged="Filter_SelectionChanged" />
-                <ComboBox x:Name="SortBox" Grid.Column="3" HorizontalAlignment="Stretch" SelectionChanged="Sort_SelectionChanged" />
-                <Button x:Name="AdvancedFiltersButton" Grid.Column="4" Content="组合筛选">
-                    <Button.Flyout>
-                        <Flyout>
-                            <StackPanel Width="300" Spacing="8">
-                                <TextBlock Text="组合筛选" Style="{ThemeResource SubtitleTextBlockStyle}" />
-                                <ComboBox x:Name="WatchBox" Header="观看状态" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="未看" /><ComboBoxItem Content="在看" /><ComboBoxItem Content="已看" />
-                                </ComboBox>
-                                <ComboBox x:Name="MediaTypeBox" Header="类型" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="电影" /><ComboBoxItem Content="剧集" /><ComboBoxItem Content="未知" />
-                                </ComboBox>
-                                <ComboBox x:Name="ResolutionBox" Header="分辨率" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="4K" /><ComboBoxItem Content="1080p" /><ComboBoxItem Content="720p" /><ComboBoxItem Content="标清" /><ComboBoxItem Content="未知" />
-                                </ComboBox>
-                                <ComboBox x:Name="CodecBox" Header="编码" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="H.264" /><ComboBoxItem Content="H.265 / HEVC" /><ComboBoxItem Content="AV1" /><ComboBoxItem Content="VP9" /><ComboBoxItem Content="其他" />
-                                </ComboBox>
-                                <ComboBox x:Name="DurationBox" Header="时长" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="20 分钟以内" /><ComboBoxItem Content="20–60 分钟" /><ComboBoxItem Content="60 分钟以上" /><ComboBoxItem Content="未知" />
-                                </ComboBox>
-                                <TextBox x:Name="YearBox" Header="年份（留空为全部）" PlaceholderText="例如 2024" TextChanged="Year_TextChanged" />
-                                <ComboBox x:Name="SubtitleBox" Header="内嵌字幕" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
-                                    <ComboBoxItem Content="全部" /><ComboBoxItem Content="有字幕" /><ComboBoxItem Content="无字幕" />
-                                </ComboBox>
-                                <ToggleSwitch x:Name="MultiAudioSwitch" Header="多音轨" OnContent="仅显示多音轨" OffContent="不限" Toggled="MultiAudio_Toggled" />
-                                <ComboBox x:Name="TagFilterBox" Header="标签" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
-                                <ComboBox x:Name="CollectionFilterBox" Header="自定义合集" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
-                                <Button Content="管理自定义合集" Click="ManageCollections_Click" HorizontalAlignment="Stretch" />
-                                <Button Content="清除组合筛选" Click="ClearAdvancedFilters_Click" HorizontalAlignment="Stretch" />
-                            </StackPanel>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock x:Name="ResultSummary" Text="全部媒体" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock x:Name="ResultContext" Text="按标题浏览" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <ComboBox x:Name="ScopeBox" SelectedIndex="0" MinWidth="128" SelectionChanged="Scope_SelectionChanged">
+                        <ComboBoxItem Content="当前媒体库" />
+                        <ComboBoxItem Content="全部媒体库" />
+                    </ComboBox>
+                    <ComboBox x:Name="FilterBox" MinWidth="104" SelectionChanged="Filter_SelectionChanged" />
+                    <ComboBox x:Name="SortBox" MinWidth="120" SelectionChanged="Sort_SelectionChanged" />
+                    <Button x:Name="AdvancedFiltersButton" Style="{StaticResource LibraryToolbarButtonStyle}" Content="组合筛选">
+                        <Button.Flyout>
+                            <Flyout>
+                                <StackPanel Width="300" Spacing="8">
+                                    <TextBlock Text="组合筛选" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ComboBox x:Name="WatchBox" Header="观看状态" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="未看" /><ComboBoxItem Content="在看" /><ComboBoxItem Content="已看" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="MediaTypeBox" Header="类型" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="电影" /><ComboBoxItem Content="剧集" /><ComboBoxItem Content="未知" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="ResolutionBox" Header="分辨率" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="4K" /><ComboBoxItem Content="1080p" /><ComboBoxItem Content="720p" /><ComboBoxItem Content="标清" /><ComboBoxItem Content="未知" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="CodecBox" Header="编码" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="H.264" /><ComboBoxItem Content="H.265 / HEVC" /><ComboBoxItem Content="AV1" /><ComboBoxItem Content="VP9" /><ComboBoxItem Content="其他" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="DurationBox" Header="时长" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="20 分钟以内" /><ComboBoxItem Content="20–60 分钟" /><ComboBoxItem Content="60 分钟以上" /><ComboBoxItem Content="未知" />
+                                    </ComboBox>
+                                    <TextBox x:Name="YearBox" Header="年份（留空为全部）" PlaceholderText="例如 2024" TextChanged="Year_TextChanged" />
+                                    <ComboBox x:Name="SubtitleBox" Header="内嵌字幕" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged">
+                                        <ComboBoxItem Content="全部" /><ComboBoxItem Content="有字幕" /><ComboBoxItem Content="无字幕" />
+                                    </ComboBox>
+                                    <ToggleSwitch x:Name="MultiAudioSwitch" Header="多音轨" OnContent="仅显示多音轨" OffContent="不限" Toggled="MultiAudio_Toggled" />
+                                    <ComboBox x:Name="TagFilterBox" Header="标签" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
+                                    <ComboBox x:Name="CollectionFilterBox" Header="自定义合集" HorizontalAlignment="Stretch" SelectionChanged="AdvancedFilter_SelectionChanged" />
+                                    <Button Content="管理自定义合集" Click="ManageCollections_Click" HorizontalAlignment="Stretch" />
+                                    <Button Content="清除组合筛选" Click="ClearAdvancedFilters_Click" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <DropDownButton Style="{ThemeResource LibraryToolbarButtonStyle}" Content="视图">
+                        <DropDownButton.Flyout>
+                            <Flyout>
+                                <StackPanel x:Name="ViewToolbar" Width="240" Spacing="10">
+                                    <ComboBox x:Name="LayoutBox" Header="布局" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="Layout_SelectionChanged">
+                                        <ComboBoxItem Content="卡片" /><ComboBoxItem Content="紧凑卡片" /><ComboBoxItem Content="列表" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="CardSizeBox" Header="卡片尺寸" SelectedIndex="1" HorizontalAlignment="Stretch" SelectionChanged="CardSize_SelectionChanged">
+                                        <ComboBoxItem Content="小卡片" /><ComboBoxItem Content="中卡片" /><ComboBoxItem Content="大卡片" />
+                                    </ComboBox>
+                                    <ComboBox x:Name="InfoBox" Header="卡片信息" SelectedIndex="0" HorizontalAlignment="Stretch" SelectionChanged="Info_SelectionChanged">
+                                        <ComboBoxItem Content="显示标题" /><ComboBoxItem Content="显示路径" /><ComboBoxItem Content="显示技术信息" />
+                                    </ComboBox>
+                                    <ToggleButton x:Name="MultiSelectToggle" Content="多选" HorizontalAlignment="Stretch" Click="MultiSelect_Click" />
+                                    <Button Content="全选本页" HorizontalAlignment="Stretch" Click="SelectAll_Click" />
+                                </StackPanel>
+                            </Flyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="RandomButton" Style="{StaticResource LibraryIconButtonStyle}" ToolTipService.ToolTip="随机播放" AutomationProperties.Name="随机播放" Click="Random_Click">
+                        <FontIcon Glyph="&#xE8B1;" FontSize="14" />
+                    </Button>
+                    <Button x:Name="RefreshButton" Style="{StaticResource LibraryIconButtonStyle}" ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新" Click="Refresh_Click">
+                        <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                    </Button>
+                </StackPanel>
             </Grid>
-            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="ViewToolbar" Orientation="Horizontal" Spacing="8">
-                    <ComboBox x:Name="LayoutBox" SelectedIndex="0" SelectionChanged="Layout_SelectionChanged" MinWidth="120">
-                        <ComboBoxItem Content="卡片" /><ComboBoxItem Content="紧凑卡片" /><ComboBoxItem Content="列表" />
-                    </ComboBox>
-                    <ComboBox x:Name="CardSizeBox" SelectedIndex="1" SelectionChanged="CardSize_SelectionChanged" MinWidth="110">
-                        <ComboBoxItem Content="小卡片" /><ComboBoxItem Content="中卡片" /><ComboBoxItem Content="大卡片" />
-                    </ComboBox>
-                    <ComboBox x:Name="InfoBox" SelectedIndex="0" SelectionChanged="Info_SelectionChanged" MinWidth="130">
-                        <ComboBoxItem Content="显示标题" /><ComboBoxItem Content="显示路径" /><ComboBoxItem Content="显示技术信息" />
-                    </ComboBox>
-                    <ToggleButton x:Name="MultiSelectToggle" Content="多选" Click="MultiSelect_Click" />
-                    <Button Content="全选本页" Click="SelectAll_Click" />
-                    <Button x:Name="RandomButton" Content="随机播放" Click="Random_Click" />
-                    <Button x:Name="RefreshButton" Content="刷新" Click="Refresh_Click" />
-                </StackPanel>
-            </ScrollViewer>
-            <ScrollViewer x:Name="BulkBar" Grid.Row="3" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <Button Content="加入播放列表" Click="BulkEnqueue_Click" />
-                    <Button Content="标为已看" Click="BulkWatched_Click" Tag="True" />
-                    <Button Content="标为未看" Click="BulkWatched_Click" Tag="False" />
-                    <Button Content="收藏" Click="BulkFavorite_Click" Tag="True" />
-                    <Button Content="取消收藏" Click="BulkFavorite_Click" Tag="False" />
-                    <Button Content="设置标签" Click="BulkTags_Click" />
-                    <Button Content="加入合集" Click="BulkCollection_Click" />
-                    <Button Content="重新处理" Click="BulkReprocess_Click" />
-                    <Button Content="重新匹配 TMDB" Click="BulkMatch_Click" />
-                    <Button Content="从媒体库移除" Click="BulkRemove_Click" />
-                </StackPanel>
-            </ScrollViewer>
-            <InfoBar x:Name="UpdateBar" Grid.Row="4" Severity="Informational" IsOpen="False" IsClosable="False" Title="媒体库有更新">
+            <Border x:Name="BulkBar" Grid.Row="3" Visibility="Collapsed" Background="{ThemeResource LibrarySubtleBrush}" CornerRadius="8" Padding="10,8" Margin="0,0,0,12">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Button Content="加入播放列表" Click="BulkEnqueue_Click" />
+                        <Button Content="标为已看" Click="BulkWatched_Click" Tag="True" />
+                        <Button Content="标为未看" Click="BulkWatched_Click" Tag="False" />
+                        <Button Content="收藏" Click="BulkFavorite_Click" Tag="True" />
+                        <Button Content="取消收藏" Click="BulkFavorite_Click" Tag="False" />
+                        <Button Content="设置标签" Click="BulkTags_Click" />
+                        <Button Content="加入合集" Click="BulkCollection_Click" />
+                        <Button Content="重新处理" Click="BulkReprocess_Click" />
+                        <Button Content="重新匹配 TMDB" Click="BulkMatch_Click" />
+                        <Button Content="从媒体库移除" Click="BulkRemove_Click" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            <InfoBar x:Name="UpdateBar" Grid.Row="4" Severity="Informational" IsOpen="False" IsClosable="False" Title="媒体库有更新" Margin="0,0,0,10">
                 <InfoBar.ActionButton><Button Content="刷新" Click="RefreshPending_Click" /></InfoBar.ActionButton>
             </InfoBar>
-            <InfoBar x:Name="ScanWarningBar" Grid.Row="5" Severity="Warning" IsOpen="False" IsClosable="False" Title="扫描状态">
-                <InfoBar.ActionButton>
-                    <Button x:Name="ScanRetryButton" Content="重试" Click="ScanRetry_Click" />
-                </InfoBar.ActionButton>
+            <InfoBar x:Name="ScanWarningBar" Grid.Row="5" Severity="Warning" IsOpen="False" IsClosable="False" Title="扫描状态" Margin="0,0,0,10">
+                <InfoBar.ActionButton><Button x:Name="ScanRetryButton" Content="重试" Click="ScanRetry_Click" /></InfoBar.ActionButton>
             </InfoBar>
-            <InfoBar x:Name="LibraryErrorBar" Grid.Row="6" Severity="Error" IsOpen="False" IsClosable="False" Title="媒体库读取失败">
+            <InfoBar x:Name="LibraryErrorBar" Grid.Row="6" Severity="Error" IsOpen="False" IsClosable="False" Title="媒体库读取失败" Margin="0,0,0,10">
                 <InfoBar.ActionButton><Button Content="重试" Click="RetryLoad_Click" /></InfoBar.ActionButton>
             </InfoBar>
             <Grid Grid.Row="7">
-                <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <ProgressRing x:Name="LoadingIndicator" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" Canvas.ZIndex="1" />
-                <TextBlock x:Name="ScanProgressText" Margin="0,56,0,0" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" Canvas.ZIndex="1" />
+                <StackPanel x:Name="EmptyPanel" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420" Spacing="10">
+                    <FontIcon x:Name="EmptyIcon" Glyph="&#xE8B7;" FontSize="38" Foreground="{ThemeResource TextFillColorTertiaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock x:Name="EmptyText" Text="还没有媒体库。" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock x:Name="EmptyDetailText" Text="添加一个本地文件夹，HomePlayer 会为你整理海报和播放进度。" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextAlignment="Center" TextWrapping="Wrap" />
+                    <Button x:Name="EmptyActionButton" Content="添加媒体库" Style="{ThemeResource AccentButtonStyle}" HorizontalAlignment="Center" Margin="0,10,0,0" Click="EmptyAction_Click" />
+                </StackPanel>
+                <StackPanel x:Name="LoadingPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16" Visibility="Collapsed" Canvas.ZIndex="1">
+                    <ProgressRing x:Name="LoadingIndicator" Width="36" Height="36" HorizontalAlignment="Center" />
+                    <TextBlock Text="正在整理媒体…" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
                 <GridView
                     x:Name="Cards"
                     DoubleTapped="Cards_DoubleTapped"
                     RightTapped="Cards_RightTapped"
                     KeyDown="Cards_KeyDown"
                     SelectionChanged="Cards_SelectionChanged"
-                    IsItemClickEnabled="False">
+                    IsItemClickEnabled="False"
+                    ItemContainerStyle="{StaticResource LibraryGridItemStyle}">
                     <GridView.ItemTemplate>
                         <DataTemplate>
-                            <Grid Width="{Binding CardWidth}" RowSpacing="6" DoubleTapped="Card_DoubleTapped">
+                            <Grid
+                                Width="{Binding CardWidth}"
+                                RowSpacing="7"
+                                DoubleTapped="Card_DoubleTapped"
+                                PointerEntered="Card_PointerEntered"
+                                PointerExited="Card_PointerExited">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="{Binding ImageHeight}" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6">
+                                <Border x:Name="CardPosterBorder" Background="{ThemeResource LibraryCardPlaceholderBrush}" BorderBrush="{ThemeResource LibraryBorderBrush}" BorderThickness="1" CornerRadius="7">
                                     <Grid>
-                                        <FontIcon Glyph="&#xE714;" FontSize="32" Opacity="0.25" />
+                                        <FontIcon Glyph="&#xE8B9;" FontSize="30" Opacity="0.2" />
                                         <Image Source="{Binding Image}" Stretch="UniformToFill" />
+                                        <Border x:Name="CardHoverShade" Background="#52000000" Opacity="0" />
+                                        <Button
+                                            x:Name="CardPlayButton"
+                                            Width="44"
+                                            Height="44"
+                                            Padding="0"
+                                            CornerRadius="22"
+                                            Background="#E6222226"
+                                            BorderBrush="#66FFFFFF"
+                                            BorderThickness="1"
+                                            Opacity="0"
+                                            IsHitTestVisible="False"
+                                            ToolTipService.ToolTip="播放"
+                                            Click="CardPlay_Click">
+                                            <FontIcon Glyph="&#xE768;" FontSize="17" Foreground="White" Margin="2,0,0,0" />
+                                        </Button>
                                         <Border Style="{StaticResource MediaBadgeBorderStyle}" Background="{Binding BadgeBackground}" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="{Binding BadgeVisibility}">
                                             <TextBlock Text="{Binding Badge}" Style="{StaticResource MediaBadgeTextStyle}" />
                                         </Border>
-                                        <Border Style="{StaticResource MediaBadgeBorderStyle}" Background="#CC1B5E20" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="{Binding WatchedVisibility}">
-                                            <TextBlock Text="已看" Style="{StaticResource MediaBadgeTextStyle}" />
+                                        <Border Style="{StaticResource MediaBadgeBorderStyle}" Padding="5" Background="#C4222226" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="{Binding WatchedVisibility}">
+                                            <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="White" ToolTipService.ToolTip="已看" />
                                         </Border>
-                                        <TextBlock Text="★" Foreground="Gold" FontSize="24" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Visibility="{Binding FavoriteVisibility}" />
-                                        <ProgressBar Value="{Binding Progress}" Maximum="1" Height="3" VerticalAlignment="Bottom" Padding="0" BorderThickness="0" Visibility="{Binding ProgressVisibility}" />
+                                        <FontIcon Glyph="&#xE735;" Foreground="{ThemeResource LibraryAccentBrush}" FontSize="17" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8,0,8,10" Visibility="{Binding FavoriteVisibility}" />
+                                        <ProgressBar Value="{Binding Progress}" Maximum="1" Height="3" VerticalAlignment="Bottom" Padding="0" BorderThickness="0" Background="Transparent" Foreground="{ThemeResource LibraryAccentBrush}" Visibility="{Binding ProgressVisibility}" />
                                     </Grid>
                                 </Border>
-                                <TextBlock Grid.Row="1" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="2" />
-                                <TextBlock Grid.Row="2" Text="{Binding Subtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" MaxLines="2" />
+                                <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Title}" />
+                                <TextBlock Grid.Row="2" Text="{Binding Subtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                             </Grid>
                         </DataTemplate>
                     </GridView.ItemTemplate>
@@ -236,18 +462,27 @@
                     ScrollViewer.HorizontalScrollMode="Enabled"
                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListView.Header>
-                        <Grid MinWidth="940" ColumnSpacing="12" Padding="0,4">
+                        <Grid MinWidth="940" ColumnSpacing="12" Padding="12,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="2*" /><ColumnDefinition Width="80" /><ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="85" /><ColumnDefinition Width="90" /><ColumnDefinition Width="105" />
                                 <ColumnDefinition Width="75" /><ColumnDefinition Width="110" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="标题" /><TextBlock Grid.Column="1" Text="时长" />
-                            <TextBlock Grid.Column="2" Text="分辨率" /><TextBlock Grid.Column="3" Text="编码" />
-                            <TextBlock Grid.Column="4" Text="文件大小" /><TextBlock Grid.Column="5" Text="添加时间" />
-                            <TextBlock Grid.Column="6" Text="状态" /><TextBlock Grid.Column="7" Text="媒体库" />
+                            <TextBlock Text="标题" FontSize="12" /><TextBlock Grid.Column="1" Text="时长" FontSize="12" />
+                            <TextBlock Grid.Column="2" Text="分辨率" FontSize="12" /><TextBlock Grid.Column="3" Text="编码" FontSize="12" />
+                            <TextBlock Grid.Column="4" Text="文件大小" FontSize="12" /><TextBlock Grid.Column="5" Text="添加时间" FontSize="12" />
+                            <TextBlock Grid.Column="6" Text="状态" FontSize="12" /><TextBlock Grid.Column="7" Text="媒体库" FontSize="12" />
                         </Grid>
                     </ListView.Header>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="MinHeight" Value="42" />
+                            <Setter Property="Padding" Value="12,7" />
+                            <Setter Property="Margin" Value="0,0,0,2" />
+                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid MinWidth="940" ColumnSpacing="12" DoubleTapped="Card_DoubleTapped">
@@ -257,19 +492,19 @@
                                     <ColumnDefinition Width="75" /><ColumnDefinition Width="110" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding FullPath}" />
-                                <TextBlock Grid.Column="1" Text="{Binding DurationText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="{Binding ResolutionText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="3" Text="{Binding CodecText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="4" Text="{Binding SizeText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="5" Text="{Binding AddedText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="6" Text="{Binding WatchText}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="7" Text="{Binding LibraryText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1" Text="{Binding DurationText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="2" Text="{Binding ResolutionText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="3" Text="{Binding CodecText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="4" Text="{Binding SizeText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="5" Text="{Binding AddedText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="6" Text="{Binding WatchText}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Column="7" Text="{Binding LibraryText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
             </Grid>
-            <local:PagerBar x:Name="Pager" Grid.Row="8" />
+            <local:PagerBar x:Name="Pager" Grid.Row="8" Margin="0,10,0,0" />
         </Grid>
     </Grid>
 </Page>
