@@ -4,143 +4,187 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     IsTabStop="True">
+    <Page.Resources>
+        <Style x:Key="SettingsCardStyle" TargetType="Border">
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style x:Key="SettingsDescriptionStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Page.Resources>
     <ScrollViewer>
-        <StackPanel Padding="24" Spacing="16" MaxWidth="760">
+        <StackPanel Padding="24" Spacing="16" MaxWidth="880">
             <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
-            <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机" />
-            <ToggleSwitch
-                x:Name="TraySwitch"
-                Header="点击关闭时"
-                OnContent="最小化到系统托盘"
-                OffContent="退出程序"
-                Toggled="Tray_Toggled" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="打开后，点标题栏关闭只把窗口藏到托盘，程序继续运行。托盘图标左键打开窗口，右键可以真正退出。关掉此项后，关闭窗口会退出程序。" />
-            <ComboBox x:Name="TitleBarBox" Header="窗口外观" HorizontalAlignment="Stretch">
-                <ComboBoxItem Content="经典标题栏" />
-                <ComboBoxItem Content="无边框播放" />
-            </ComboBox>
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="经典标题栏始终留在窗口最上方，画面不能盖住最小化、最大化和关闭，进度条和按钮也一直留在下方。无边框播放只作用于正在播放页：画面铺满窗口，标题栏、进度条和按钮栏平时隐藏，鼠标移到对应展示区域时才出现。媒体库和正在播放都在标题栏左上角切换，右上角齿轮进设置，播放页也是同一套按钮。全屏时只保留进度条，同样是鼠标移到底部才出现。" />
-            <ToggleSwitch x:Name="FitWindowSwitch" Header="自适应窗口" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="打开后，换片时只改窗口的宽或高，让画面铺满播放区、不留黑边。播放页也可以随时点「自适应窗口」。全屏时不会改窗口大小；最大化时会先还原再适配。" />
-            <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
 
-            <TextBlock Text="文件关联" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="安装程序会把支持的视频类型登记到系统。Windows 11 不会让程序偷偷改成默认播放器，需要在系统设置里确认。右键「用 HomePlayer 播放」在安装时就会出现。" />
-            <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" />
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="常规" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBox x:Name="ApiKeyBox" Header="TMDB API Key" PlaceholderText="只保存在本机，输入停顿后自动保存" />
+                    <TextBlock x:Name="SaveStatusText" Style="{StaticResource SettingsDescriptionStyle}" Text="更改会自动保存。" />
+                    <ToggleSwitch
+                        x:Name="TraySwitch"
+                        Header="点击关闭时"
+                        OnContent="最小化到系统托盘"
+                        OffContent="退出程序"
+                        Toggled="Tray_Toggled" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="托盘图标左键打开窗口，右键可以真正退出。" />
+                </StackPanel>
+            </Border>
 
-            <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="点一项后面的按钮，再按下要使用的键。可以加 Ctrl、Alt、Shift。点清除表示没有快捷键。同一组键只能给一个功能。" />
-            <ItemsControl x:Name="HotkeyList">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="8" Padding="0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="168" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Content="{Binding Display}" Click="Hotkey_Click" HorizontalAlignment="Stretch" />
-                            <Button Grid.Column="2" Content="清除" Click="HotkeyClear_Click" />
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <Button Content="恢复默认快捷键" Click="ResetHotkeys_Click" />
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="窗口与播放" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <ComboBox x:Name="TitleBarBox" Header="窗口外观" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="经典标题栏" />
+                        <ComboBoxItem Content="无边框播放" />
+                    </ComboBox>
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="无边框播放只作用于正在播放页；鼠标移向顶部或底部时显示对应控件。" />
+                    <ToggleSwitch x:Name="FitWindowSwitch" Header="自适应窗口" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="换片时按原始画面比例调整窗口；全屏时不改变窗口大小。" />
+                    <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
+                </StackPanel>
+            </Border>
 
-            <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="默认跟随 Windows 当前的声音出口。改完后从下一次播放开始生效。" />
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="文件关联" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="安装程序会登记支持的视频类型；默认播放器仍需在 Windows 设置中确认。" />
+                    <Button Content="打开系统默认应用设置" Click="DefaultApps_Click" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
 
-            <TextBlock Text="编解码器" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock x:Name="CodecSummary" TextWrapping="Wrap" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="每一组都按从上到下的顺序尝试。先点中一行，再用上移或下移调整。取消勾选后，播放时会跳过它。本程序是 64 位，x86 滤镜会列出来，但不能加载，所以不能勾选。改完后从下一次播放开始生效。" />
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="快捷键" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="点一项后面的按钮再按下新快捷键。同一组键只能分配给一个功能。" />
+                    <ItemsControl x:Name="HotkeyList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8" Padding="0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="168" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="{Binding Display}" Click="Hotkey_Click" HorizontalAlignment="Stretch" />
+                                    <Button Grid.Column="2" Content="清除" Click="HotkeyClear_Click" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="恢复默认快捷键" Click="ResetHotkeys_Click" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
 
-            <TextBlock Text="分离器" />
-            <ListView x:Name="SplitterList" MaxHeight="220" SelectionMode="Single">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="8" Padding="0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Title}" />
-                                <TextBlock Opacity="0.7" Text="{Binding Detail}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="上移" Click="SplitterUp_Click" />
-                <Button Content="下移" Click="SplitterDown_Click" />
-            </StackPanel>
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="声音" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <ComboBox x:Name="AudioDeviceBox" Header="播放设备" HorizontalAlignment="Stretch" DisplayMemberPath="Name" SelectionChanged="AudioDevice_Changed" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随 Windows 当前的声音出口，改完后从下一次播放开始生效。" />
+                </StackPanel>
+            </Border>
 
-            <TextBlock Text="视频解码" />
-            <ListView x:Name="VideoList" MaxHeight="220" SelectionMode="Single">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="8" Padding="0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Title}" />
-                                <TextBlock Opacity="0.7" Text="{Binding Detail}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="上移" Click="VideoUp_Click" />
-                <Button Content="下移" Click="VideoDown_Click" />
-            </StackPanel>
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="编解码器" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="CodecSummary" TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="按从上到下的顺序尝试。先选中一行再调整顺序；不可用的 x86 滤镜会列出但不能勾选。改完后从下一次播放开始生效。" />
 
-            <TextBlock Text="音频解码" />
-            <ListView x:Name="AudioList" MaxHeight="220" SelectionMode="Single">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid ColumnSpacing="8" Padding="0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding Title}" />
-                                <TextBlock Opacity="0.7" Text="{Binding Detail}" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="上移" Click="AudioUp_Click" />
-                <Button Content="下移" Click="AudioDown_Click" />
-                <Button Content="恢复默认顺序" Click="ResetCodecs_Click" />
-            </StackPanel>
+                    <TextBlock Text="分离器" />
+                    <ListView x:Name="SplitterList" MaxHeight="220" SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8" Padding="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Title}" />
+                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="上移" Click="SplitterUp_Click" />
+                        <Button Content="下移" Click="SplitterDown_Click" />
+                    </StackPanel>
 
-            <TextBlock x:Name="CacheText" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="保存" Click="Save_Click" />
-                <Button Content="清除缩略图缓存" Click="Clear_Click" />
-            </StackPanel>
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="分离器、视频解码和音频解码都失败时，会改用程序自带的 FFmpeg。缩略图始终用 FFmpeg 抽取。同一套 LAV 的 x86 和 x64 使用相同的 CLSID，64 位进程只会加载 x64 那一份。" />
+                    <TextBlock Text="视频解码" />
+                    <ListView x:Name="VideoList" MaxHeight="220" SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8" Padding="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Title}" />
+                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="上移" Click="VideoUp_Click" />
+                        <Button Content="下移" Click="VideoDown_Click" />
+                    </StackPanel>
 
-            <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
-            <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
-            <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="未处理异常、后台任务异常、FFmpeg / DirectShow 原生崩溃，以及上次没有正常退出，都会写到本机数据目录。从源码运行和安装后的软件共用这一份，随时可以在这里查看。" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="查看崩溃日志" Click="ViewCrashes_Click" />
-                <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
-                <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
-            </StackPanel>
+                    <TextBlock Text="音频解码" />
+                    <ListView x:Name="AudioList" MaxHeight="220" SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="8" Padding="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" IsEnabled="{Binding Usable}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Title}" />
+                                        <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="{Binding Detail}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="上移" Click="AudioUp_Click" />
+                        <Button Content="下移" Click="AudioDown_Click" />
+                        <Button Content="恢复默认顺序" Click="ResetCodecs_Click" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="分离器和解码都失败时会改用自带 FFmpeg；缩略图始终由 FFmpeg 抽取。" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="存储与诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="CacheText" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="清除缓存只重建缩略图和海报，不会删除视频或观看进度。" />
+                    <Button Content="清除缩略图缓存" Click="Clear_Click" HorizontalAlignment="Left" />
+                    <TextBlock Text="崩溃日志" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="CrashSummary" TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="未处理异常、后台任务异常、原生崩溃和异常退出都会记录到本机数据目录。" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="查看崩溃日志" Click="ViewCrashes_Click" />
+                        <Button Content="打开日志文件夹" Click="OpenCrashes_Click" />
+                        <Button Content="清除崩溃日志" Click="ClearCrashes_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>

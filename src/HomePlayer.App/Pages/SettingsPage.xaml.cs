@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using HomePlayer.Core;
 using HomePlayer.Playback;
+using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,7 +19,9 @@ public sealed partial class SettingsPage : Page
     private readonly ObservableCollection<CodecRow> _videos = [];
     private readonly ObservableCollection<CodecRow> _audios = [];
     private readonly ObservableCollection<HotkeyRow> _hotkeys = [];
+    private readonly DispatcherQueueTimer _apiKeyTimer;
     private HotkeyRow? _capturing;
+    private bool _apiKeyDirty;
     private bool _loading = true;
     private bool _codecsReady;
     private int _codecScanVersion;
@@ -27,8 +30,13 @@ public sealed partial class SettingsPage : Page
     {
         InitializeComponent();
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
+        _apiKeyTimer = DispatcherQueue.CreateTimer();
+        _apiKeyTimer.Interval = TimeSpan.FromMilliseconds(600);
+        _apiKeyTimer.IsRepeating = false;
+        _apiKeyTimer.Tick += (_, _) => SaveApiKey();
         var settings = App.Host.Settings;
         ApiKeyBox.Text = settings.TmdbApiKey ?? "";
+        ApiKeyBox.TextChanged += ApiKey_Changed;
         TraySwitch.IsOn = settings.CloseToTray;
         TitleBarBox.SelectedIndex = settings.TitleBar == TitleBarMode.Overlay ? 1 : 0;
         FitWindowSwitch.IsOn = settings.FitWindow;
@@ -45,7 +53,12 @@ public sealed partial class SettingsPage : Page
         CodecSummary.Text = "正在扫描编解码器…";
         _ = ReloadCodecsAsync(settings);
         AddHandler(KeyDownEvent, new KeyEventHandler(Page_KeyDown), true);
-        Unloaded += (_, _) => EndCapture();
+        Unloaded += (_, _) =>
+        {
+            EndCapture();
+            _apiKeyTimer.Stop();
+            SaveApiKey();
+        };
         Loaded += (_, _) =>
         {
             EndCapture();
@@ -108,19 +121,30 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void ApiKey_Changed(object sender, TextChangedEventArgs e)
     {
+        if (_loading)
+            return;
+        _apiKeyDirty = true;
+        SaveStatusText.Text = "等待自动保存…";
+        _apiKeyTimer.Stop();
+        _apiKeyTimer.Start();
+    }
+
+    private void SaveApiKey()
+    {
+        _apiKeyTimer.Stop();
+        if (!_apiKeyDirty)
+            return;
         App.Host.Settings.TmdbApiKey = string.IsNullOrWhiteSpace(ApiKeyBox.Text) ? null : ApiKeyBox.Text.Trim();
-        App.Host.Settings.CloseToTray = TraySwitch.IsOn;
-        App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
-        App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
-        App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
-        WriteAudioDevice();
-        WriteCodecs();
-        WriteHotkeys();
+        _apiKeyDirty = false;
+        SaveSettings();
+    }
+
+    private void SaveSettings()
+    {
         App.Host.SaveSettings();
-        App.Window.ApplyTitleBar();
-        App.Window.SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
+        SaveStatusText.Text = "已自动保存 " + DateTime.Now.ToString("HH:mm:ss");
     }
 
     private void Tray_Toggled(object sender, RoutedEventArgs e)
@@ -128,7 +152,7 @@ public sealed partial class SettingsPage : Page
         if (_loading)
             return;
         App.Host.Settings.CloseToTray = TraySwitch.IsOn;
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void TitleBar_Changed(object sender, SelectionChangedEventArgs e)
@@ -136,7 +160,7 @@ public sealed partial class SettingsPage : Page
         if (_loading || TitleBarBox.SelectedIndex < 0)
             return;
         App.Host.Settings.TitleBar = TitleBarBox.SelectedIndex == 1 ? TitleBarMode.Overlay : TitleBarMode.Classic;
-        App.Host.SaveSettings();
+        SaveSettings();
         App.Window.ApplyTitleBar();
     }
 
@@ -145,7 +169,7 @@ public sealed partial class SettingsPage : Page
         if (_loading)
             return;
         App.Host.Settings.FitWindow = FitWindowSwitch.IsOn;
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void AlwaysOnTop_Toggled(object sender, RoutedEventArgs e)
@@ -153,7 +177,7 @@ public sealed partial class SettingsPage : Page
         if (_loading)
             return;
         App.Host.Settings.AlwaysOnTop = AlwaysOnTopSwitch.IsOn;
-        App.Host.SaveSettings();
+        SaveSettings();
         App.Window.SetAlwaysOnTop(AlwaysOnTopSwitch.IsOn);
     }
 
@@ -173,7 +197,7 @@ public sealed partial class SettingsPage : Page
         if (_loading)
             return;
         WriteAudioDevice();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void SplitterUp_Click(object sender, RoutedEventArgs e) => Move(_splitters, SplitterList, -1);
@@ -201,7 +225,7 @@ public sealed partial class SettingsPage : Page
         }
 
         WriteCodecs();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void CodecRow_Changed(object? sender, PropertyChangedEventArgs e)
@@ -209,7 +233,7 @@ public sealed partial class SettingsPage : Page
         if (_loading || e.PropertyName != nameof(CodecRow.Enabled))
             return;
         WriteCodecs();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void LoadAudioDevices(string? savedId)
@@ -279,7 +303,7 @@ public sealed partial class SettingsPage : Page
         Renumber(rows);
         list.SelectedIndex = target;
         WriteCodecs();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void WriteCodecs()
@@ -332,7 +356,7 @@ public sealed partial class SettingsPage : Page
         EndCapture();
         LoadHotkeys(HotkeyCatalog.Defaults());
         WriteHotkeys();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void Hotkey_Click(object sender, RoutedEventArgs e)
@@ -392,7 +416,7 @@ public sealed partial class SettingsPage : Page
 
         row.Chord = chord;
         WriteHotkeys();
-        App.Host.SaveSettings();
+        SaveSettings();
     }
 
     private void EndCapture()
