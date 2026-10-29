@@ -138,6 +138,22 @@
             </InfoBar>
             <Grid Grid.Row="4">
                 <TextBlock x:Name="EmptyText" Text="还没有媒体库。添加一个本地文件夹开始。" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <ProgressRing
+                    x:Name="LoadingIndicator"
+                    Width="40"
+                    Height="40"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed"
+                    Canvas.ZIndex="1" />
+                <TextBlock
+                    x:Name="ScanProgressText"
+                    Margin="0,56,0,0"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Visibility="Collapsed"
+                    Canvas.ZIndex="1" />
                 <GridView
                     x:Name="Cards"
                     DoubleTapped="Cards_DoubleTapped"
@@ -154,6 +170,7 @@
                                 </Grid.RowDefinitions>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="6">
                                     <Grid>
+                                        <FontIcon Glyph="&#xE714;" FontSize="32" Opacity="0.25" />
                                         <Image Source="{Binding Image}" Stretch="UniformToFill" />
                                         <Border
                                             Style="{StaticResource MediaBadgeBorderStyle}"

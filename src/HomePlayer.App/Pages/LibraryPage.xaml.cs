@@ -27,6 +27,7 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<string, (DateTime Stamp, BitmapImage Image)> _coverCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _ready;
     private bool _loading;
+    private bool _pageLoading;
     private bool _sorting;
     private bool _syncingLibrary;
     private bool _viewRestored;
@@ -160,6 +161,7 @@ public sealed partial class LibraryPage : Page
         var selected = (LibraryList.SelectedItem as MediaLibrary)?.Id;
         var token = ++_reloadToken;
         _loading = true;
+        UpdateEmptyText();
         _ = Task.Run(() =>
         {
             IReadOnlyList<MediaLibrary> libraries;
@@ -183,6 +185,7 @@ public sealed partial class LibraryPage : Page
         if (token != _reloadToken || App.Host.Exiting)
             return;
         _loading = false;
+        UpdateEmptyText();
         SetLoadError(error);
         if (error != null)
             return;
@@ -251,6 +254,8 @@ public sealed partial class LibraryPage : Page
         ConfigureSort(library?.Kind);
         UpdateScanWarning();
         var token = ++_loadToken;
+        _pageLoading = library != null;
+        UpdateEmptyText();
         if (library == null)
         {
             _cards.Clear();
@@ -326,9 +331,13 @@ public sealed partial class LibraryPage : Page
             return;
         if ((LibraryList.SelectedItem as MediaLibrary)?.Id != library.Id)
             return;
+        _pageLoading = false;
         SetLoadError(error);
         if (error != null)
+        {
+            UpdateEmptyText();
             return;
+        }
         _page = page;
         _pageSize = pageSize;
         _total = total;
@@ -413,6 +422,16 @@ public sealed partial class LibraryPage : Page
 
     private void UpdateEmptyText()
     {
+        var busy = _loading || _pageLoading;
+        LoadingIndicator.IsActive = busy;
+        LoadingIndicator.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        ScanProgressText.Visibility = Visibility.Collapsed;
+        if (busy)
+        {
+            EmptyText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         if (_libraries.Count == 0)
         {
             EmptyText.Visibility = Visibility.Visible;
@@ -445,13 +464,16 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (_folderPath.Length > 0)
+        var pending = App.Host.Libraries.PendingCount;
+        if (pending > 0)
         {
-            EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个文件夹里没有视频。";
+            EmptyText.Text = "正在扫描和生成预览…";
+            ScanProgressText.Text = $"待处理 {pending:N0} 项";
+            ScanProgressText.Visibility = Visibility.Visible;
             return;
         }
 
-        EmptyText.Text = App.Host.Libraries.PendingCount > 0 ? "正在扫描和生成预览…" : "这个库里还没有视频。";
+        EmptyText.Text = _folderPath.Length > 0 ? "这个文件夹里没有视频。" : "这个库里还没有视频。";
     }
 
     private SortMode CurrentSort(LibraryKind kind) => kind == LibraryKind.Catalog
