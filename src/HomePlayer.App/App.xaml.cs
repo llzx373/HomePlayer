@@ -34,6 +34,7 @@ public partial class App : Application
         var initial = IncomingPaths(AppInstance.GetCurrent().GetActivatedEventArgs(), true);
         _window = new MainWindow(initial.Count > 0);
         Window = _window;
+        _window.SelectInitialPage(initial.Count > 0);
         _window.Activate();
         Host.StartLibraries();
         if (_instance != null)

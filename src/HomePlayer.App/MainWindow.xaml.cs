@@ -93,11 +93,12 @@ public sealed partial class MainWindow : Window
         Root.Loaded += OnRootLoaded;
         RootFrame.NavigationFailed += OnNavigationFailed;
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
-        Nav.SelectedItem = Nav.MenuItems[startOnPlayer ? 1 : 0];
         _tray = new NativeTray(
             () => RunOnUi(ShowFromTray),
             RequestExit);
     }
+
+    public void SelectInitialPage(bool startOnPlayer) => Nav.SelectedItem = Nav.MenuItems[startOnPlayer ? 1 : 0];
 
     public void SelectPlayer() => SelectPage("player");
 
