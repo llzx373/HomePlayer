@@ -299,6 +299,84 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Route_switch_failure_stays_on_current_item_and_retry_uses_a_new_operation()
+    {
+        var first = new FakeEngine();
+        var recovered = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, recovered]);
+        var calls = 0;
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) =>
+            {
+                calls++;
+                if (calls == 2)
+                    throw new InvalidOperationException("route failed");
+                return (engines.Dequeue(), "测试引擎");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+        controller.Seek(TimeSpan.FromSeconds(30));
+
+        var switched = await controller.SwitchRouteAsync(PlaybackRoute.NativeFfmpeg);
+
+        Assert.False(switched);
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal(PlaybackRouteTransitionPhase.Aborted, controller.CurrentRouteTransition?.Phase);
+        Assert.False(controller.CurrentRouteTransition?.OldSessionPreserved);
+        Assert.Equal(30, controller.LastTransferState?.Position.TotalSeconds);
+        var failedOperation = controller.CurrentRouteTransition?.OperationId;
+
+        var retried = await controller.RetryRouteSwitchAsync();
+
+        Assert.True(retried);
+        Assert.Equal(PlaybackRouteTransitionPhase.Committed, controller.CurrentRouteTransition?.Phase);
+        Assert.True(controller.CurrentRouteTransition?.OperationId > failedOperation);
+        Assert.Equal(TimeSpan.FromSeconds(25), recovered.LastSeek);
+    }
+
+    [Fact]
+    public async Task Latest_route_operation_wins_when_an_older_open_completes_late()
+    {
+        var initial = new FakeEngine();
+        var stale = new FakeEngine();
+        var current = new FakeEngine();
+        var openStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOpen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) =>
+            {
+                calls++;
+                if (calls == 2)
+                {
+                    openStarted.TrySetResult();
+                    return releaseOpen.Task.ContinueWith(_ => ((IPlaybackEngine)stale, "测试引擎")).Result;
+                }
+                return (calls == 1 ? initial : current, "测试引擎");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv"], 0);
+        var firstSwitch = controller.SwitchRouteAsync(PlaybackRoute.NativeFfmpeg);
+        await openStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var secondSwitch = controller.SwitchRouteAsync(PlaybackRoute.DirectShow);
+        Assert.True(await secondSwitch);
+        var committedOperation = controller.CurrentRouteTransition?.OperationId;
+        releaseOpen.TrySetResult();
+        Assert.False(await firstSwitch);
+
+        Assert.Equal(committedOperation, controller.CurrentRouteTransition?.OperationId);
+        Assert.Equal(PlaybackRoute.DirectShow, controller.CurrentRouteTransition?.Route);
+        Assert.Equal(PlaybackRouteTransitionPhase.Committed, controller.CurrentRouteTransition?.Phase);
+    }
+
+    [Fact]
     public async Task Ab_loop_seeks_back_to_a_at_b()
     {
         var engine = new FakeEngine();

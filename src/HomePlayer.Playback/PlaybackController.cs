@@ -139,6 +139,12 @@ public sealed partial class PlaybackController : IDisposable
             return Task.CompletedTask;
         }
 
+        if (selectedRoute != PlaybackRoute.Auto
+            && !restart
+            && _engine != null
+            && next != null
+            && string.Equals(playing, next, StringComparison.OrdinalIgnoreCase))
+            return SwitchRouteAsync(selectedRoute);
         return PlayCurrentAsync(selectedRoute, restart);
     }
 
@@ -193,6 +199,7 @@ public sealed partial class PlaybackController : IDisposable
         _token++;
         CancelNextProbe();
         ResetRecovery();
+        InvalidateRouteSwitch();
         _playingPath = null;
         DisposeEngine();
         ClearVideoSize();
@@ -209,6 +216,7 @@ public sealed partial class PlaybackController : IDisposable
         _token++;
         CancelNextProbe();
         ResetRecovery();
+        InvalidateRouteSwitch();
         _playingPath = null;
         var engine = TakeEngine();
         ClearVideoSize();
@@ -379,8 +387,10 @@ public sealed partial class PlaybackController : IDisposable
         await PlayCurrentAsync(PlaybackRoute.Auto);
     }
 
-    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false, bool recovery = false)
+    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false, bool recovery = false, RouteSwitchOperation? routeSwitch = null)
     {
+        if (routeSwitch == null)
+            InvalidateRouteSwitch();
         RememberPosition();
         var currentPath = Playlist.Current?.Path;
         if (!string.Equals(_recoveryPath, currentPath, StringComparison.OrdinalIgnoreCase))
@@ -414,7 +424,10 @@ public sealed partial class PlaybackController : IDisposable
                 }
             });
             if (token != _token)
+            {
+                routeSwitch?.Complete(false, "路线切换已取消。");
                 return;
+            }
         }
 
         var failures = 0;
@@ -429,6 +442,7 @@ public sealed partial class PlaybackController : IDisposable
                 if (token != _token)
                 {
                     _ = Task.Run(() => Discard(engine));
+                    routeSwitch?.Complete(false, "路线切换已取消。");
                     return;
                 }
 
@@ -467,6 +481,7 @@ public sealed partial class PlaybackController : IDisposable
                         CaptureVideoSize(engine);
                         ScheduleNextProbe(token);
                         Notify();
+                        routeSwitch?.Complete(true);
                     }
                     catch (Exception ex)
                     {
@@ -474,6 +489,7 @@ public sealed partial class PlaybackController : IDisposable
                         Status = ex.Message;
                         EngineLabel = "未播放";
                         Notify();
+                        routeSwitch?.Complete(false, ex.Message);
                     }
                 });
                 return;
@@ -487,7 +503,7 @@ public sealed partial class PlaybackController : IDisposable
                     route = PlaybackRoute.Auto;
                     continue;
                 }
-                var next = recovery ? null : Playlist.NextIndex(false);
+                var next = recovery || routeSwitch != null ? null : Playlist.NextIndex(false);
                 _post(() =>
                 {
                     failed.Error = ex.Message;
@@ -509,7 +525,12 @@ public sealed partial class PlaybackController : IDisposable
                 Status = recovery ? "播放恢复失败" : "无法播放";
                 EngineLabel = "未播放";
                 Notify();
+                routeSwitch?.Complete(false, "新路线打开失败。");
             });
+        }
+        else
+        {
+            routeSwitch?.Complete(false, "路线切换已取消。");
         }
     }
 
