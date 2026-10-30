@@ -234,6 +234,6 @@ public sealed unsafe partial class FfmpegPlayer
             AVChromaLocation.AVCHROMA_LOC_TOPLEFT => VideoChromaLocation.TopLeft,
             _ => VideoChromaLocation.Unknown
         };
-        return new VideoColorMetadata(matrix, range, primaries, transfer, chroma);
+        return new VideoColorMetadata(matrix, range, primaries, transfer, chroma) { Hdr10 = Hdr10Of(source) };
     }
 }

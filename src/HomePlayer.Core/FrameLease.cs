@@ -60,7 +60,10 @@ public readonly record struct VideoColorMetadata(
     VideoColorRange Range = VideoColorRange.Unknown,
     VideoColorPrimaries Primaries = VideoColorPrimaries.Unknown,
     VideoTransferFunction Transfer = VideoTransferFunction.Unknown,
-    VideoChromaLocation ChromaLocation = VideoChromaLocation.Unknown);
+    VideoChromaLocation ChromaLocation = VideoChromaLocation.Unknown)
+{
+    public VideoHdr10Metadata? Hdr10 { get; init; }
+}
 
 public readonly record struct VideoFrameGeometry(
     int SampleAspectRatioNumerator = 1,

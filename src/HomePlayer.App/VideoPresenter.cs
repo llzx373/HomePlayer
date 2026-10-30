@@ -191,6 +191,8 @@ public sealed class VideoPresenter : IDisposable
     private long _adapterLuid;
     private bool _hdrOutput;
     private bool _hdrOutputBlocked;
+    private VideoHdr10Metadata _sourceHdr10 = VideoHdr10Metadata.Bt2020Fallback;
+    private VideoHdr10Metadata? _appliedHdr10Metadata;
     private bool _displaySupportsHdr;
     private string _displayName = "";
     private long _displayGeneration;
@@ -602,6 +604,9 @@ public sealed class VideoPresenter : IDisposable
         {
             if (upload && frame != null)
             {
+                _sourceHdr10 = frame.Color.Hdr10 ?? VideoHdr10Metadata.Bt2020Fallback;
+                if (_hdrOutput && _sourceHdr10 != _appliedHdr10Metadata)
+                    ConfigureSwapChainColorSpace();
                 if (!PrepareFrame(frame))
                 {
                     frame.ReturnBuffer();
@@ -806,27 +811,29 @@ public sealed class VideoPresenter : IDisposable
             return;
         try
         {
+            var source = _sourceHdr10;
             var metadata = new HdrMetadataHdr10
             {
-                MaxMasteringLuminance = 1000,
-                MinMasteringLuminance = 50,
-                MaxContentLightLevel = 1000,
-                MaxFrameAverageLightLevel = 400
+                MaxMasteringLuminance = source.MaxMasteringLuminance,
+                MinMasteringLuminance = (ushort)Math.Min(source.MinMasteringLuminance, ushort.MaxValue),
+                MaxContentLightLevel = (ushort)Math.Min(source.MaxContentLightLevel, ushort.MaxValue),
+                MaxFrameAverageLightLevel = (ushort)Math.Min(source.MaxFrameAverageLightLevel, ushort.MaxValue)
             };
-            metadata.RedPrimary[0] = 13200;
-            metadata.RedPrimary[1] = 34500;
-            metadata.GreenPrimary[0] = 7500;
-            metadata.GreenPrimary[1] = 30000;
-            metadata.BluePrimary[0] = 30000;
-            metadata.BluePrimary[1] = 7500;
-            metadata.WhitePoint[0] = 15635;
-            metadata.WhitePoint[1] = 16450;
+            metadata.RedPrimary[0] = source.RedPrimaryX;
+            metadata.RedPrimary[1] = source.RedPrimaryY;
+            metadata.GreenPrimary[0] = source.GreenPrimaryX;
+            metadata.GreenPrimary[1] = source.GreenPrimaryY;
+            metadata.BluePrimary[0] = source.BluePrimaryX;
+            metadata.BluePrimary[1] = source.BluePrimaryY;
+            metadata.WhitePoint[0] = source.WhitePointX;
+            metadata.WhitePoint[1] = source.WhitePointY;
             using var chain4 = _swapChain.QueryInterface<IDXGISwapChain4>();
             var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<HdrMetadataHdr10>());
             try
             {
                 Marshal.StructureToPtr(metadata, pointer, false);
                 chain4.SetHDRMetaData(HdrMetadataType.Hdr10, (uint)Marshal.SizeOf<HdrMetadataHdr10>(), pointer);
+                _appliedHdr10Metadata = source;
             }
             finally
             {
