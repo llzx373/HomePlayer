@@ -35,6 +35,7 @@ public sealed partial class PlayerPage : Page
     private const double OverlayTitleBarHeight = 40;
 
     private readonly VideoPresenter _presenter;
+    private static readonly ExternalRendererInfo MadVRInfo = ExternalRendererCatalog.Detect(ExternalRendererKind.MadVR);
     private readonly OverlayFade _controlsFade;
     private SubtitleSession _subtitles = new();
     private readonly AssSubtitlePresenter _assPresenter = new();
@@ -80,7 +81,7 @@ public sealed partial class PlayerPage : Page
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         _presenter = new VideoPresenter(VideoSurface)
         {
-            CanRender = () => App.Window.IsInteractive
+            CanRender = () => App.Window.IsInteractive && !Playback.UsesExternalVideoOutput
         };
         NativeFfmpegProvider.DeviceProvider = _presenter.GetSharedDevice;
         DirectShowProvider.DeviceProvider = _presenter.GetSharedDevice;
@@ -363,6 +364,16 @@ public sealed partial class PlayerPage : Page
     private void UpdateChrome()
     {
         PlayIcon.Glyph = Playback.IsPlaying ? GlyphPause : GlyphPlay;
+        if (Playback.UsesExternalVideoOutput)
+        {
+            ExternalOutputNotice.Text = $"{Playback.EngineLabel} 正在独立原生窗口中输出。\n呈现与调度由外部渲染器负责；WinUI 字幕、最终帧截图和内部呈现指标不可用。";
+            ExternalOutputNotice.Visibility = Visibility.Visible;
+            _presenter.Clear();
+        }
+        else
+        {
+            ExternalOutputNotice.Visibility = Visibility.Collapsed;
+        }
         ApplyStatusText();
         if (PlaylistView.SelectedIndex != Playback.Playlist.CurrentIndex)
         {
@@ -384,6 +395,8 @@ public sealed partial class PlayerPage : Page
         PipelineButton.IsChecked = PipelinePanel.Visibility == Visibility.Visible;
         PipelineMenuItem.IsChecked = PipelineButton.IsChecked == true;
         FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+        MadVRItem.IsEnabled = MadVRInfo.Available && Playback.Playlist.Current != null;
+        ToolTipService.SetToolTip(MadVRItem, MadVRInfo.Available ? "使用 madVR 独立原生窗口" : MadVRInfo.Reason);
         PreviousEpisodeItem.IsEnabled = Playback.Playlist.PreviousIndex() != null;
         NextEpisodeItem.IsEnabled = Playback.Playlist.NextIndex(false) != null;
         StepFrameButton.IsEnabled = Playback.IsOpen;
@@ -415,7 +428,7 @@ public sealed partial class PlayerPage : Page
     {
         if (SnapshotButton == null)
             return;
-        SnapshotButton.IsEnabled = _presenter.HasLastFrame;
+        SnapshotButton.IsEnabled = !Playback.UsesExternalVideoOutput && _presenter.HasLastFrame;
     }
 
     private void OnVideoFrame(FrameLease frame)
@@ -624,6 +637,8 @@ public sealed partial class PlayerPage : Page
     private async void Ffmpeg_Click(object sender, RoutedEventArgs e) => await OpenWithRoute(PlaybackRoute.NativeFfmpeg);
 
     private async void Lav_Click(object sender, RoutedEventArgs e) => await OpenWithRoute(PlaybackRoute.DirectShow);
+
+    private async void MadVR_Click(object sender, RoutedEventArgs e) => await OpenWithRoute(PlaybackRoute.MadVR);
 
     private async Task OpenWithRoute(PlaybackRoute route)
     {
@@ -1169,6 +1184,12 @@ public sealed partial class PlayerPage : Page
     {
         if (SubtitleLayer == null || SubtitleText == null)
             return;
+        if (Playback.UsesExternalVideoOutput)
+        {
+            SubtitleLayer.Visibility = Visibility.Collapsed;
+            _assPresenter.Reset();
+            return;
+        }
         LayoutSubtitle();
         SubtitleCue? cue = null;
         if (Playback.IsOpen && !_subtitles.IsOff)

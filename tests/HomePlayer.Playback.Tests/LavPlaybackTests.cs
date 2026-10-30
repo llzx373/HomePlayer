@@ -167,4 +167,56 @@ public sealed class LavPlaybackTests
             engine.Pause();
         }
     }
+
+    [Fact]
+    public async Task Madvr_owns_native_output_and_directshow_clock()
+    {
+        var media = Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_LAV_MEDIA");
+        if (string.IsNullOrWhiteSpace(media) || !ExternalRendererCatalog.Detect(ExternalRendererKind.MadVR).Available)
+            return;
+        var plan = CodecCatalog.Plan(new AppSettings());
+        if (plan.Splitters.Count == 0 || plan.VideoDecoders.Count == 0)
+            return;
+        var registry = new PlaybackProviderRegistry([new NativeFfmpegProvider(), new DirectShowProvider(() => plan)]);
+        using var session = registry.Open(media, null, () => plan, PlaybackRoute.MadVR).Session;
+        var ownFrame = false;
+        var ended = false;
+        session.Ended += () => ended = true;
+        session.FrameArrived += frame =>
+        {
+            ownFrame = true;
+            frame.ReturnBuffer();
+        };
+        session.Play();
+        var advanced = false;
+        for (var attempt = 0; attempt < 100 && !advanced; attempt++)
+        {
+            await Task.Delay(100);
+            advanced = session.Position > TimeSpan.Zero;
+        }
+        var pipeline = session.GetPipeline();
+        Assert.True(advanced, "madVR/DirectShow 时钟未推进：" + pipeline.Format());
+        Assert.Equal("LAV + madVR", session.Name);
+        Assert.Equal("LAV + madVR", pipeline.Engine);
+        Assert.Equal("Unknown", pipeline.ZeroCopyLevel);
+        Assert.True(pipeline.Width > 0 && pipeline.Height > 0, pipeline.Format());
+        Assert.Contains(pipeline.Filters, name => name.Contains("madVR", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(pipeline.Usage, line => line.Contains("独立原生窗口", StringComparison.Ordinal));
+        Assert.False(ownFrame);
+        session.Seek(TimeSpan.FromSeconds(1));
+        Assert.InRange(session.Position, TimeSpan.Zero, TimeSpan.FromSeconds(3));
+        if (session.Duration > TimeSpan.Zero)
+        {
+            session.Seek(session.Duration - TimeSpan.FromMilliseconds(200));
+            session.Play();
+            for (var attempt = 0; attempt < 50 && !ended; attempt++)
+            {
+                await Task.Delay(100);
+                _ = session.Position;
+            }
+            Assert.True(ended, $"madVR/DirectShow 到达 EOF 后未通知结束。position={session.Position} duration={session.Duration} state={((LavPlaybackEngine)((PlaybackSession)session).InnerEngine).ExternalTransportState} playing={session.IsPlaying}");
+            _ = session.Position;
+        }
+        session.Stop();
+    }
 }

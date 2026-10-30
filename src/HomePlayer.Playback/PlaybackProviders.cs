@@ -6,7 +6,8 @@ public enum PlaybackRoute
 {
     Auto,
     NativeFfmpeg,
-    DirectShow
+    DirectShow,
+    MadVR
 }
 
 public interface IPlaybackProvider
@@ -36,7 +37,7 @@ public sealed class EngineSelectionPolicy
         var available = providers.ToArray();
         if (route == PlaybackRoute.NativeFfmpeg)
             return available.Single(provider => provider.Id == NativeFfmpegProvider.StableId);
-        if (route == PlaybackRoute.DirectShow || directShowAvailable)
+        if (route is PlaybackRoute.DirectShow or PlaybackRoute.MadVR || directShowAvailable)
             return available.Single(provider => provider.Id == DirectShowProvider.StableId);
         return available.Single(provider => provider.Id == NativeFfmpegProvider.StableId);
     }
@@ -51,6 +52,19 @@ public sealed class PlaybackProviderRegistry(IEnumerable<IPlaybackProvider> prov
 
     public OpenedPlaybackSession Open(string path, string? audioOutputId, Func<CodecPlan> codecs, PlaybackRoute route)
     {
+        if (route == PlaybackRoute.MadVR)
+        {
+            var plan = codecs();
+            if (plan.Splitters.Count == 0 || plan.VideoDecoders.Count == 0)
+                throw new InvalidOperationException("madVR 路线需要可用的 64 位 DirectShow 分离器和视频解码器。");
+            var provider = (DirectShowProvider)_policy.Select(_providers, PlaybackRoute.MadVR, true);
+            var session = provider.Open(path, audioOutputId, ExternalRendererKind.MadVR);
+            var engine = (LavPlaybackEngine)((PlaybackSession)session).InnerEngine;
+            var reason = engine.AudioMissing
+                ? "madVR 窗口已打开，音频没有接上：" + engine.AudioWarning
+                : "madVR 使用独立原生窗口；WinUI 字幕、最终帧截图和内部呈现指标不可用。";
+            return new OpenedPlaybackSession(session, reason);
+        }
         Exception? directShowError = null;
         if (route != PlaybackRoute.NativeFfmpeg)
         {
@@ -60,7 +74,7 @@ public sealed class PlaybackProviderRegistry(IEnumerable<IPlaybackProvider> prov
                 try
                 {
                     var provider = (DirectShowProvider)_policy.Select(_providers, PlaybackRoute.DirectShow, true);
-                    var session = provider.Open(path, audioOutputId);
+                    var session = provider.Open(path, audioOutputId, null);
                     var engine = (LavPlaybackEngine)((PlaybackSession)session).InnerEngine;
                     var reason = engine.AudioMissing
                         ? "画面已打开，音频没有接上：" + engine.AudioWarning
@@ -159,12 +173,14 @@ public sealed class DirectShowProvider : IPlaybackProvider
         new("video.zero-copy", CapabilityStatus.Supported, CapabilityOwner.Renderer)
     ];
 
-    public IPlaybackSession Open(string path, string? audioOutputId)
+    IPlaybackSession IPlaybackProvider.Open(string path, string? audioOutputId) => Open(path, audioOutputId, null);
+
+    public IPlaybackSession Open(string path, string? audioOutputId, ExternalRendererKind? externalOutput)
     {
         D3D11SharedDevice? device = null;
         try
         {
-            if (HardwareAccelerationEnabled())
+            if (externalOutput == null && HardwareAccelerationEnabled())
                 device = DeviceProvider?.Invoke();
         }
         catch
@@ -173,7 +189,8 @@ public sealed class DirectShowProvider : IPlaybackProvider
         var engine = new LavPlaybackEngine(_codecs(), audioOutputId)
         {
             D3D11Device = device,
-            UseD3D11Sink = device != null
+            UseD3D11Sink = externalOutput == null && device != null,
+            ExternalOutput = externalOutput
         };
         try
         {

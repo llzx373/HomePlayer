@@ -75,6 +75,7 @@ public sealed partial class PlaybackController : IDisposable
     public bool AutoAdvance { get; set; } = true;
     public int VideoWidth => _videoWidth;
     public int VideoHeight => _videoHeight;
+    public bool UsesExternalVideoOutput => _engine != null && InnerEngine(_engine) is LavPlaybackEngine { ExternalOutput: not null };
     public event Action? Changed;
     public event Action<FrameLease>? FrameArrived;
     public event Action? VideoSizeChanged;

@@ -15,6 +15,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     private IMediaSeeking? _seeking;
     private IBasicAudio? _audio;
     private IFilterGraph2? _graph;
+    private object? _externalRenderer;
+    private IVideoWindow? _externalWindow;
+    private IBasicVideo? _externalVideo;
+    private bool _externalEnded;
+    private bool _externalEndCandidate;
     private readonly CodecPlan _plan;
     private readonly string? _audioOutputId;
     private object? _splitter;
@@ -45,15 +50,22 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
     public string? AudioWarning => _audioWarning;
     public bool AudioMissing => _audioMissing;
-    public string Name => "LAV";
+    public string Name => ExternalOutput == ExternalRendererKind.MadVR ? "LAV + madVR" : "LAV";
     public bool UseD3D11Sink { get; set; }
+    public ExternalRendererKind? ExternalOutput { get; set; }
+    internal int ExternalTransportState => _sta.Invoke(() =>
+    {
+        if (_control == null)
+            return -1;
+        return Hr.Failed(_control.GetState(0, out var state)) ? -2 : state;
+    });
     public D3D11SharedDevice? D3D11Device { get; set; }
     public nint DecoderDevice => (_sink as D3D11SinkFilter)?.DecoderDevice ?? 0;
     public nint DecoderContext => (_sink as D3D11SinkFilter)?.DecoderContext ?? 0;
     public bool IsOpen => _open == 1;
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration => _duration;
-    public TimeSpan Position => ReadPosition();
+    public TimeSpan Position => ExternalOutput == null ? ReadPosition() : _sta.Invoke(ReadPosition);
     public double Rate => _rate;
 
     public event Action<FrameLease>? FrameArrived;
@@ -76,6 +88,9 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     public void Play() => _sta.Invoke(() =>
     {
         Hr.Throw(_control?.Run() ?? Hr.Fail, "LAV 开始播放");
+        _externalEnded = false;
+        _externalEndCandidate = false;
+        _externalWindow?.put_Visible(1);
         _isPlaying = true;
     });
 
@@ -110,6 +125,8 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         if (position < TimeSpan.Zero)
             position = TimeSpan.Zero;
         Volatile.Write(ref _seekedTicks, position.Ticks);
+        _externalEnded = false;
+        _externalEndCandidate = false;
         _sink?.ClearPresented();
         if (_seeking == null)
             return;
@@ -228,9 +245,10 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     {
         CloseGraph();
         _path = path;
-        _observedZeroCopy = UseD3D11Sink ? "Z4" : "Z0";
+        _observedZeroCopy = ExternalOutput != null ? "Unknown" : UseD3D11Sink ? "Z4" : "Z0";
         _audioWarning = null;
         _audioMissing = false;
+        _externalEnded = false;
         _audioDevice = AudioOutputs.Describe(_audioOutputId);
         _graph = Create<IFilterGraph2>(DsGuid.FilterGraph);
         _control = (IMediaControl)_graph;
@@ -381,8 +399,16 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
             try
             {
-                EnsureSink();
-                ConnectSink(_graph, output, _sink!);
+                if (ExternalOutput == null)
+                {
+                    EnsureSink();
+                    ConnectSink(_graph, output, _sink!);
+                }
+                else
+                {
+                    EnsureExternalRenderer();
+                    ConnectExternalRenderer(output);
+                }
                 ReleasePin(output);
                 _videoCodec = codec;
                 return filter;
@@ -502,6 +528,40 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         return rendered;
     }
 
+    private void EnsureExternalRenderer()
+    {
+        if (_externalRenderer != null || ExternalOutput == null)
+            return;
+        var info = ExternalRendererCatalog.Detect(ExternalOutput.Value);
+        if (!info.Available)
+            throw new InvalidOperationException(info.Reason);
+        _externalRenderer = CreateFilter(info.Clsid, $"无法创建 {info.DisplayName}。");
+        Hr.Throw(_graph!.AddFilter((IBaseFilter)_externalRenderer, info.DisplayName), $"加入 {info.DisplayName}");
+        _externalWindow = (IVideoWindow)_externalRenderer;
+        _externalVideo = _externalRenderer as IBasicVideo;
+        const int overlappedWindow = 0x00CF0000;
+        Hr.Throw(_externalWindow.put_Owner(0), "配置外部视频窗口所有者");
+        Hr.Throw(_externalWindow.put_WindowStyle(overlappedWindow), "配置独立视频窗口");
+        Hr.Throw(_externalWindow.put_AutoShow(0), "配置外部窗口自动显示");
+        Hr.Throw(_externalWindow.put_Caption($"HomePlayer · {info.DisplayName}"), "配置外部窗口标题");
+        Hr.Throw(_externalWindow.put_Visible(0), "隐藏未播放的外部窗口");
+    }
+
+    private void ConnectExternalRenderer(IPin output)
+    {
+        var input = FindPin((IBaseFilter)_externalRenderer!, output: false, video: false);
+        if (input == null)
+            throw new InvalidOperationException("外部渲染器没有视频输入脚。");
+        try
+        {
+            Hr.Throw(_graph!.Connect(output, input), "连接外部视频渲染器");
+        }
+        finally
+        {
+            ReleasePin(input);
+        }
+    }
+
     private void EnsureSink()
     {
         if (_sink != null)
@@ -531,6 +591,13 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     {
         try
         {
+            _externalWindow?.put_Visible(0);
+        }
+        catch
+        {
+        }
+        try
+        {
             _control?.Stop();
         }
         catch
@@ -557,6 +624,10 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
         _com.Clear();
         _graph = null;
+        _externalRenderer = null;
+        _externalWindow = null;
+        _externalVideo = null;
+        _externalEnded = false;
         _control = null;
         _seeking = null;
         _audio = null;
@@ -593,6 +664,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
     private TimeSpan ReadPosition()
     {
+        if (ExternalOutput != null && _seeking != null && !Hr.Failed(_seeking.GetCurrentPosition(out var position)) && position >= 0)
+        {
+            PollExternalEnd(position);
+            return TimeSpan.FromTicks(position);
+        }
         if (_sink is { HasPresented: true } sink)
         {
             var presented = sink.PresentedPosition;
@@ -601,6 +677,25 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         }
 
         return TimeSpan.FromTicks(Volatile.Read(ref _seekedTicks));
+    }
+
+    private void PollExternalEnd(long position)
+    {
+        if (_externalEnded || !_isPlaying || _duration <= TimeSpan.Zero)
+            return;
+        if (position + TimeSpan.FromMilliseconds(500).Ticks < _duration.Ticks)
+        {
+            _externalEndCandidate = false;
+            return;
+        }
+        if (!_externalEndCandidate)
+        {
+            _externalEndCandidate = true;
+            return;
+        }
+        _externalEnded = true;
+        _isPlaying = false;
+        Ended?.Invoke();
     }
 
     private PipelineInfo ReadPipeline()
@@ -612,6 +707,17 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         int? width = _sink?.Width;
         int? height = _sink?.Height;
         double? fps = null;
+        if (ExternalOutput != null)
+        {
+            pixel = "由外部渲染器拥有";
+            if (_externalVideo != null && !Hr.Failed(_externalVideo.GetVideoSize(out var videoWidth, out var videoHeight)))
+            {
+                width = videoWidth;
+                height = videoHeight;
+            }
+            if (_externalVideo != null && !Hr.Failed(_externalVideo.GetAvgTimePerFrame(out var frameTime)) && frameTime > 0)
+                fps = 1 / frameTime;
+        }
         string? audioCodec = null;
         int? channels = null;
         int? sampleRate = null;
@@ -690,7 +796,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         return new PipelineInfo
         {
             FilePath = _path,
-            Engine = "LAV",
+            Engine = Name,
             Container = Path.GetExtension(_path).TrimStart('.').ToUpperInvariant(),
             DurationSeconds = _duration.TotalSeconds,
             FileSize = size,
@@ -855,6 +961,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         lines.Add(UsageOf("视频解码", _videoCodec, _video));
         lines.Add(UsageOf("音频解码", _audioCodec, _audioFilter));
         lines.Add("声音出口：" + (_audioDevice ?? AudioOutputs.Describe(_audioOutputId)));
+        if (ExternalOutput != null)
+        {
+            lines.Add($"视频输出：{Name}，独立原生窗口，呈现与调度由外部渲染器负责。");
+            lines.Add("能力边界：WinUI 字幕和最终帧截图不可用；内部呈现指标与零拷贝等级为 Unknown。");
+        }
         if (!string.IsNullOrWhiteSpace(_audioWarning))
             lines.Add("音频：" + _audioWarning);
         return lines;

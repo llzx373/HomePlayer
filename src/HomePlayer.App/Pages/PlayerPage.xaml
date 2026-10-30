@@ -16,6 +16,17 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="VideoHost" Background="Black" DoubleTapped="VideoHost_DoubleTapped">
                 <SwapChainPanel x:Name="VideoSurface" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" DoubleTapped="VideoHost_DoubleTapped" />
+                <TextBlock
+                    x:Name="ExternalOutputNotice"
+                    MaxWidth="560"
+                    Margin="32"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="#E6FFFFFF"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed" />
                 <Grid x:Name="SubtitleLayer" IsHitTestVisible="False" Visibility="Collapsed">
                     <Border
                         x:Name="SubtitlePill"
@@ -265,6 +276,10 @@
                                                 x:Name="LavItem"
                                                 Text="LAV + HomePlayer"
                                                 Click="Lav_Click" />
+                                            <MenuFlyoutItem
+                                                x:Name="MadVRItem"
+                                                Text="LAV + madVR（独立窗口）"
+                                                Click="MadVR_Click" />
                                         </MenuFlyoutSubItem>
                                     </MenuFlyout>
                                 </Button.Flyout>
