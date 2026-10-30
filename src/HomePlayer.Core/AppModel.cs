@@ -212,34 +212,16 @@ public sealed record MediaProbe(
     public int SubtitleStreamCount { get; init; }
 }
 
-public sealed class VideoFrame
+public sealed class VideoFrame : CpuFrameLease
 {
-    private int _released;
-
-    public required int Width { get; init; }
-    public required int Height { get; init; }
-    public required int Stride { get; init; }
-    public required byte[] Data { get; init; }
-    public bool BottomUp { get; init; }
-    public long PresentationTimestamp { get; init; }
-    public long Duration { get; init; }
-    public MediaTimeBase TimeBase { get; init; } = MediaTimeBase.TimeSpanTicks;
-    public Guid SessionId { get; set; }
-    public long Epoch { get; set; }
-    public string TimelineId { get; set; } = "";
-    public long FrameSequence { get; init; }
-    public long DecodedTimestamp { get; init; }
-    public long OpenedTimestamp { get; init; }
-    public long SeekStartedTimestamp { get; init; }
-    public long? SeekCommandId { get; init; }
-    public ZeroCopyLevel ZeroCopyLevel { get; init; } = ZeroCopyLevel.Z1;
-    public Action? ReleaseBuffer { get; init; }
-
-    public void ReturnBuffer()
+    public VideoFrame()
     {
-        if (Interlocked.Exchange(ref _released, 1) == 0)
-            ReleaseBuffer?.Invoke();
+        PixelFormat = VideoPixelFormat.Bgra32;
+        ZeroCopyLevel = ZeroCopyLevel.Z1;
     }
+
+    public required int Stride { get; init; }
+    public bool BottomUp { get; init; }
 }
 
 public sealed record ParsedName(string Title, int? Year, int? Season, int? Episode, bool IsTv);

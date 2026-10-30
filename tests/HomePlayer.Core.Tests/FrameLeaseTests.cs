@@ -5,6 +5,24 @@ namespace HomePlayer.Core.Tests;
 public class FrameLeaseTests
 {
     [Fact]
+    public void Existing_video_frame_is_a_bgra_cpu_lease()
+    {
+        using var frame = new VideoFrame
+        {
+            Width = 1,
+            Height = 1,
+            Stride = 4,
+            Data = new byte[4]
+        };
+
+        CpuFrameLease lease = frame;
+        Assert.Equal(VideoFrameStorage.Cpu, lease.Storage);
+        Assert.Equal(VideoPixelFormat.Bgra32, lease.PixelFormat);
+        Assert.Equal(ZeroCopyLevel.Z1, lease.ZeroCopyLevel);
+        Assert.Same(frame.Data, lease.Data);
+    }
+
+    [Fact]
     public void Cpu_lease_releases_once_across_threads()
     {
         var released = 0;
