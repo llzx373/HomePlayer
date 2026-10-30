@@ -83,6 +83,7 @@ public sealed partial class PlayerPage : Page
             CanRender = () => App.Window.IsInteractive
         };
         NativeFfmpegProvider.DeviceProvider = _presenter.GetSharedDevice;
+        DirectShowProvider.DeviceProvider = _presenter.GetSharedDevice;
         VideoHost.SizeChanged += (_, _) =>
         {
             _presenter.Refresh();

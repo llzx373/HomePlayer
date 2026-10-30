@@ -80,7 +80,8 @@ public readonly record struct D3D11FrameResource(
     long AdapterLuid,
     nint SharedHandle = 0,
     nint Fence = 0,
-    ulong FenceValue = 0);
+    ulong FenceValue = 0,
+    nint SourceDevice = 0);
 
 public abstract class FrameLease : IDisposable
 {

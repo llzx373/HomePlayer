@@ -30,6 +30,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     private bool _muted;
     private double _volume = 0.8;
     private double _rate = 1.0;
+    private string _observedZeroCopy = "Z0";
     private TimeSpan _duration;
     private long _seekedTicks;
     private volatile bool _isPlaying;
@@ -46,6 +47,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     public bool AudioMissing => _audioMissing;
     public string Name => "LAV";
     public bool UseD3D11Sink { get; set; }
+    public D3D11SharedDevice? D3D11Device { get; set; }
     public nint DecoderDevice => (_sink as D3D11SinkFilter)?.DecoderDevice ?? 0;
     public nint DecoderContext => (_sink as D3D11SinkFilter)?.DecoderContext ?? 0;
     public bool IsOpen => _open == 1;
@@ -59,7 +61,15 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
     public void Open(string path)
     {
-        _sta.Invoke(() => OpenGraph(path));
+        try
+        {
+            _sta.Invoke(() => OpenGraph(path));
+        }
+        catch when (UseD3D11Sink)
+        {
+            UseD3D11Sink = false;
+            _sta.Invoke(() => OpenGraph(path));
+        }
         _open = 1;
     }
 
@@ -218,6 +228,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     {
         CloseGraph();
         _path = path;
+        _observedZeroCopy = UseD3D11Sink ? "Z4" : "Z0";
         _audioWarning = null;
         _audioMissing = false;
         _audioDevice = AudioOutputs.Describe(_audioOutputId);
@@ -495,9 +506,10 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     {
         if (_sink != null)
             return;
-        _sink = UseD3D11Sink ? new D3D11SinkFilter() : new BgraSinkFilter();
+        _sink = UseD3D11Sink ? new D3D11SinkFilter(D3D11Device) : new BgraSinkFilter();
         _sink.FrameArrived += frame =>
         {
+            _observedZeroCopy = frame.ZeroCopyLevel.ToString();
             var handler = FrameArrived;
             if (handler == null)
             {
@@ -701,7 +713,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
             SubtitleTracks = subtitles,
             Filters = filters,
             Connections = connections,
-            ZeroCopyLevel = UseD3D11Sink ? "Z4" : "Z0",
+            ZeroCopyLevel = _observedZeroCopy,
             Usage = TryBuildUsage()
         };
     }

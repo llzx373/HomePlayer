@@ -1062,8 +1062,13 @@ public sealed class VideoPresenter : IDisposable
             && _frameWidth == frame.Width && _frameHeight == frame.Height)
             return true;
 
-        using var texture = new ID3D11Texture2D(resource.Texture);
-        texture.AddRef();
+        using var texture = resource.SourceDevice != 0 && resource.SourceDevice != _device.NativePointer
+            ? resource.SharedHandle != 0
+                ? _device.OpenSharedResource<ID3D11Texture2D>(resource.SharedHandle)
+                : throw new InvalidOperationException("跨设备帧没有共享纹理句柄。")
+            : new ID3D11Texture2D(resource.Texture);
+        if (resource.SourceDevice == 0 || resource.SourceDevice == _device.NativePointer)
+            texture.AddRef();
         var description = texture.Description;
         if (description.Width < (uint)frame.Width || description.Height < (uint)frame.Height
             || resource.Subresource < 0 || resource.Subresource >= description.ArraySize)
