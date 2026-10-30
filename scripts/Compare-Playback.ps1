@@ -69,12 +69,14 @@ if ($current.protocol.openIterations -lt $profile.samples.processColdAndWarmOpen
 Assert-AbsoluteBudget "open P95" $current.open.p95Milliseconds $profile.absoluteBudgets.openP95Milliseconds
 Assert-AbsoluteBudget "first decoded P95" $current.firstDecodedFrame.p95Milliseconds $profile.absoluteBudgets.firstDecodedP95Milliseconds
 Assert-AbsoluteBudget "seek P95" $current.seekToTargetDecodedFrame.p95Milliseconds $profile.absoluteBudgets.seekP95Milliseconds
+$baselineAllocatedPerSecond = [double]$baseline.steady.allocatedBytes / [double]$baseline.steady.elapsedMilliseconds * 1000
+$currentAllocatedPerSecond = [double]$current.steady.allocatedBytes / [double]$current.steady.elapsedMilliseconds * 1000
 if (-not $AbsoluteOnly) {
     Assert-RegressionBudget "first decoded P95" $baseline.firstDecodedFrame.p95Milliseconds $current.firstDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.firstDecodedP95
     Assert-RegressionBudget "first decoded P99" $baseline.firstDecodedFrame.p99Milliseconds $current.firstDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.firstDecodedP99
     Assert-RegressionBudget "seek P95" $baseline.seekToTargetDecodedFrame.p95Milliseconds $current.seekToTargetDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.seekP95
     Assert-RegressionBudget "seek P99" $baseline.seekToTargetDecodedFrame.p99Milliseconds $current.seekToTargetDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.seekP99
-    Assert-RegressionBudget "steady allocated bytes" $baseline.steady.allocatedBytes $current.steady.allocatedBytes $profile.regressionBudgetsPercent.steadyAllocatedBytes
+    Assert-RegressionBudget "steady allocated bytes per second" $baselineAllocatedPerSecond $currentAllocatedPerSecond $profile.regressionBudgetsPercent.steadyAllocatedBytes
 }
 
 $comparison = [ordered]@{
@@ -101,6 +103,11 @@ $comparison = [ordered]@{
             baseline = $baseline.steady.allocatedBytes
             current = $current.steady.allocatedBytes
             changePercent = ($current.steady.allocatedBytes - $baseline.steady.allocatedBytes) / $baseline.steady.allocatedBytes * 100
+        }
+        allocatedBytesPerSecond = [ordered]@{
+            baseline = $baselineAllocatedPerSecond
+            current = $currentAllocatedPerSecond
+            changePercent = ($currentAllocatedPerSecond - $baselineAllocatedPerSecond) / $baselineAllocatedPerSecond * 100
         }
         decodedFrames = [ordered]@{ baseline = $baseline.steady.decodedFrames; current = $current.steady.decodedFrames }
     }

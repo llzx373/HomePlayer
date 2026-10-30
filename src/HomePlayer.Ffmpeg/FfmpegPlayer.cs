@@ -100,6 +100,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     private bool _disposed;
     private double _rate = 1.0;
     private volatile bool _isPlaying;
+    private bool _playIntent;
     private volatile bool _step;
 
     private static readonly AVIOInterruptCB_callback InterruptCallback = OnInterrupt;
@@ -176,6 +177,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 (int)SwsFlags.SWS_BILINEAR, null, null, null);
             if (_scaler == null)
                 throw new InvalidOperationException("无法创建画面转换器。");
+            _decodedSourceFormat = _videoCodec->pix_fmt;
 
             AVCodec* audioDecoder = null;
             _audioIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, _videoIndex, &audioDecoder, 0);
@@ -207,6 +209,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             return;
         lock (_gate)
         {
+            _playIntent = true;
             _step = false;
             if (!_isPlaying)
             {
@@ -224,6 +227,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         if (!IsOpen)
             return;
         var current = MediaSeconds();
+        _playIntent = false;
         _isPlaying = false;
         _step = false;
         lock (_gate)
@@ -253,31 +257,31 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             position = TimeSpan.Zero;
         if (Duration > TimeSpan.Zero && position > Duration)
             position = Duration;
-        if (epoch <= Epoch)
-            epoch = Interlocked.Increment(ref _epoch);
-        else
-            Interlocked.Exchange(ref _epoch, epoch);
-        var request = new SeekRequest(position, epoch, commandId, startedTimestamp);
         lock (_gate)
         {
+            if (epoch <= Epoch)
+                epoch = Interlocked.Increment(ref _epoch);
+            else
+                Interlocked.Exchange(ref _epoch, epoch);
+            var request = new SeekRequest(position, epoch, commandId, startedTimestamp);
             _seekRequest = request;
             _activeSeek = request;
             _clockOriginTicks = position.Ticks;
+            _isPlaying = _playIntent;
+            _step = !_playIntent;
             if (_isPlaying)
                 _clock.Restart();
             else
                 _clock.Stop();
-            if (!_isPlaying)
-                _step = true;
+            Interlocked.Increment(ref _audioEpoch);
+            Interlocked.Exchange(ref _audioWritten, 0);
+            Interlocked.Exchange(ref _videoDone, 0);
+            Interlocked.Exchange(ref _audioDone, 0);
+            Interlocked.Exchange(ref _demuxEof, 0);
+            Interlocked.Exchange(ref _ioInterrupt, 1);
+            Volatile.Write(ref _positionTicks, position.Ticks);
+            _endedRaised = false;
         }
-        Interlocked.Increment(ref _audioEpoch);
-        Interlocked.Exchange(ref _audioWritten, 0);
-        Interlocked.Exchange(ref _videoDone, 0);
-        Interlocked.Exchange(ref _audioDone, 0);
-        Interlocked.Exchange(ref _demuxEof, 0);
-        Interlocked.Exchange(ref _ioInterrupt, 1);
-        Volatile.Write(ref _positionTicks, position.Ticks);
-        _endedRaised = false;
     }
 
     public IReadOnlyList<MediaTrack> GetAudioTracks()
@@ -444,6 +448,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         _cancel?.Dispose();
         _cancel = null;
         IsOpen = false;
+        _playIntent = false;
         _isPlaying = false;
         _step = false;
         Volatile.Write(ref _positionTicks, 0);
@@ -652,6 +657,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 return;
             if (received < 0)
                 throw new InvalidOperationException($"视频解码失败，FFmpeg 错误码 {received}。");
+            EnsureD3D11DeviceCurrent();
+            EnsureVideoFrameFormat(frame);
             if (epoch != Epoch)
             {
                 ffmpeg.av_frame_unref(frame);
@@ -833,17 +840,21 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     {
         while (_cancel is { IsCancellationRequested: false } && epoch == Epoch)
         {
-            if (Volatile.Read(ref _demuxEof) == 1
-                && Volatile.Read(ref _videoDone) == 1
-                && (!HasAudio || Volatile.Read(ref _audioDone) == 1)
-                && (AudioOutputDrained?.Invoke() ?? (UnplayedBytes?.Invoke() ?? 0) == 0)
-                && _isPlaying)
+            lock (_gate)
             {
-                Volatile.Write(ref _positionTicks, Duration.Ticks);
-                RaiseEnded();
-                _isPlaying = false;
-                _clock.Stop();
-                return;
+                if (epoch == Epoch
+                    && Volatile.Read(ref _demuxEof) == 1
+                    && Volatile.Read(ref _videoDone) == 1
+                    && (!HasAudio || Volatile.Read(ref _audioDone) == 1)
+                    && (AudioOutputDrained?.Invoke() ?? (UnplayedBytes?.Invoke() ?? 0) == 0)
+                    && _isPlaying)
+                {
+                    Volatile.Write(ref _positionTicks, Duration.Ticks);
+                    _isPlaying = false;
+                    _clock.Stop();
+                    RaiseEnded();
+                    return;
+                }
             }
             Thread.Sleep(5);
         }

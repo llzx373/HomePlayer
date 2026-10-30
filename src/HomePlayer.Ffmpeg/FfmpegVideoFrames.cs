@@ -12,8 +12,32 @@ public sealed unsafe partial class FfmpegPlayer
     private int _yuvPlanesWidth;
     private int _yuvPlanesHeight;
     private AVPixelFormat _yuvPlanesFormat = AVPixelFormat.AV_PIX_FMT_NONE;
+    private AVPixelFormat _decodedSourceFormat = AVPixelFormat.AV_PIX_FMT_NONE;
 
     public bool EnableDirectYuv { get; set; } = true;
+
+    private void EnsureVideoFrameFormat(AVFrame* source)
+    {
+        if (source->width == _width && source->height == _height && source->format == (int)_decodedSourceFormat)
+            return;
+        _width = source->width;
+        _height = source->height;
+        _decodedSourceFormat = (AVPixelFormat)source->format;
+        _frameBytes = 0;
+        _yuvPlanes = null;
+        if (_scaler != null)
+            ffmpeg.sws_freeContext(_scaler);
+        _scaler = null;
+        if (_decodedSourceFormat != AVPixelFormat.AV_PIX_FMT_D3D11)
+        {
+            _scaler = ffmpeg.sws_getContext(
+                _width, _height, _decodedSourceFormat,
+                _width, _height, AVPixelFormat.AV_PIX_FMT_BGRA,
+                (int)SwsFlags.SWS_BILINEAR, null, null, null);
+            if (_scaler == null)
+                throw new InvalidOperationException("无法重建画面转换器。");
+        }
+    }
 
     private FrameLease ToFrame(AVFrame* source, long pts, long duration, long epoch)
     {

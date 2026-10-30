@@ -109,6 +109,7 @@ public sealed class VideoPresenter : IDisposable
     // 以下字段只在渲染线程上读写。
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
+    private D3D11SharedDevice? _sharedDevice;
     private IDXGISwapChain1? _swapChain;
     private IntPtr _frameLatencyWaitable;
     private ID3D11RenderTargetView? _target;
@@ -168,12 +169,16 @@ public sealed class VideoPresenter : IDisposable
             EnsureDevice();
             if (_device == null || _context == null)
                 throw new InvalidOperationException("无法创建 D3D11 播放设备。");
-            return new D3D11SharedDevice(
-                _device.NativePointer,
-                _context.NativePointer,
-                _adapterLuid,
-                _deviceGeneration,
-                _deviceSync);
+            if (_sharedDevice == null)
+                _sharedDevice = new D3D11SharedDevice(
+                    _device.NativePointer,
+                    _context.NativePointer,
+                    _adapterLuid,
+                    _deviceGeneration,
+                    _deviceSync);
+            else
+                _sharedDevice.Update(_device.NativePointer, _context.NativePointer, _deviceGeneration);
+            return _sharedDevice;
         }
     });
 
@@ -733,6 +738,21 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
+    private void DiscardFrameLeases()
+    {
+        FrameLease? pending;
+        FrameLease? last;
+        lock (_gate)
+        {
+            pending = _pending;
+            _pending = null;
+            last = _lastFrame;
+            _lastFrame = null;
+        }
+        pending?.ReturnBuffer();
+        last?.ReturnBuffer();
+    }
+
     private void RecoverDevice()
     {
         var now = Environment.TickCount64;
@@ -741,6 +761,7 @@ public sealed class VideoPresenter : IDisposable
         _lastRecoveryMs = now;
         try
         {
+            DiscardFrameLeases();
             ReleaseDeviceResources();
             Interlocked.Exchange(ref _resizeRequested, 1);
             PostDraw();
@@ -1143,6 +1164,7 @@ public sealed class VideoPresenter : IDisposable
     private void ReleaseDeviceResourcesCore()
     {
         _deviceGeneration++;
+        _sharedDevice?.Update(0, 0, _deviceGeneration);
         ReleaseSwapChain();
         ReleaseFrameResources();
         _vertices?.Dispose();

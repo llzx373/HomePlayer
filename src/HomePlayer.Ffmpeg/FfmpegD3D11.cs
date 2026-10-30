@@ -14,6 +14,7 @@ public sealed unsafe partial class FfmpegPlayer
     private AVBufferRef* _hwDeviceRef;
     private GCHandle _hardwareHandle;
     private bool _usingD3D11;
+    private long _hardwareGeneration = -1;
 
     public bool EnableD3D11Va { get; set; } = true;
     public D3D11SharedDevice? D3D11Device { get; set; }
@@ -25,6 +26,8 @@ public sealed unsafe partial class FfmpegPlayer
             return false;
         try
         {
+            if (_hwDeviceRef != null && _hardwareGeneration != D3D11Device.DeviceGeneration)
+                ReleaseD3D11Device();
             if (!_hardwareHandle.IsAllocated)
                 _hardwareHandle = GCHandle.Alloc(this);
             if (_hwDeviceRef == null)
@@ -43,6 +46,7 @@ public sealed unsafe partial class FfmpegPlayer
                 hardware->lock_ctx = (void*)GCHandle.ToIntPtr(_hardwareHandle);
                 FfmpegError.Check(ffmpeg.av_hwdevice_ctx_init(_hwDeviceRef), "初始化 D3D11VA 设备");
             }
+            _hardwareGeneration = D3D11Device.DeviceGeneration;
             context->opaque = (void*)GCHandle.ToIntPtr(_hardwareHandle);
             context->hw_device_ctx = ffmpeg.av_buffer_ref(_hwDeviceRef);
             context->get_format = GetFormatCallback;
@@ -146,6 +150,13 @@ public sealed unsafe partial class FfmpegPlayer
     {
         var frame = (AVFrame*)pointer;
         ffmpeg.av_frame_free(&frame);
+    }
+
+    private void EnsureD3D11DeviceCurrent()
+    {
+        if (_usingD3D11 && (D3D11Device == null || D3D11Device.Device == 0
+            || _hardwareGeneration != D3D11Device.DeviceGeneration))
+            throw new InvalidOperationException("D3D11 播放设备已重建，当前硬解会话不能继续交付旧纹理。");
     }
 
     private void ReleaseD3D11Device()

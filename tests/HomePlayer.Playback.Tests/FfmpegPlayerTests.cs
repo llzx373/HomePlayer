@@ -97,7 +97,14 @@ public class FfmpegPlayerTests : IDisposable
             target = TimeSpan.FromMilliseconds((i * 137) % 1800);
             expectedEpoch = player.Epoch + 1;
             player.Seek(target);
-            await next.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            try
+            {
+                await next.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (TimeoutException ex)
+            {
+                throw new TimeoutException($"Seek {i} 在 {target.TotalMilliseconds} ms、Epoch {expectedEpoch} 超时；actualEpoch={player.Epoch}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, fault={fault}", ex);
+            }
             Assert.Null(fault);
         }
     }
