@@ -45,6 +45,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     private readonly object _audioCodecGate = new();
     private readonly ConcurrentBag<IntPtr> _packetPool = new();
     private readonly PcmTimeStretcher _timeStretcher = new();
+    private readonly MediaTimestampRepair _videoTimestamps = new();
+    private readonly MediaTimestampRepair _audioTimestamps = new();
     private readonly FrameBufferPool _framePool = new(6);
     private readonly Stopwatch _clock = new();
     private AVFormatContext* _format;
@@ -662,8 +664,9 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 ffmpeg.av_frame_unref(frame);
                 continue;
             }
-            var pts = Timestamp(frame);
-            var duration = Math.Max(0, frame->duration);
+            var timing = VideoTiming(frame, epoch);
+            var pts = timing.PresentationTimestamp;
+            var duration = timing.Duration;
             var seek = ActiveSeek(epoch);
             if (seek != null && pts >= 0)
             {
@@ -971,6 +974,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         {
             _audioCodec = ffmpeg.avcodec_alloc_context3(decoder);
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, stream->codecpar), "复制音频参数");
+            _audioCodec->pkt_timebase = stream->time_base;
             FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, decoder, null), "打开音频解码器");
             _audioCodecName = ffmpeg.avcodec_get_name(decoder->id);
             _audioTimeBase = stream->time_base;
@@ -1024,14 +1028,14 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     {
         var source = frame->extended_data;
         var inputSamples = frame->nb_samples;
-        var pts = frame->best_effort_timestamp != ffmpeg.AV_NOPTS_VALUE
-            ? frame->best_effort_timestamp
-            : frame->pts;
+        var pts = AudioTiming(frame, epoch).PresentationTimestamp;
         var seek = ActiveSeek(epoch);
-        if (seek != null && pts != ffmpeg.AV_NOPTS_VALUE && frame->sample_rate > 0)
+        if (seek != null && frame->sample_rate > 0)
         {
-            var target = new MediaTimeBase(1, frame->sample_rate).FromTimeSpanTicks(seek.Position.Ticks);
-            var skip = (int)Math.Clamp(target - pts, 0, inputSamples);
+            var target = new MediaTimeBase(_audioTimeBase.num, _audioTimeBase.den).FromTimeSpanTicks(seek.Position.Ticks);
+            var skip = pts < target
+                ? (int)Math.Clamp(ffmpeg.av_rescale_q(target - pts, _audioTimeBase, new AVRational { num = 1, den = frame->sample_rate }), 0, inputSamples)
+                : 0;
             if (skip >= inputSamples && pts < target)
                 return;
             if (skip > 0)
@@ -1346,11 +1350,42 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         return code;
     }
 
-    private static long Timestamp(AVFrame* frame)
+    private RepairedMediaTimestamp VideoTiming(AVFrame* frame, long epoch)
+    {
+        var stream = _format->streams[_videoIndex];
+        var rate = stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0
+            ? stream->avg_frame_rate
+            : stream->r_frame_rate;
+        var fallback = rate.num > 0 && rate.den > 0
+            ? ffmpeg.av_rescale_q(1, new AVRational { num = rate.den, den = rate.num }, _videoTimeBase)
+            : 0;
+        var maxForwardGap = new MediaTimeBase(_videoTimeBase.num, _videoTimeBase.den)
+            .FromTimeSpanTicks(TimeSpan.FromSeconds(5).Ticks);
+        return _videoTimestamps.Next(epoch, TimestampOrNull(frame, _videoTimeBase), Math.Max(0, frame->duration), fallback, maxForwardGap);
+    }
+
+    private RepairedMediaTimestamp AudioTiming(AVFrame* frame, long epoch)
+    {
+        var fallback = frame->sample_rate > 0
+            ? ffmpeg.av_rescale_q(frame->nb_samples, new AVRational { num = 1, den = frame->sample_rate }, _audioTimeBase)
+            : 0;
+        return _audioTimestamps.Next(epoch, TimestampOrNull(frame, _audioTimeBase), Math.Max(0, frame->duration), fallback, MaxForwardGap(_audioTimeBase));
+    }
+
+    private long MaxForwardGap(AVRational timeBase) =>
+        new MediaTimeBase(timeBase.num, timeBase.den).FromTimeSpanTicks(TimeSpan.FromSeconds(5).Ticks);
+
+    private long? TimestampOrNull(AVFrame* frame, AVRational timeBase)
     {
         var timestamp = frame->best_effort_timestamp;
         if (timestamp == ffmpeg.AV_NOPTS_VALUE)
             timestamp = frame->pts;
-        return timestamp == ffmpeg.AV_NOPTS_VALUE ? 0 : timestamp;
+        if (timestamp == ffmpeg.AV_NOPTS_VALUE)
+            return null;
+        var origin = _format->start_time == ffmpeg.AV_NOPTS_VALUE
+            ? 0
+            : ffmpeg.av_rescale_q(_format->start_time, new AVRational { num = 1, den = ffmpeg.AV_TIME_BASE }, timeBase);
+        var relative = (Int128)timestamp - origin;
+        return relative > long.MaxValue ? long.MaxValue : relative < long.MinValue ? long.MinValue : (long)relative;
     }
 }

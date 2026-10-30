@@ -97,6 +97,56 @@ public sealed class FfmpegSeekTests : IDisposable
     }
 
     [Fact]
+    public async Task Nonzero_container_start_time_is_relative_to_the_media_origin()
+    {
+        var media = CreateOffsetMedia();
+        using var player = new FfmpegPlayer();
+        var firstFrame = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.FrameArrived += frame =>
+        {
+            firstFrame.TrySetResult(frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp));
+            frame.ReturnBuffer();
+        };
+        player.Open(media);
+        player.Play();
+
+        var position = await firstFrame.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.InRange(position, 0, TimeSpan.FromMilliseconds(100).Ticks);
+    }
+
+    [Fact]
+    public async Task Elementary_h264_without_container_timestamps_advances_monotonically()
+    {
+        var media = CreateTimestampLessMedia();
+        using var player = new FfmpegPlayer();
+        var positions = new List<long>();
+        var durations = new List<long>();
+        var enoughFrames = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.FrameArrived += frame =>
+        {
+            lock (positions)
+            {
+                if (positions.Count < 4)
+                {
+                    positions.Add(frame.PresentationTimestamp);
+                    durations.Add(frame.Duration);
+                }
+                if (positions.Count == 4)
+                    enoughFrames.TrySetResult();
+            }
+            frame.ReturnBuffer();
+        };
+        player.Open(media);
+        player.Play();
+
+        await enoughFrames.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(4, positions.Count);
+        for (var i = 1; i < positions.Count; i++)
+            Assert.True(positions[i] > positions[i - 1], $"第 {i} 帧时间戳没有前进。");
+        Assert.All(durations, duration => Assert.True(duration > 0));
+    }
+
+    [Fact]
     public async Task Open_gop_seek_matches_sequential_decode()
     {
         var media = CreateOpenGopMedia();
@@ -134,6 +184,34 @@ public sealed class FfmpegSeekTests : IDisposable
             player.Seek(target);
         player.Play();
         return await captured.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private string CreateOffsetMedia()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "offset-start.mp4");
+        using var process = Process.Start(new ProcessStartInfo("ffmpeg")
+        {
+            UseShellExecute = false,
+            Arguments = $"-y -loglevel error -f lavfi -i \"testsrc2=size=64x48:rate=25:duration=3\" -c:v libx264 -pix_fmt yuv420p -an -output_ts_offset 5 \"{path}\""
+        })!;
+        Assert.True(process.WaitForExit(30_000), "生成非零起始时间戳测试媒体超时。");
+        Assert.Equal(0, process.ExitCode);
+        return path;
+    }
+
+    private string CreateTimestampLessMedia()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "missing-timestamps.h264");
+        using var process = Process.Start(new ProcessStartInfo("ffmpeg")
+        {
+            UseShellExecute = false,
+            Arguments = $"-y -loglevel error -f lavfi -i \"testsrc2=size=64x48:rate=25:duration=3\" -c:v libx264 -pix_fmt yuv420p -an -f h264 \"{path}\""
+        })!;
+        Assert.True(process.WaitForExit(30_000), "生成无容器时间戳测试媒体超时。");
+        Assert.Equal(0, process.ExitCode);
+        return path;
     }
 
     private string CreateOpenGopMedia()
