@@ -12,6 +12,7 @@ internal sealed class AssSubtitlePresenter : IDisposable
     private string? _key;
     private string? _temporaryDirectory;
     private bool _pending;
+    private long _generation;
 
     public SubtitleBitmap? Current { get; private set; }
     public event Action? Changed;
@@ -23,10 +24,18 @@ internal sealed class AssSubtitlePresenter : IDisposable
             Reset();
             return;
         }
-        var key = $"{subtitles.VideoPath}|{subtitles.AssSidecarPath}|{subtitles.AssEmbeddedIndex}|{width}x{height}";
+        var key = $"{subtitles.VideoPath}|{subtitles.AssSidecarPath}|{subtitles.AssEmbeddedIndex}|{subtitles.DelayMilliseconds}|{width}x{height}";
         var timestamp = (long)Math.Max(0, (position - TimeSpan.FromMilliseconds(subtitles.DelayMilliseconds)).TotalMilliseconds) / 100;
+        long generation;
         lock (_gate)
         {
+            if (_key != key)
+            {
+                _generation++;
+                Current = null;
+                _cache.Clear();
+                _order.Clear();
+            }
             if (_cache.TryGetValue(timestamp, out var cached))
             {
                 Current = cached;
@@ -35,14 +44,16 @@ internal sealed class AssSubtitlePresenter : IDisposable
             if (_pending)
                 return;
             _pending = true;
+            generation = _generation;
         }
-        _ = Task.Run(() => Render(key, subtitles, timestamp, width, height));
+        _ = Task.Run(() => Render(key, subtitles, timestamp, width, height, generation));
     }
 
     public void Reset()
     {
         lock (_gate)
         {
+            _generation++;
             _key = null;
             Current = null;
             _cache.Clear();
@@ -55,12 +66,14 @@ internal sealed class AssSubtitlePresenter : IDisposable
 
     public void Dispose() => Reset();
 
-    private void Render(string key, SubtitleSession subtitles, long timestamp, int width, int height)
+    private void Render(string key, SubtitleSession subtitles, long timestamp, int width, int height, long generation)
     {
         try
         {
             lock (_gate)
             {
+                if (generation != _generation)
+                    return;
                 EnsureRenderer(key, subtitles, width, height);
                 var frame = _renderer!.Render(TimeSpan.FromMilliseconds(timestamp * 100));
                 _cache[timestamp] = frame;

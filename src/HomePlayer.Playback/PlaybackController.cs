@@ -78,6 +78,7 @@ public sealed partial class PlaybackController : IDisposable
     public event Action? VideoSizeChanged;
     public event Action<bool>? PlaybackActiveChanged;
     public event Action? Stopped;
+    public event Action? SeekStarted;
 
     public void SetVolume(double volume)
     {
@@ -167,7 +168,7 @@ public sealed partial class PlaybackController : IDisposable
         else
         {
             if (Status == "播放结束")
-                _engine.Seek(TimeSpan.Zero);
+                SeekEngine(_engine, TimeSpan.Zero);
             _engine.Play();
         }
 
@@ -218,7 +219,7 @@ public sealed partial class PlaybackController : IDisposable
     {
         if (Position.TotalSeconds > 3)
         {
-            _engine?.Seek(TimeSpan.Zero);
+            SeekEngine(_engine, TimeSpan.Zero);
             Notify();
             return Task.CompletedTask;
         }
@@ -240,7 +241,7 @@ public sealed partial class PlaybackController : IDisposable
             position = TimeSpan.Zero;
         if (Duration > TimeSpan.Zero && position > Duration)
             position = Duration;
-        _engine?.Seek(position);
+        SeekEngine(_engine, position);
         PersistProgress();
         Notify();
     }
@@ -260,6 +261,8 @@ public sealed partial class PlaybackController : IDisposable
     public void SetAudioTrack(int index)
     {
         _engine?.SetAudioTrack(index);
+        if (_engine != null)
+            SeekStarted?.Invoke();
         SaveAudioPreference(index);
         Notify();
     }
@@ -560,6 +563,14 @@ public sealed partial class PlaybackController : IDisposable
 
     private static IPlaybackEngine InnerEngine(IPlaybackEngine engine) => (engine as PlaybackSession)?.InnerEngine ?? engine;
 
+    private void SeekEngine(IPlaybackEngine? engine, TimeSpan position)
+    {
+        if (engine == null)
+            return;
+        engine.Seek(position);
+        SeekStarted?.Invoke();
+    }
+
     private void OnFaulted(Exception error)
     {
         var token = _token;
@@ -599,7 +610,7 @@ public sealed partial class PlaybackController : IDisposable
                 if (path != null)
                     SaveState(path, TimeSpan.Zero, duration);
                 _store?.Flush();
-                _engine?.Seek(TimeSpan.Zero);
+                SeekEngine(_engine, TimeSpan.Zero);
                 _engine?.Play();
                 return;
             }
@@ -759,7 +770,7 @@ public sealed partial class PlaybackController : IDisposable
         if (resume == null)
             return;
         var rewind = TimeSpan.FromSeconds(Math.Clamp(ResumeRewindSeconds(), 0, 10));
-        engine.Seek(resume.Value - rewind);
+        SeekEngine(engine, resume.Value - rewind);
     }
 
     private async Task FlushLoopAsync(CancellationToken cancellationToken)

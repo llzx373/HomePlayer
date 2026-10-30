@@ -22,6 +22,22 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Seek_started_is_raised_for_manual_seek_and_replay()
+    {
+        var engine = new FakeEngine();
+        using var controller = Create(engine);
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        var seekStarted = 0;
+        controller.SeekStarted += () => seekStarted++;
+
+        controller.Seek(TimeSpan.FromSeconds(30));
+        engine.RaiseEnded();
+        controller.TogglePlay();
+
+        Assert.Equal(2, seekStarted);
+    }
+
+    [Fact]
     public void Stop_notifies_presenter_to_clear_the_last_frame()
     {
         using var controller = Create(new FakeEngine());
