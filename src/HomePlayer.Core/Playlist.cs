@@ -112,6 +112,22 @@ public sealed class Playlist
         return Repeat == RepeatMode.All ? 0 : null;
     }
 
+    public int? PeekNextIndex()
+    {
+        if (Items.Count == 0 || CurrentIndex < 0)
+            return null;
+        if (Shuffle)
+        {
+            if (_shuffle.Count != Items.Count || _shuffleCursor + 1 >= _shuffle.Count)
+                return null;
+            return _shuffle[_shuffleCursor + 1];
+        }
+        var next = CurrentIndex + 1;
+        if (next < Items.Count)
+            return next;
+        return Repeat == RepeatMode.All ? 0 : null;
+    }
+
     public int? PreviousIndex()
     {
         if (Items.Count == 0 || CurrentIndex < 0)

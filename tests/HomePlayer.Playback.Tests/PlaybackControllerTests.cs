@@ -275,6 +275,64 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Next_preprobe_does_not_change_current_item_or_start_playback()
+    {
+        var engine = new FakeEngine();
+        var probeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCompletion = new TaskCompletionSource<MediaProbe>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engine, "测试引擎"),
+            probeNext: (_, _) =>
+            {
+                probeStarted.TrySetResult();
+                return probeCompletion.Task;
+            });
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+        await probeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal(1, engine.PlayCount);
+        Assert.Null(controller.NextProbe);
+        probeCompletion.SetResult(new MediaProbe(100, 1920, 1080, "h264", "aac", "matroska"));
+        await WaitFor(() => controller.NextProbe != null);
+
+        Assert.Equal("two.mkv", controller.NextProbePath);
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal(1, engine.PlayCount);
+    }
+
+    [Fact]
+    public async Task Changing_items_cancels_the_previous_preprobe()
+    {
+        var engines = new Queue<IPlaybackEngine>([new FakeEngine(), new FakeEngine()]);
+        var probeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeToken = CancellationToken.None;
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engines.Dequeue(), "测试引擎"),
+            probeNext: async (_, token) =>
+            {
+                probeToken = token;
+                probeStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                throw new OperationCanceledException(token);
+            });
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+        await probeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await controller.PlayIndexAsync(1);
+
+        Assert.True(probeToken.IsCancellationRequested);
+        Assert.Equal(1, controller.Playlist.CurrentIndex);
+        Assert.Null(controller.NextProbe);
+    }
+
+    [Fact]
     public async Task Audio_output_failure_reopens_current_item_with_default_device()
     {
         var first = new FakeEngine();
@@ -322,7 +380,8 @@ public class PlaybackControllerTests
         store,
         openEngine: (_, _) => (engine, "测试引擎"),
         historyEnabled: historyEnabled,
-        preferences: preferences);
+        preferences: preferences,
+        probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
 
     private sealed class FakeStateStore : IPlaybackStateStore
     {

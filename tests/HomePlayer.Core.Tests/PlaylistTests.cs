@@ -157,6 +157,19 @@ public class PlaylistTests
     }
 
     [Fact]
+    public void Peek_next_does_not_advance_shuffle_order()
+    {
+        var playlist = new Playlist();
+        playlist.Replace(["a.mkv", "b.mkv", "c.mkv"], 0);
+        playlist.Shuffle = true;
+
+        var peeked = playlist.PeekNextIndex();
+        var actual = playlist.NextIndex(false);
+
+        Assert.Equal(peeked, actual);
+    }
+
+    [Fact]
     public void RefreshShuffleOrder_does_not_change_items_or_current()
     {
         var playlist = new Playlist();

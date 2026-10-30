@@ -34,7 +34,8 @@ public sealed partial class PlaybackController : IDisposable
         IPlaybackStateStore? store = null,
         Func<string, bool, (IPlaybackEngine Engine, string Reason)>? openEngine = null,
         Func<bool>? historyEnabled = null,
-        IMediaPreferenceStore? preferences = null)
+        IMediaPreferenceStore? preferences = null,
+        Func<string, CancellationToken, Task<MediaProbe>>? probeNext = null)
     {
         _post = post;
         _codecs = codecs;
@@ -45,6 +46,7 @@ public sealed partial class PlaybackController : IDisposable
             : (path, route) => openEngine(path, route == PlaybackRoute.NativeFfmpeg);
         _historyEnabled = historyEnabled ?? (() => true);
         _preferences = preferences;
+        _probeNext = probeNext ?? ProbeNextDefault;
         if (store == null)
             return;
         try
@@ -189,6 +191,7 @@ public sealed partial class PlaybackController : IDisposable
         RememberPosition();
         _store?.Flush();
         _token++;
+        CancelNextProbe();
         _playingPath = null;
         DisposeEngine();
         ClearVideoSize();
@@ -203,6 +206,7 @@ public sealed partial class PlaybackController : IDisposable
         PersistProgress();
         _flushStop.Cancel();
         _token++;
+        CancelNextProbe();
         _playingPath = null;
         var engine = TakeEngine();
         ClearVideoSize();
@@ -383,6 +387,7 @@ public sealed partial class PlaybackController : IDisposable
         _firstFramePending = true;
         Notify();
         var token = ++_token;
+        CancelNextProbe();
         var previous = _engine;
         _engine = null;
         if (previous != null)
@@ -451,6 +456,7 @@ public sealed partial class PlaybackController : IDisposable
                         _audioFallbackNotice = null;
                         EngineLabel = engine.Name;
                         CaptureVideoSize(engine);
+                        ScheduleNextProbe(token);
                         Notify();
                     }
                     catch (Exception ex)
