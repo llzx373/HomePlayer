@@ -66,6 +66,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
             };
             player.Ended += () => Ended?.Invoke();
             player.Faulted += error => Faulted?.Invoke(error);
+            player.SeekPrerollReady += OnSeekPrerollReady;
             player.AudioPcm += OnPcm;
             player.Open(path);
             if (player.HasAudio)
@@ -175,16 +176,30 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void Seek(TimeSpan position)
     {
-        SetAudioDelay(_audioDelayMs);
-        ResetAudioClockAnchor();
+        PrepareForSeek();
         _player?.Seek(position);
     }
 
     void IPlaybackTimedSeek.Seek(TimeSpan position, long epoch, long commandId, long startedTimestamp)
     {
+        PrepareForSeek();
+        _player?.Seek(position, epoch, commandId, startedTimestamp);
+    }
+
+    private void PrepareForSeek()
+    {
+        if (_player?.IsPlaying == true)
+            _output?.Pause();
         SetAudioDelay(_audioDelayMs);
         ResetAudioClockAnchor();
-        _player?.Seek(position, epoch, commandId, startedTimestamp);
+    }
+
+    private void OnSeekPrerollReady(long epoch)
+    {
+        var player = _player;
+        if (player == null || player.Epoch != epoch || !player.IsPlaying)
+            return;
+        _output?.Play();
     }
 
     public void SetVolume(double linear)

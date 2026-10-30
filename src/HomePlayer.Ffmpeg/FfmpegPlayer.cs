@@ -269,10 +269,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             _clockOriginTicks = position.Ticks;
             _isPlaying = _playIntent;
             _step = !_playIntent;
-            if (_isPlaying)
-                _clock.Restart();
-            else
-                _clock.Stop();
+            _clock.Reset();
+            ResetSeekPrerollLocked();
             Interlocked.Increment(ref _audioEpoch);
             Interlocked.Exchange(ref _audioWritten, 0);
             Interlocked.Exchange(ref _videoDone, 0);
@@ -733,7 +731,10 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                         }
                     }
                     if (item.EndOfStream)
+                    {
                         Interlocked.Exchange(ref _audioDone, 1);
+                        MarkSeekPrerollAudioReady(item.Epoch);
+                    }
                 }
             }
         }
@@ -765,6 +766,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 {
                     if (item.Epoch == Epoch)
                     {
+                        CompleteSeekPrerollAtEndOfStream(item.Epoch);
                         Interlocked.Exchange(ref _videoDone, 1);
                         CompleteEndOfStream(item.Epoch);
                     }
@@ -808,6 +810,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
 
     private bool WaitForPresentation(FrameLease frame, bool targetFrame)
     {
+        if (!WaitForSeekPreroll(frame, targetFrame))
+            return false;
         while (_cancel is { IsCancellationRequested: false })
         {
             if (frame.Epoch != Epoch)
@@ -1113,7 +1117,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         var pcmEpoch = Interlocked.Read(ref _audioEpoch);
         var output = _timeStretcher.Process(buffer, count, OutputChannels, Rate);
         if (output.Length > 0 && epoch == Epoch)
+        {
             EmitPcm(output, output.Length, pcmEpoch);
+            if (pcmEpoch == Interlocked.Read(ref _audioEpoch))
+                MarkSeekPrerollAudioReady(epoch);
+        }
     }
 
     private void EmitPcm(byte[] output, int count, long pcmEpoch)

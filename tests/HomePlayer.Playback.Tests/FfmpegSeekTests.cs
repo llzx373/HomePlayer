@@ -54,6 +54,49 @@ public sealed class FfmpegSeekTests : IDisposable
     }
 
     [Fact]
+    public async Task Playing_seek_preroll_releases_audio_before_target_frame()
+    {
+        var media = CreateAacMedia();
+        using var player = new FfmpegPlayer();
+        var expectedEpoch = 0L;
+        var audioReady = 0;
+        var prerollReady = 0;
+        var orderingError = 0;
+        var targetFrame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.AudioPcm += (_, _, epoch) =>
+        {
+            if (epoch == expectedEpoch)
+                Interlocked.Exchange(ref audioReady, 1);
+        };
+        player.SeekPrerollReady += epoch =>
+        {
+            if (epoch != expectedEpoch)
+                return;
+            if (Volatile.Read(ref audioReady) == 0)
+                Interlocked.Exchange(ref orderingError, 1);
+            Interlocked.Increment(ref prerollReady);
+        };
+        player.FrameArrived += frame =>
+        {
+            if (frame.Epoch == expectedEpoch && frame.SeekStartedTimestamp > 0)
+            {
+                if (Volatile.Read(ref prerollReady) == 0)
+                    Interlocked.Exchange(ref orderingError, 1);
+                targetFrame.TrySetResult();
+            }
+            frame.ReturnBuffer();
+        };
+        player.Open(media);
+        expectedEpoch = player.Epoch + 1;
+        player.Seek(TimeSpan.FromMilliseconds(501));
+        player.Play();
+
+        await targetFrame.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, Volatile.Read(ref orderingError));
+        Assert.Equal(1, Volatile.Read(ref prerollReady));
+    }
+
+    [Fact]
     public async Task Open_gop_seek_matches_sequential_decode()
     {
         var media = CreateOpenGopMedia();
