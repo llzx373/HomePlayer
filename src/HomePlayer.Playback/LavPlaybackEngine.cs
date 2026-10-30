@@ -45,6 +45,9 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     public string? AudioWarning => _audioWarning;
     public bool AudioMissing => _audioMissing;
     public string Name => "LAV";
+    public bool UseD3D11Sink { get; set; }
+    public nint DecoderDevice => (_sink as D3D11SinkFilter)?.DecoderDevice ?? 0;
+    public nint DecoderContext => (_sink as D3D11SinkFilter)?.DecoderContext ?? 0;
     public bool IsOpen => _open == 1;
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration => _duration;
@@ -344,7 +347,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
             }
 
             if (codec.Clsid == DsGuid.LavVideo)
-                ConfigureVideo(filter);
+                ConfigureVideo(filter, UseD3D11Sink);
             var input = FindPin((IBaseFilter)filter, output: false, video: false);
             var connected = input == null ? Hr.Fail : _graph.Connect(splitterVideo, input);
             ReleasePin(input);
@@ -492,7 +495,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     {
         if (_sink != null)
             return;
-        _sink = new BgraSinkFilter();
+        _sink = UseD3D11Sink ? new D3D11SinkFilter() : new BgraSinkFilter();
         _sink.FrameArrived += frame =>
         {
             var handler = FrameArrived;
@@ -698,6 +701,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
             SubtitleTracks = subtitles,
             Filters = filters,
             Connections = connections,
+            ZeroCopyLevel = UseD3D11Sink ? "Z4" : "Z0",
             Usage = TryBuildUsage()
         };
     }
@@ -1241,14 +1245,23 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         return instance;
     }
 
-    private static void ConfigureVideo(object filter)
+    private static void ConfigureVideo(object filter, bool useD3D11)
     {
         if (filter is not ILavVideoSettings settings)
             return;
         settings.SetRuntimeConfig(1);
+        const int nv12 = 1;
+        const int p010 = 5;
         const int rgb32 = 11;
         for (var format = 0; format < 24; format++)
-            settings.SetPixelFormat(format, format == rgb32 ? 1 : 0);
+            settings.SetPixelFormat(format, useD3D11 ? format is nv12 or p010 ? 1 : 0 : format == rgb32 ? 1 : 0);
+        if (!useD3D11)
+            return;
+        if (settings.CheckHWAccelSupport(5) == 0)
+            throw new InvalidOperationException("LAV D3D11 Native 在当前设备不可用。");
+        Hr.Throw(settings.SetHWAccel(5), "启用 LAV D3D11 Native");
+        foreach (var codec in new[] { 0u, 5u, 8u })
+            Hr.Throw(settings.SetHWAccelCodec(codec, 1), "启用 LAV 硬解格式");
     }
 
     private static void ConfigureAudio(object filter)

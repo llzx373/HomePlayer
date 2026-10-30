@@ -5,9 +5,9 @@ namespace HomePlayer.Playback;
 
 [ComVisible(true)]
 [ClassInterface(ClassInterfaceType.None)]
-public sealed class BgraSinkFilter : IBaseFilterSink
+public class BgraSinkFilter : IBaseFilterSink
 {
-    private readonly BgraSinkPin _pin;
+    protected BgraSinkPin _pin;
     private volatile int _state;
     private IntPtr _graph;
     private string _name = "HomePlayer Video Sink";
@@ -37,7 +37,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
     public int Width => _pin.Width;
     public int Height => _pin.Height;
     public bool BottomUp => _pin.BottomUp;
-    public string PixelFormat => "RGB32";
+    public virtual string PixelFormat => "RGB32";
 
     public int GetClassID(out Guid classId)
     {
@@ -372,9 +372,9 @@ public interface IEnumPinsSink
 
 [ComVisible(true)]
 [ClassInterface(ClassInterfaceType.None)]
-public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
+public class BgraSinkPin : IPinSink, IMemInputPinSink
 {
-    private readonly BgraSinkFilter _filter;
+    protected readonly BgraSinkFilter _filter;
     private readonly FrameBufferPool _pool = new(4);
     private IntPtr _connected;
 
@@ -450,7 +450,7 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
         return Hr.Ok;
     }
 
-    public int QueryAccept(IntPtr mediaType)
+    public virtual int QueryAccept(IntPtr mediaType)
     {
         if (mediaType == 0)
             return Hr.Pointer;
@@ -501,7 +501,7 @@ public sealed class BgraSinkPin : IPinSink, IMemInputPinSink
     public int NotifyAllocator(IntPtr allocator, int readOnly) => Hr.Ok;
     public int GetAllocatorRequirements(IntPtr properties) => Hr.NotImpl;
 
-    public int Receive(IntPtr samplePointer)
+    public virtual int Receive(IntPtr samplePointer)
     {
         if (samplePointer == 0 || Flushing)
             return Hr.False;

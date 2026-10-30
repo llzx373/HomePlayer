@@ -17,6 +17,8 @@ internal static class DsGuid
     public static readonly Guid Audio = new("73647561-0000-0010-8000-00AA00389B71");
     public static readonly Guid Stream = new("E436EB83-524F-11CE-9F53-0020AF0BA770");
     public static readonly Guid Rgb32 = new("E436EB7E-524F-11CE-9F53-0020AF0BA770");
+    public static readonly Guid Nv12 = new("3231564E-0000-0010-8000-00AA00389B71");
+    public static readonly Guid P010 = new("50303130-0000-0010-8000-00AA00389B71");
     public static readonly Guid FormatVideoInfo = new("05589F80-C356-11CE-BF01-00AA0055595A");
     public static readonly Guid FormatVideoInfo2 = new("F72A76A0-EB0A-11D0-ACE4-0000C0CC16BA");
 }
@@ -244,6 +246,19 @@ internal interface ILavVideoSettings
     [PreserveSig] uint GetStreamAR();
     [PreserveSig] int GetPixelFormat(int format);
     [PreserveSig] int SetPixelFormat(int format, int enabled);
+    [PreserveSig] int SetRGBOutputRange(uint range);
+    [PreserveSig] uint GetRGBOutputRange();
+    [PreserveSig] int SetDeintFieldOrder(uint order);
+    [PreserveSig] uint GetDeintFieldOrder();
+    [PreserveSig] int SetDeintAggressive(int enabled);
+    [PreserveSig] int GetDeintAggressive();
+    [PreserveSig] int SetDeintForce(int enabled);
+    [PreserveSig] int GetDeintForce();
+    [PreserveSig] uint CheckHWAccelSupport(uint hwAccel);
+    [PreserveSig] int SetHWAccel(uint hwAccel);
+    [PreserveSig] uint GetHWAccel();
+    [PreserveSig] int SetHWAccelCodec(uint codec, int enabled);
+    [PreserveSig] int GetHWAccelCodec(uint codec);
 }
 
 [ComImport, Guid("1CC2385F-36FA-41B1-9942-5024CE0235DC"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -251,6 +266,19 @@ internal interface ILavVideoStatus
 {
     [PreserveSig] IntPtr GetActiveDecoderName();
     [PreserveSig] int GetHWAccelActiveDevice(out IntPtr deviceName);
+}
+
+[ComImport, Guid("BC8753F5-0AC8-4806-8E5F-A12B2AFE153E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IMediaSampleD3D11
+{
+    [PreserveSig] int GetD3D11Texture(int view, out IntPtr texture, out uint arraySlice);
+}
+
+[ComImport, Guid("2BB66002-46B7-4F13-9036-7053328742BE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface ID3D11DecoderConfiguration
+{
+    [PreserveSig] int ActivateD3D11Decoding(IntPtr device, IntPtr context, IntPtr mutex, uint flags);
+    [PreserveSig] uint GetD3D11AdapterIndex();
 }
 
 [ComImport, Guid("4158A22B-6553-45D0-8069-24716F8FF171"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
