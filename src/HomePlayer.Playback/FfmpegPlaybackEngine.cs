@@ -1,3 +1,4 @@
+using System.Reflection;
 using HomePlayer.Core;
 using HomePlayer.Ffmpeg;
 using NAudio.CoreAudioApi;
@@ -5,16 +6,23 @@ using NAudio.Wave;
 
 namespace HomePlayer.Playback;
 
-public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackChapterSource, IPlaybackAudioEnhancements, IPlaybackAudioOutputEvents
+public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackChapterSource, IPlaybackAudioEnhancements, IPlaybackAudioOutputEvents, IPlaybackTimedSeek
 {
+    private static readonly FieldInfo? AudioClientField = typeof(WasapiOut).GetField("audioClient", BindingFlags.Instance | BindingFlags.NonPublic);
     private readonly object _gate = new();
+    private readonly object _clockGate = new();
     private readonly string? _audioOutputId;
     private readonly PcmAudioEffects _effects = new();
     private FfmpegPlayer? _player;
     private WasapiOut? _output;
     private MMDevice? _device;
     private BufferedWaveProvider? _buffer;
+    private AudioClient? _audioClient;
     private string? _audioDevice;
+    private bool _clockAnchored;
+    private ulong _anchorDevicePosition;
+    private ulong _anchorQpc;
+    private double _anchorMediaSeconds;
     private double _volume = 0.8;
     private double _rate = 1.0;
     private bool _muted;
@@ -62,8 +70,8 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
             {
                 var buffer = new BufferedWaveProvider(new WaveFormatExtensible(48000, 16, player.OutputChannels))
                 {
-                    DiscardOnBufferOverflow = true,
-                    BufferDuration = TimeSpan.FromSeconds(2)
+                    DiscardOnBufferOverflow = false,
+                    BufferDuration = TimeSpan.FromMilliseconds(500)
                 };
                 MMDevice? device = null;
                 WasapiOut? output = null;
@@ -99,7 +107,11 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
                     _output = output;
                     _device = device;
                     _audioDevice = name;
+                    _audioClient = AudioClientField?.GetValue(output) as AudioClient;
+                    if (_audioClient != null)
+                        player.AudioDevicePosition = ReadDeviceMediaSeconds;
                     player.UnplayedBytes = () => _buffer?.BufferedBytes ?? 0;
+                    player.AudioOutputDrained = () => (_buffer?.BufferedBytes ?? 0) == 0 && (_audioClient?.CurrentPadding ?? 0) == 0;
                 }
                 catch (Exception ex)
                 {
@@ -131,6 +143,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void Play()
     {
+        ResetAudioClockAnchor();
         _output?.Play();
         _player?.Play();
     }
@@ -139,6 +152,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     {
         _player?.Pause();
         _output?.Pause();
+        ResetAudioClockAnchor();
     }
 
     public void Stop()
@@ -152,13 +166,23 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
         _device?.Dispose();
         _device = null;
         _buffer = null;
+        _audioClient = null;
         _audioDevice = null;
+        ResetAudioClockAnchor();
     }
 
     public void Seek(TimeSpan position)
     {
         SetAudioDelay(_audioDelayMs);
+        ResetAudioClockAnchor();
         _player?.Seek(position);
+    }
+
+    void IPlaybackTimedSeek.Seek(TimeSpan position, long epoch, long commandId, long startedTimestamp)
+    {
+        SetAudioDelay(_audioDelayMs);
+        ResetAudioClockAnchor();
+        _player?.Seek(position, epoch, commandId, startedTimestamp);
     }
 
     public void SetVolume(double linear)
@@ -180,6 +204,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
         _rate = PlaybackRates.Clamp(rate);
         _player?.SetRate(_rate);
         _buffer?.ClearBuffer();
+        ResetAudioClockAnchor();
     }
 
     public void StepFrame()
@@ -237,11 +262,14 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     {
         try
         {
+            var player = _player;
+            if (player == null)
+                return;
+            var epoch = player.PcmEpoch;
             if (_delayBytes > 0)
             {
                 var silence = new byte[_delayBytes];
-                _effects.Apply(silence, silence.Length, false, false);
-                _buffer?.AddSamples(silence, 0, silence.Length);
+                WritePcm(silence, 0, silence.Length, epoch);
                 _delayBytes = 0;
             }
             var offset = Math.Min(count, _skipBytes);
@@ -252,12 +280,73 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
             {
                 data = data[offset..count];
                 count = data.Length;
+                offset = 0;
             }
             _effects.Apply(data, count, _normalize, _nightMode);
-            _buffer?.AddSamples(data, 0, count);
+            WritePcm(data, offset, count, epoch);
         }
         catch (InvalidOperationException)
         {
+        }
+    }
+
+    private void WritePcm(byte[] data, int offset, int count, long epoch)
+    {
+        while (count > 0)
+        {
+            var buffer = _buffer;
+            var player = _player;
+            if (buffer == null || player == null || epoch != player.PcmEpoch)
+                return;
+            var available = buffer.BufferLength - buffer.BufferedBytes;
+            if (available < buffer.WaveFormat.BlockAlign)
+            {
+                Thread.Sleep(2);
+                continue;
+            }
+            var chunk = Math.Min(count, available - available % buffer.WaveFormat.BlockAlign);
+            buffer.AddSamples(data, offset, chunk);
+            offset += chunk;
+            count -= chunk;
+        }
+    }
+
+    private double? ReadDeviceMediaSeconds()
+    {
+        try
+        {
+            var clock = _audioClient?.AudioClockClient;
+            if (clock == null || _output?.PlaybackState != NAudio.Wave.PlaybackState.Playing || !clock.GetPosition(out var position, out var qpc))
+                return null;
+            var frequency = clock.Frequency;
+            if (frequency == 0)
+                return null;
+            lock (_clockGate)
+            {
+                if (!_clockAnchored || position < _anchorDevicePosition)
+                {
+                    _anchorDevicePosition = position;
+                    _anchorQpc = qpc;
+                    _anchorMediaSeconds = _player?.Position.TotalSeconds ?? 0;
+                    _clockAnchored = true;
+                }
+                return _anchorMediaSeconds + (position - _anchorDevicePosition) / (double)frequency * _rate;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void ResetAudioClockAnchor()
+    {
+        lock (_clockGate)
+        {
+            _clockAnchored = false;
+            _anchorDevicePosition = 0;
+            _anchorQpc = 0;
+            _anchorMediaSeconds = 0;
         }
     }
 }

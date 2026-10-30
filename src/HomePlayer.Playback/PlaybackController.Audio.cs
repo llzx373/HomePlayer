@@ -62,7 +62,9 @@ public sealed partial class PlaybackController
             RememberPosition();
             _useDefaultAudio = true;
             _audioFallbackNotice = "所选音频设备不可用，已回退系统默认设备。";
-            _ = PlayCurrentAsync(_engine is FfmpegPlaybackEngine);
+            _ = PlayCurrentAsync(_engine != null && InnerEngine(_engine) is FfmpegPlaybackEngine
+                ? PlaybackRoute.NativeFfmpeg
+                : PlaybackRoute.DirectShow);
         });
     }
 }

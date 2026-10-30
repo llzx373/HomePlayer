@@ -50,7 +50,12 @@ public class FfmpegPlayerTests : IDisposable
         using var player = new FfmpegPlayer();
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? fault = null;
-        player.FrameArrived += frame => frame.ReturnBuffer();
+        var frames = 0;
+        player.FrameArrived += frame =>
+        {
+            frame.ReturnBuffer();
+            Interlocked.Increment(ref frames);
+        };
         player.Ended += () => ended.TrySetResult();
         player.Faulted += error => fault = error;
         player.Open(_mediaPath);
@@ -59,8 +64,42 @@ public class FfmpegPlayerTests : IDisposable
 
         await ended.Task.WaitAsync(TimeSpan.FromSeconds(15));
         Assert.Null(fault);
+        Assert.Equal(12, Volatile.Read(ref frames));
         Assert.True(Math.Abs((player.Duration - player.Position).TotalMilliseconds) <= 250,
             $"播完位置应接近总时长 {player.Duration}，实际为 {player.Position}。");
+    }
+
+    [Fact]
+    public async Task Real_media_supports_one_hundred_repeated_seeks_without_demux_fault()
+    {
+        using var player = new FfmpegPlayer();
+        Exception? fault = null;
+        var expectedEpoch = 0L;
+        var target = TimeSpan.Zero;
+        TaskCompletionSource next = NewSignal();
+        player.FrameArrived += frame =>
+        {
+            var tolerance = Math.Max(1, frame.TimeBase.ToTimeSpanTicks(frame.Duration) / 2);
+            var matches = frame.Epoch == expectedEpoch
+                && frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp) + tolerance >= target.Ticks;
+            frame.ReturnBuffer();
+            if (matches)
+                next.TrySetResult();
+        };
+        player.Faulted += error => fault = error;
+        player.Open(_mediaPath);
+        player.Play();
+        await next.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        for (var i = 0; i < 100; i++)
+        {
+            next = NewSignal();
+            target = TimeSpan.FromMilliseconds((i * 137) % 1800);
+            expectedEpoch = player.Epoch + 1;
+            player.Seek(target);
+            await next.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Null(fault);
+        }
     }
 
     [Fact]
@@ -73,6 +112,8 @@ public class FfmpegPlayerTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => player.Open(invalid));
         Assert.False(player.IsOpen);
     }
+
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

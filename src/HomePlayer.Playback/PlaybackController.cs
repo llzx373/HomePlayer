@@ -8,7 +8,7 @@ public sealed partial class PlaybackController : IDisposable
     private readonly Func<CodecPlan> _codecs;
     private readonly Func<string?> _audioOutput;
     private readonly IPlaybackStateStore? _store;
-    private readonly Func<string, bool, (IPlaybackEngine Engine, string Reason)> _openEngine;
+    private readonly Func<string, PlaybackRoute, (IPlaybackEngine Engine, string Reason)> _openEngine;
     private readonly Func<bool> _historyEnabled;
     private readonly IMediaPreferenceStore? _preferences;
     private readonly Dictionary<string, PlaybackState> _states = new(StringComparer.OrdinalIgnoreCase);
@@ -40,7 +40,9 @@ public sealed partial class PlaybackController : IDisposable
         _codecs = codecs;
         _audioOutput = audioOutput;
         _store = store;
-        _openEngine = openEngine ?? OpenEngine;
+        _openEngine = openEngine == null
+            ? OpenEngine
+            : (path, route) => openEngine(path, route == PlaybackRoute.NativeFfmpeg);
         _historyEnabled = historyEnabled ?? (() => true);
         _preferences = preferences;
         if (store == null)
@@ -113,13 +115,15 @@ public sealed partial class PlaybackController : IDisposable
         IReadOnlyList<string> paths,
         int start,
         bool forceFfmpeg = false,
-        bool restart = false)
+        bool restart = false,
+        PlaybackRoute? route = null)
     {
+        var selectedRoute = route ?? (forceFfmpeg ? PlaybackRoute.NativeFfmpeg : PlaybackRoute.Auto);
         RememberPosition();
         var playing = _playingPath;
         Playlist.Replace(paths, start);
         var next = Playlist.Current?.Path;
-        if (!forceFfmpeg
+        if (selectedRoute == PlaybackRoute.Auto
             && !restart
             && IsOpen
             && next != null
@@ -132,7 +136,7 @@ public sealed partial class PlaybackController : IDisposable
             return Task.CompletedTask;
         }
 
-        return PlayCurrentAsync(forceFfmpeg, restart);
+        return PlayCurrentAsync(selectedRoute, restart);
     }
 
     public void Enqueue(IEnumerable<string> paths)
@@ -143,7 +147,7 @@ public sealed partial class PlaybackController : IDisposable
         if (idle && Playlist.Items.Count > 0)
         {
             Playlist.CurrentIndex = 0;
-            _ = PlayCurrentAsync(false);
+            _ = PlayCurrentAsync(PlaybackRoute.Auto);
         }
     }
 
@@ -152,7 +156,7 @@ public sealed partial class PlaybackController : IDisposable
         if (_engine == null)
         {
             if (Playlist.Current != null)
-                _ = PlayCurrentAsync(false);
+                _ = PlayCurrentAsync(PlaybackRoute.Auto);
             return;
         }
 
@@ -227,7 +231,7 @@ public sealed partial class PlaybackController : IDisposable
         if (index < 0 || index >= Playlist.Items.Count)
             return Task.CompletedTask;
         Playlist.CurrentIndex = index;
-        return PlayCurrentAsync(false);
+        return PlayCurrentAsync(PlaybackRoute.Auto);
     }
 
     public void Seek(TimeSpan position)
@@ -362,10 +366,10 @@ public sealed partial class PlaybackController : IDisposable
         }
 
         Playlist.CurrentIndex = index.Value;
-        await PlayCurrentAsync(false);
+        await PlayCurrentAsync(PlaybackRoute.Auto);
     }
 
-    private async Task PlayCurrentAsync(bool forceFfmpeg, bool restart = false)
+    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false)
     {
         RememberPosition();
         if (!string.Equals(_playingPath, Playlist.Current?.Path, StringComparison.OrdinalIgnoreCase))
@@ -404,7 +408,7 @@ public sealed partial class PlaybackController : IDisposable
             Notify();
             try
             {
-                var (engine, reason) = await Task.Run(() => _openEngine(item.Path, forceFfmpeg));
+                var (engine, reason) = await Task.Run(() => _openEngine(item.Path, route));
                 if (token != _token)
                 {
                     _ = Task.Run(() => Discard(engine));
@@ -438,7 +442,7 @@ public sealed partial class PlaybackController : IDisposable
                         engine.Play();
                         Status = _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
                             ? "当前滤镜不支持倍速"
-                            : engine is LavPlaybackEngine { AudioMissing: true }
+                            : InnerEngine(engine) is LavPlaybackEngine { AudioMissing: true }
                                 ? "正在播放，音频没有接上"
                                 : "正在播放");
                         _audioFallbackNotice = null;
@@ -470,7 +474,7 @@ public sealed partial class PlaybackController : IDisposable
                 if (next == null || next == Playlist.CurrentIndex)
                     break;
                 Playlist.CurrentIndex = next.Value;
-                forceFfmpeg = false;
+                route = PlaybackRoute.Auto;
             }
         }
 
@@ -486,53 +490,29 @@ public sealed partial class PlaybackController : IDisposable
         }
     }
 
-    private (IPlaybackEngine Engine, string Reason) OpenEngine(string path, bool forceFfmpeg)
+    private (IPlaybackEngine Engine, string Reason) OpenEngine(string path, PlaybackRoute route)
     {
-        Exception? lavError = null;
-        var plan = _codecs();
-        if (!forceFfmpeg && plan.Splitters.Count > 0 && plan.VideoDecoders.Count > 0)
-        {
-            var lav = new LavPlaybackEngine(plan, (_useDefaultAudio ? null : _audioOutput()));
-            try
-            {
-                lav.Open(path);
-                var reason = lav.AudioMissing
-                    ? "画面已打开，音频没有接上：" + lav.AudioWarning
-                    : string.IsNullOrWhiteSpace(lav.AudioWarning)
-                        ? "已按设置的顺序建立滤镜图。"
-                        : lav.AudioWarning;
-                return (lav, reason);
-            }
-            catch (Exception ex)
-            {
-                lavError = ex;
-                Discard(lav);
-            }
-        }
-
-        var ffmpeg = new FfmpegPlaybackEngine((_useDefaultAudio ? null : _audioOutput()));
-        try
-        {
-            ffmpeg.Open(path);
-            var reason = lavError == null
-                ? (forceFfmpeg ? "已按指定改用 FFmpeg。" : "没有可用的 64 位分离器或视频解码器，已改用 FFmpeg。")
-                : "DirectShow 滤镜无法播放该文件，已改用 FFmpeg：" + lavError.Message;
-            return (ffmpeg, reason);
-        }
-        catch (Exception ex)
-        {
-            Discard(ffmpeg);
-            throw new InvalidOperationException(lavError == null ? ex.Message : $"{lavError.Message}；FFmpeg 也失败：{ex.Message}", ex);
-        }
+        var registry = new PlaybackProviderRegistry(
+        [
+            new NativeFfmpegProvider(),
+            new DirectShowProvider(_codecs)
+        ]);
+        var opened = registry.Open(
+            path,
+            _useDefaultAudio ? null : _audioOutput(),
+            _codecs,
+            route);
+        return (opened.Session, opened.Reason);
     }
 
     private void Attach(IPlaybackEngine engine)
     {
         engine.FrameArrived += OnFrame;
         engine.Ended += OnEnded;
-        if (engine is IPlaybackFaultSource faults)
+        var inner = InnerEngine(engine);
+        if (inner is IPlaybackFaultSource faults)
             faults.Faulted += OnFaulted;
-        if (engine is IPlaybackAudioOutputEvents audioEvents)
+        if (inner is IPlaybackAudioOutputEvents audioEvents)
             audioEvents.AudioOutputFailed += OnAudioOutputFailed;
     }
 
@@ -552,9 +532,10 @@ public sealed partial class PlaybackController : IDisposable
     {
         engine.FrameArrived -= OnFrame;
         engine.Ended -= OnEnded;
-        if (engine is IPlaybackFaultSource faults)
+        var inner = InnerEngine(engine);
+        if (inner is IPlaybackFaultSource faults)
             faults.Faulted -= OnFaulted;
-        if (engine is IPlaybackAudioOutputEvents audioEvents)
+        if (inner is IPlaybackAudioOutputEvents audioEvents)
             audioEvents.AudioOutputFailed -= OnAudioOutputFailed;
     }
 
@@ -563,7 +544,8 @@ public sealed partial class PlaybackController : IDisposable
         if (_firstFramePending)
         {
             _firstFramePending = false;
-            PerformanceMetrics.Record("playback.first-frame", (DateTime.UtcNow - _openStartedUtc).TotalMilliseconds);
+            PerformanceMetrics.Record("playback.first-decoded-frame", (DateTime.UtcNow - _openStartedUtc).TotalMilliseconds);
+            PlaybackTelemetry.Trace("FirstDecodedFrame", frame.SessionId, frame.Epoch, frame.SeekCommandId, PresentationObservation.Decoded);
         }
         RememberVideoSize(frame.Width, frame.Height, true);
         var handler = FrameArrived;
@@ -575,6 +557,8 @@ public sealed partial class PlaybackController : IDisposable
 
         handler(frame);
     }
+
+    private static IPlaybackEngine InnerEngine(IPlaybackEngine engine) => (engine as PlaybackSession)?.InnerEngine ?? engine;
 
     private void OnFaulted(Exception error)
     {
@@ -623,7 +607,7 @@ public sealed partial class PlaybackController : IDisposable
             if (path != null)
                 SaveState(path, duration, duration);
             Playlist.CurrentIndex = next.Value;
-            _ = PlayCurrentAsync(false);
+            _ = PlayCurrentAsync(PlaybackRoute.Auto);
         });
     }
 

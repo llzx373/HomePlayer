@@ -7,6 +7,7 @@ using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
 using HomePlayer.Core;
+using HomePlayer.Playback;
 using WinRT;
 
 namespace HomePlayer;
@@ -88,6 +89,7 @@ public sealed class VideoPresenter : IDisposable
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
     private IDXGISwapChain1? _swapChain;
+    private IntPtr _frameLatencyWaitable;
     private ID3D11RenderTargetView? _target;
     private ID3D11Texture2D? _frameTexture;
     private ID3D11ShaderResourceView? _frameView;
@@ -420,6 +422,7 @@ public sealed class VideoPresenter : IDisposable
         UnbindTarget();
         var chain = _swapChain;
         _swapChain = null;
+        _frameLatencyWaitable = IntPtr.Zero;
         _width = 0;
         _height = 0;
         if (chain == null)
@@ -504,7 +507,16 @@ public sealed class VideoPresenter : IDisposable
             _context.PSSetSamplers(0, 1, _samplers);
             _context.Draw(4, 0);
             _context.OMSetRenderTargets(NoTargets, null);
+            if (frame != null)
+                PlaybackTelemetry.Observe(frame, PresentationObservation.Submitted);
+            WaitForFrameLatency();
             _swapChain.Present(0, PresentFlags.None);
+            if (frame != null)
+            {
+                PlaybackTelemetry.Observe(frame, PresentationObservation.PresentReturned);
+                if (frame.FrameSequence % PlaybackTelemetry.FrameSampling == 0)
+                    TracePresentStatistics(frame);
+            }
         }
         catch (Exception ex)
         {
@@ -588,14 +600,20 @@ public sealed class VideoPresenter : IDisposable
                 BufferCount = 2,
                 SwapEffect = SwapEffect.FlipDiscard,
                 AlphaMode = AlphaMode.Ignore,
-                Scaling = Scaling.Stretch
+                Scaling = Scaling.Stretch,
+                Flags = SwapChainFlags.FrameLatencyWaitableObject
             };
             _swapChain = factory.CreateSwapChainForComposition(_device, description);
+            using (var chain = _swapChain.QueryInterface<IDXGISwapChain2>())
+            {
+                chain.MaximumFrameLatency = 1;
+                _frameLatencyWaitable = chain.FrameLatencyWaitableObject;
+            }
             AttachSwapChainToPanel(_swapChain.NativePointer);
         }
         else
         {
-            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.None);
+            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.FrameLatencyWaitableObject);
         }
 
         _width = width;
@@ -736,6 +754,32 @@ public sealed class VideoPresenter : IDisposable
                 Buffer.MemoryCopy(source + offset, destination + y * destinationPitch, rowBytes, rowBytes);
             }
         }
+    }
+
+    private void WaitForFrameLatency()
+    {
+        if (_frameLatencyWaitable != IntPtr.Zero)
+            WaitForSingleObject(_frameLatencyWaitable, 100);
+    }
+
+    private void TracePresentStatistics(VideoFrame frame)
+    {
+        if (_swapChain == null || _swapChain.GetFrameStatistics(out var statistics).Failure)
+            return;
+        PlaybackTelemetry.Trace(
+            "PresentStatistics",
+            frame.SessionId,
+            frame.Epoch,
+            frame.SeekCommandId,
+            PresentationObservation.PresentReturned,
+            new Dictionary<string, object?>
+            {
+                ["presentCount"] = statistics.PresentCount,
+                ["presentRefreshCount"] = statistics.PresentRefreshCount,
+                ["syncRefreshCount"] = statistics.SyncRefreshCount,
+                ["syncQpc"] = statistics.SyncQPCTime,
+                ["source"] = "DXGIGetFrameStatistics"
+            });
     }
 
     private void EnsureDevice()
@@ -923,6 +967,9 @@ public sealed class VideoPresenter : IDisposable
         Marshal.Release(blob);
         return bytes;
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
 
     [DllImport("d3dcompiler_47.dll", CallingConvention = CallingConvention.StdCall)]
     private static extern int D3DCompile(

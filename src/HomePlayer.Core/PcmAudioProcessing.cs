@@ -63,6 +63,31 @@ public sealed class PcmTimeStretcher
         return bytes;
     }
 
+    public byte[] Flush(int channels, double rate)
+    {
+        if (channels < 1)
+            throw new ArgumentOutOfRangeException(nameof(channels));
+        if (Math.Abs(rate - 1) < 0.0001)
+        {
+            Reset();
+            return [];
+        }
+        var available = Math.Max(0, _samples.Count / channels - (int)_position);
+        var output = new List<short>(Math.Max(0, (int)(available / rate) * channels));
+        while (_position < _samples.Count / channels)
+        {
+            var source = Math.Min(_samples.Count / channels - 1, (int)_position);
+            for (var channel = 0; channel < channels; channel++)
+                output.Add(_samples[source * channels + channel]);
+            _position += Math.Max(0.01, rate);
+        }
+        Reset();
+        var bytes = new byte[output.Count * 2];
+        for (var i = 0; i < output.Count; i++)
+            BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(i * 2, 2), output[i]);
+        return bytes;
+    }
+
     public void Reset()
     {
         _samples.Clear();

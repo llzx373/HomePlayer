@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using FFmpeg.AutoGen;
@@ -8,87 +10,155 @@ namespace HomePlayer.Ffmpeg;
 
 public sealed unsafe class FfmpegPlayer : IDisposable
 {
+    private sealed record SeekRequest(TimeSpan Position, long Epoch, long CommandId, long StartedTimestamp);
+
+    private sealed class VideoQueueItem(VideoFrame? frame, long epoch, bool endOfStream = false)
+    {
+        public VideoFrame? Frame { get; } = frame;
+        public long Epoch { get; } = epoch;
+        public bool EndOfStream { get; } = endOfStream;
+        public long Bytes => Frame?.Data.Length ?? 0;
+    }
+
+    private sealed class PacketLease(FfmpegPlayer owner, IntPtr packet, long epoch, bool endOfStream = false) : IDisposable
+    {
+        private int _disposed;
+        public AVPacket* Packet => (AVPacket*)packet;
+        public long Epoch { get; } = epoch;
+        public bool EndOfStream { get; } = endOfStream;
+        public int Bytes => packet == IntPtr.Zero ? 0 : Packet->size;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0 && packet != IntPtr.Zero)
+                owner.ReturnPacket(packet);
+        }
+    }
+
     private readonly object _gate = new();
+    private readonly object _videoCodecGate = new();
+    private readonly object _audioCodecGate = new();
+    private readonly ConcurrentBag<IntPtr> _packetPool = new();
+    private readonly PcmTimeStretcher _timeStretcher = new();
+    private readonly FrameBufferPool _framePool = new(6);
+    private readonly Stopwatch _clock = new();
     private AVFormatContext* _format;
     private AVCodecContext* _videoCodec;
     private AVCodecContext* _audioCodec;
     private SwsContext* _scaler;
     private SwrContext* _resampler;
-    private int _videoIndex = -1;
-    private int _audioIndex = -1;
+    private BoundedPipelineQueue<PacketLease>? _videoPackets;
+    private BoundedPipelineQueue<PacketLease>? _audioPackets;
+    private BoundedPipelineQueue<VideoQueueItem>? _videoFrames;
+    private Thread? _demuxThread;
+    private Thread? _videoThread;
+    private Thread? _audioThread;
+    private Thread? _schedulerThread;
+    private CancellationTokenSource? _cancel;
+    private GCHandle _interruptHandle;
+    private SeekRequest? _seekRequest;
+    private SeekRequest? _activeSeek;
+    private int? _requestedAudioIndex;
     private List<MediaTrack> _audioTracks = [];
     private List<MediaTrack> _subtitleTracks = [];
+    private int _videoIndex = -1;
+    private int _audioIndex = -1;
     private int _subtitleIndex = -1;
-    private int? _requestedAudioIndex;
     private AVRational _videoTimeBase;
-    private int _width;
-    private int _height;
-    private Thread? _thread;
-    private CancellationTokenSource? _cancel;
-    private readonly ManualResetEventSlim _resume = new(false);
-    private readonly System.Diagnostics.Stopwatch _clock = new();
-    private double _clockOrigin;
-    private double _rate = 1.0;
-    private double? _seekSeconds;
-    private long _audioWritten;
-    private int _audioEpoch;
-    private long _lastPresentMs;
+    private AVRational _audioTimeBase;
     private string _path = "";
     private string? _container;
     private string? _videoCodecName;
     private string? _audioCodecName;
+    private int _width;
+    private int _height;
     private int _channels;
     private int _outputChannels;
     private int _sampleRate;
-    private readonly PcmTimeStretcher _timeStretcher = new();
-    private bool _endedRaised;
-    private readonly FrameBufferPool _framePool = new(4);
     private int _frameBytes;
+    private int _videoDecoderThreads = 1;
+    private long _epoch;
+    private long _audioEpoch;
+    private long _positionTicks;
+    private long _clockOriginTicks;
+    private long _audioWritten;
+    private long _frameSequence;
+    private long _openedTimestamp;
+    private int _ioInterrupt;
+    private int _demuxEof;
+    private int _videoDone;
+    private int _audioDone;
+    private int _droppedFrames;
+    private int _videoQueueDepth;
+    private int _readErrors;
+    private bool _endedRaised;
+    private bool _disposed;
+    private double _rate = 1.0;
+    private volatile bool _isPlaying;
+    private volatile bool _step;
+
+    private static readonly AVIOInterruptCB_callback InterruptCallback = OnInterrupt;
 
     public event Action<VideoFrame>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
     public event Action<byte[], int>? AudioPcm;
     public Func<int>? UnplayedBytes { get; set; }
+    public Func<bool>? AudioOutputDrained { get; set; }
+    public Func<double?>? AudioDevicePosition { get; set; }
 
-    private volatile bool _isPlaying;
-    private volatile bool _step;
-    private long _positionTicks;
-
+    public Guid SessionId { get; private set; }
+    public string TimelineId { get; private set; } = "";
+    public long Epoch => Interlocked.Read(ref _epoch);
+    public long PcmEpoch => Interlocked.Read(ref _audioEpoch);
     public bool IsOpen { get; private set; }
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration { get; private set; }
     public TimeSpan Position => TimeSpan.FromTicks(Volatile.Read(ref _positionTicks));
-    public bool HasAudio => _audioIndex >= 0;
+    public bool HasAudio => Volatile.Read(ref _audioIndex) >= 0;
     public int OutputChannels => Math.Max(1, _outputChannels);
     public double Rate => Volatile.Read(ref _rate);
+    public int DroppedFrames => Volatile.Read(ref _droppedFrames);
+    public int VideoQueueDepth => Volatile.Read(ref _videoQueueDepth);
 
     public void Open(string path)
     {
         Close();
         FfmpegNative.Ensure();
         _path = path;
+        SessionId = Guid.NewGuid();
+        TimelineId = SessionId.ToString("N");
+        _openedTimestamp = Stopwatch.GetTimestamp();
+        Interlocked.Exchange(ref _ioInterrupt, 0);
+        _cancel = new CancellationTokenSource();
+        _interruptHandle = GCHandle.Alloc(this);
         try
         {
+            _cancel.CancelAfter(TimeSpan.FromSeconds(15));
             _format = ffmpeg.avformat_alloc_context();
+            if (_format == null)
+                throw new InvalidOperationException("无法分配 FFmpeg 输入上下文。");
+            _format->interrupt_callback = new AVIOInterruptCB
+            {
+                callback = InterruptCallback,
+                opaque = GCHandle.ToIntPtr(_interruptHandle).ToPointer()
+            };
             var opened = _format;
             var openResult = ffmpeg.avformat_open_input(&opened, path, null, null);
             _format = opened;
             FfmpegError.Check(openResult, "FFmpeg 打开文件");
             FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "FFmpeg 读取媒体信息");
+            _cancel.CancelAfter(Timeout.InfiniteTimeSpan);
             _container = _format->iformat == null ? null : Marshal.PtrToStringAnsi((IntPtr)_format->iformat->name);
             Duration = _format->duration > 0
-                ? TimeSpan.FromSeconds(_format->duration / (double)ffmpeg.AV_TIME_BASE)
+                ? TimeSpan.FromTicks((long)Math.Round(_format->duration / (double)ffmpeg.AV_TIME_BASE * TimeSpan.TicksPerSecond))
                 : TimeSpan.Zero;
 
             AVCodec* videoDecoder = null;
             _videoIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
             if (_videoIndex < 0)
                 throw new InvalidOperationException("文件里没有可解码的视频流。");
-            _videoCodec = ffmpeg.avcodec_alloc_context3(videoDecoder);
-            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_videoCodec, _format->streams[_videoIndex]->codecpar), "复制视频参数");
-            FfmpegError.Check(ffmpeg.avcodec_open2(_videoCodec, videoDecoder, null), "打开视频解码器");
-            _videoCodecName = ffmpeg.avcodec_get_name(videoDecoder->id);
+            OpenVideoDecoder(videoDecoder, 1);
             _videoTimeBase = _format->streams[_videoIndex]->time_base;
             _width = _videoCodec->width;
             _height = _videoCodec->height;
@@ -106,10 +176,15 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             LoadAudioTracks();
             LoadSubtitleTracks();
 
+            _videoPackets = new BoundedPipelineQueue<PacketLease>(96, 16 * 1024 * 1024);
+            _audioPackets = new BoundedPipelineQueue<PacketLease>(192, 8 * 1024 * 1024);
+            _videoFrames = new BoundedPipelineQueue<VideoQueueItem>(4, 96 * 1024 * 1024);
             IsOpen = true;
-            _cancel = new CancellationTokenSource();
-            _thread = new Thread(Loop) { IsBackground = true, Name = "FFmpeg playback" };
-            _thread.Start();
+            _videoThread = StartThread(VideoDecodeLoop, "FFmpeg video decode");
+            if (HasAudio)
+                _audioThread = StartThread(AudioDecodeLoop, "FFmpeg audio decode");
+            _schedulerThread = StartThread(VideoSchedulerLoop, "HomePlayer video scheduler");
+            _demuxThread = StartThread(DemuxLoop, "FFmpeg demux");
         }
         catch
         {
@@ -120,20 +195,34 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     public void Play()
     {
-        if (!IsOpen)
+        if (!IsOpen || _disposed)
             return;
-        _isPlaying = true;
-        _resume.Set();
+        lock (_gate)
+        {
+            _step = false;
+            if (!_isPlaying)
+            {
+                _clockOriginTicks = Position.Ticks;
+                _clock.Restart();
+            }
+            _isPlaying = true;
+            Interlocked.Exchange(ref _videoDone, 0);
+            Interlocked.Exchange(ref _audioDone, 0);
+        }
     }
 
     public void Pause()
     {
+        if (!IsOpen)
+            return;
+        var current = MediaSeconds();
         _isPlaying = false;
-        _resume.Reset();
+        _step = false;
         lock (_gate)
         {
-            if (_clock.IsRunning)
-                _clock.Stop();
+            _clockOriginTicks = TimeSpan.FromSeconds(Math.Max(0, current)).Ticks;
+            _clock.Stop();
+            Volatile.Write(ref _positionTicks, _clockOriginTicks);
         }
     }
 
@@ -141,21 +230,46 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     {
         if (!IsOpen)
             return;
+        if (_isPlaying)
+            Pause();
         _step = true;
-        Pause();
-        _resume.Set();
     }
 
-    public void Seek(TimeSpan position)
+    public void Seek(TimeSpan position) => Seek(position, Epoch + 1, 0, Stopwatch.GetTimestamp());
+
+    public void Seek(TimeSpan position, long epoch, long commandId, long startedTimestamp)
     {
-        var seconds = Math.Max(0, position.TotalSeconds);
+        if (!IsOpen)
+            return;
+        if (position < TimeSpan.Zero)
+            position = TimeSpan.Zero;
+        if (Duration > TimeSpan.Zero && position > Duration)
+            position = Duration;
+        if (epoch <= Epoch)
+            epoch = Interlocked.Increment(ref _epoch);
+        else
+            Interlocked.Exchange(ref _epoch, epoch);
+        var request = new SeekRequest(position, epoch, commandId, startedTimestamp);
+        lock (_gate)
+        {
+            _seekRequest = request;
+            _activeSeek = request;
+            _clockOriginTicks = position.Ticks;
+            if (_isPlaying)
+                _clock.Restart();
+            else
+                _clock.Stop();
+            if (!_isPlaying)
+                _step = true;
+        }
         Interlocked.Increment(ref _audioEpoch);
         Interlocked.Exchange(ref _audioWritten, 0);
-        lock (_gate)
-            _seekSeconds = seconds;
-        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
-        if (!IsPlaying)
-            _resume.Set();
+        Interlocked.Exchange(ref _videoDone, 0);
+        Interlocked.Exchange(ref _audioDone, 0);
+        Interlocked.Exchange(ref _demuxEof, 0);
+        Interlocked.Exchange(ref _ioInterrupt, 1);
+        Volatile.Write(ref _positionTicks, position.Ticks);
+        _endedRaised = false;
     }
 
     public IReadOnlyList<MediaTrack> GetAudioTracks()
@@ -184,10 +298,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 return;
             _subtitleIndex = index;
             for (var i = 0; i < _subtitleTracks.Count; i++)
-            {
-                var track = _subtitleTracks[i];
-                _subtitleTracks[i] = track with { Selected = track.Index == index };
-            }
+                _subtitleTracks[i] = _subtitleTracks[i] with { Selected = _subtitleTracks[i].Index == index };
         }
     }
 
@@ -203,10 +314,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 return;
             _requestedAudioIndex = index;
         }
-
-        Interlocked.Increment(ref _audioEpoch);
-        Interlocked.Exchange(ref _audioWritten, 0);
-        _resume.Set();
+        Seek(Position);
     }
 
     public void SetRate(double rate)
@@ -216,35 +324,32 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         {
             var current = MediaSeconds();
             Volatile.Write(ref _rate, rate);
-            _clockOrigin = current;
-            if (_clock.IsRunning)
+            _clockOriginTicks = TimeSpan.FromSeconds(Math.Max(0, current)).Ticks;
+            if (_isPlaying)
                 _clock.Restart();
             else
                 _clock.Reset();
-            Interlocked.Exchange(ref _audioWritten, 0);
         }
-
         Interlocked.Increment(ref _audioEpoch);
+        Interlocked.Exchange(ref _audioWritten, 0);
     }
 
     public IReadOnlyList<MediaChapter> GetChapters()
     {
-        lock (_gate)
+        if (_format == null || _format->nb_chapters == 0)
+            return [];
+        var chapters = new List<MediaChapter>((int)_format->nb_chapters);
+        for (var i = 0; i < (int)_format->nb_chapters; i++)
         {
-            if (_format == null || _format->nb_chapters == 0)
-                return [];
-            var chapters = new List<MediaChapter>((int)_format->nb_chapters);
-            for (var i = 0; i < (int)_format->nb_chapters; i++)
-            {
-                var chapter = _format->chapters[i];
-                if (chapter == null)
-                    continue;
-                var baseTime = chapter->time_base.den == 0 ? 0 : chapter->time_base.num / (double)chapter->time_base.den;
-                var title = DictGet(chapter->metadata, "title");
-                chapters.Add(new MediaChapter(string.IsNullOrWhiteSpace(title) ? $"章节 {i + 1}" : title, TimeSpan.FromSeconds(Math.Max(0, chapter->start * baseTime))));
-            }
-            return chapters;
+            var chapter = _format->chapters[i];
+            if (chapter == null)
+                continue;
+            var timeBase = new MediaTimeBase(chapter->time_base.num, chapter->time_base.den);
+            var title = DictGet(chapter->metadata, "title");
+            chapters.Add(new MediaChapter(string.IsNullOrWhiteSpace(title) ? $"章节 {i + 1}" : title,
+                TimeSpan.FromTicks(Math.Max(0, timeBase.ToTimeSpanTicks(chapter->start)))));
         }
+        return chapters;
     }
 
     public PipelineInfo GetPipeline()
@@ -273,21 +378,41 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             SampleRate = HasAudio ? 48000 : null,
             AudioTracks = FormatAudioTracks(),
             SubtitleTracks = FormatSubtitleTracks(),
-            Filters = ["FFmpeg demuxer", "FFmpeg video decoder", "swscale → BGRA", HasAudio ? "FFmpeg audio decoder → WASAPI" : "无音频"],
-            Connections = [$"视频 {_videoCodecName} {_width}×{_height}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"]
+            Filters = ["FFmpeg demuxer → bounded packet queues", "FFmpeg video decoder → swscale BGRA", "HomePlayer video scheduler", HasAudio ? "FFmpeg audio decoder → bounded WASAPI output" : "无音频"],
+            Connections = [$"视频 {_videoCodecName} {_width}×{_height} · Z1", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"],
+            DroppedFrames = DroppedFrames,
+            VideoQueueDepth = VideoQueueDepth,
+            ClockSource = AudioDevicePosition == null ? "Monotonic" : "WasapiDeviceWithMonotonicFallback",
+            ZeroCopyLevel = "Z1"
         };
     }
 
     public void Close()
     {
+        if (_disposed)
+            return;
+        Interlocked.Exchange(ref _ioInterrupt, 1);
         _cancel?.Cancel();
-        _resume.Set();
-        if (_thread is { IsAlive: true })
-            _thread.Join(2000);
-        _thread = null;
-        _cancel?.Dispose();
-        _cancel = null;
-        _resume.Reset();
+        _videoPackets?.Complete();
+        _audioPackets?.Complete();
+        _videoFrames?.Complete();
+        var threads = new[] { _demuxThread, _videoThread, _audioThread, _schedulerThread };
+        var exited = true;
+        foreach (var thread in threads)
+        {
+            if (thread is { IsAlive: true } && thread != Thread.CurrentThread)
+                exited &= thread.Join(2000);
+        }
+        _demuxThread = null;
+        _videoThread = null;
+        _audioThread = null;
+        _schedulerThread = null;
+        _videoPackets?.Clear(packet => packet.Dispose());
+        _audioPackets?.Clear(packet => packet.Dispose());
+        _videoFrames?.Clear(ReleaseVideoItem);
+        if (!exited)
+            return;
+
         CloseAudioDecoder();
         if (_scaler != null)
             ffmpeg.sws_freeContext(_scaler);
@@ -300,13 +425,22 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         if (format != null)
             ffmpeg.avformat_close_input(&format);
         _format = null;
+        while (_packetPool.TryTake(out var packet))
+        {
+            var native = (AVPacket*)packet;
+            ffmpeg.av_packet_free(&native);
+        }
+        if (_interruptHandle.IsAllocated)
+            _interruptHandle.Free();
+        _cancel?.Dispose();
+        _cancel = null;
         IsOpen = false;
         _isPlaying = false;
         _step = false;
         Volatile.Write(ref _positionTicks, 0);
-        _audioWritten = 0;
+        Interlocked.Exchange(ref _audioWritten, 0);
         _clock.Reset();
-        _clockOrigin = 0;
+        _clockOriginTicks = 0;
         Volatile.Write(ref _rate, 1.0);
         _endedRaised = false;
         _frameBytes = 0;
@@ -318,150 +452,331 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             _audioTracks = [];
             _subtitleTracks = [];
             _requestedAudioIndex = null;
+            _seekRequest = null;
+            _activeSeek = null;
         }
     }
 
     public void Dispose()
     {
         Close();
-        _resume.Dispose();
+        _disposed = true;
     }
-
-    public void AddPlayedPcm(int bytes) { }
 
     public long TakeAudioClockBytes() => Interlocked.Read(ref _audioWritten);
 
-    private void Loop()
+    private Thread StartThread(ThreadStart start, string name)
     {
-        var packet = ffmpeg.av_packet_alloc();
-        var videoFrame = ffmpeg.av_frame_alloc();
-        var audioFrame = ffmpeg.av_frame_alloc();
-        var readErrors = 0;
+        var thread = new Thread(start) { IsBackground = true, Name = name };
+        thread.Start();
+        return thread;
+    }
+
+    private void DemuxLoop()
+    {
         try
         {
             while (_cancel is { IsCancellationRequested: false })
             {
-                _resume.Wait(_cancel.Token);
-                if (_cancel.IsCancellationRequested)
-                    break;
-
-                double? seek;
-                int? audioSwitch;
-                lock (_gate)
+                ProcessTimelineRequests();
+                if (Volatile.Read(ref _demuxEof) == 1)
                 {
-                    seek = _seekSeconds;
-                    _seekSeconds = null;
-                    audioSwitch = _requestedAudioIndex;
-                    _requestedAudioIndex = null;
-                }
-
-                if (audioSwitch is int audioIndex && audioIndex != Volatile.Read(ref _audioIndex))
-                {
-                    if (SwitchAudio(audioIndex))
-                        seek ??= Position.TotalSeconds;
-                }
-
-                if (seek is double target)
-                {
-                    SeekTo(target);
-                    lock (_gate)
-                    {
-                        _clockOrigin = target;
-                        _clock.Restart();
-                    }
-                    Interlocked.Exchange(ref _audioWritten, 0);
-                    if (!IsPlaying)
-                    {
-                        _resume.Reset();
-                        PresentNearest(videoFrame, target);
-                        continue;
-                    }
-                }
-
-                if (!IsPlaying && !_step)
-                {
-                    _resume.Reset();
-                    if (_clock.IsRunning)
-                        _clock.Stop();
+                    Thread.Sleep(10);
                     continue;
                 }
 
-                if (_step)
+                var packet = RentPacket();
+                var native = (AVPacket*)packet;
+                var read = ffmpeg.av_read_frame(_format, native);
+                if (read == ffmpeg.AVERROR_EXIT)
                 {
-                    if (_clock.IsRunning)
-                        _clock.Stop();
-                    if (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
-                    {
-                        PresentDecoded(videoFrame);
-                        ffmpeg.av_frame_unref(videoFrame);
-                        FinishStep();
-                        continue;
-                    }
+                    ReturnPacket(packet);
+                    Interlocked.Exchange(ref _ioInterrupt, 0);
+                    Interlocked.Exchange(ref _readErrors, 0);
+                    continue;
                 }
-                else if (!_clock.IsRunning)
-                    _clock.Start();
-
-                ffmpeg.av_packet_unref(packet);
-                var read = ffmpeg.av_read_frame(_format, packet);
                 if (FfmpegError.IsEof(read))
                 {
-                    if (_step)
-                    {
-                        FinishStep();
-                        continue;
-                    }
-
-                    RaiseEnded();
-                    Pause();
+                    ReturnPacket(packet);
+                    Interlocked.Exchange(ref _demuxEof, 1);
+                    _videoPackets!.Write(new PacketLease(this, IntPtr.Zero, Epoch, true), 0, _cancel.Token);
+                    if (HasAudio)
+                        _audioPackets!.Write(new PacketLease(this, IntPtr.Zero, Epoch, true), 0, _cancel.Token);
                     continue;
                 }
-
                 if (read < 0)
                 {
-                    if (++readErrors >= 10)
+                    ReturnPacket(packet);
+                    if (HasTimelineRequest())
                     {
-                        if (_step)
-                            FinishStep();
-                        else
-                        {
-                            RaiseFaulted(new InvalidOperationException($"读取媒体失败，FFmpeg 错误码 {read}。"));
-                            Pause();
-                        }
+                        Interlocked.Exchange(ref _readErrors, 0);
+                        continue;
                     }
-
+                    if (Interlocked.Increment(ref _readErrors) >= 10)
+                        throw new InvalidOperationException($"读取媒体失败，FFmpeg 错误码 {read}。");
                     continue;
                 }
+                Interlocked.Exchange(ref _readErrors, 0);
+                var lease = new PacketLease(this, packet, Epoch);
+                if (native->stream_index == _videoIndex)
+                    _videoPackets!.Write(lease, lease.Bytes, _cancel.Token);
+                else if (native->stream_index == Volatile.Read(ref _audioIndex))
+                    _audioPackets!.Write(lease, lease.Bytes, _cancel.Token);
+                else
+                    lease.Dispose();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            RaiseFaulted(ex);
+        }
+    }
 
-                readErrors = 0;
+    private void ProcessTimelineRequests()
+    {
+        SeekRequest? seek;
+        int? audioSwitch;
+        lock (_gate)
+        {
+            seek = _seekRequest;
+            _seekRequest = null;
+            audioSwitch = _requestedAudioIndex;
+            _requestedAudioIndex = null;
+        }
+        if (audioSwitch is int index && index != Volatile.Read(ref _audioIndex))
+        {
+            lock (_audioCodecGate)
+            {
+                if (SwitchAudio(index))
+                    seek ??= new SeekRequest(Position, Interlocked.Increment(ref _epoch), 0, Stopwatch.GetTimestamp());
+            }
+        }
+        if (seek == null)
+            return;
 
-                if (packet->stream_index == _videoIndex)
+        _videoPackets!.Clear(packet => packet.Dispose());
+        _audioPackets!.Clear(packet => packet.Dispose());
+        _videoFrames!.Clear(ReleaseVideoItem);
+        lock (_videoCodecGate)
+        {
+            if (_videoDecoderThreads == 1)
+            {
+                var decoder = ffmpeg.avcodec_find_decoder(_format->streams[_videoIndex]->codecpar->codec_id);
+                OpenVideoDecoder(decoder, 0);
+            }
+            ffmpeg.avcodec_flush_buffers(_videoCodec);
+        }
+        lock (_audioCodecGate)
+        {
+            if (_audioCodec != null)
+                ffmpeg.avcodec_flush_buffers(_audioCodec);
+            _timeStretcher.Reset();
+        }
+        Interlocked.Exchange(ref _demuxEof, 0);
+        Interlocked.Exchange(ref _videoDone, 0);
+        Interlocked.Exchange(ref _audioDone, 0);
+        Interlocked.Exchange(ref _ioInterrupt, 0);
+        var ticks = new MediaTimeBase(_videoTimeBase.num, _videoTimeBase.den).FromTimeSpanTicks(seek.Position.Ticks);
+        var result = ffmpeg.av_seek_frame(_format, _videoIndex, Math.Max(0, ticks), ffmpeg.AVSEEK_FLAG_BACKWARD);
+        if (result == ffmpeg.AVERROR_EXIT)
+        {
+            lock (_gate)
+            {
+                if (_seekRequest == null)
+                    _seekRequest = seek;
+            }
+            Interlocked.Exchange(ref _ioInterrupt, 0);
+            return;
+        }
+        if (result < 0)
+            throw new InvalidOperationException($"FFmpeg 无法定位到目标时间，错误码 {result}。");
+    }
+
+    private void VideoDecodeLoop()
+    {
+        var frame = ffmpeg.av_frame_alloc();
+        try
+        {
+            while (_cancel is { IsCancellationRequested: false })
+            {
+                if (!_videoPackets!.Read(out var item, _cancel.Token))
+                    break;
+                _videoPackets.Release(item.Bytes);
+                using (item)
                 {
-                    ffmpeg.avcodec_send_packet(_videoCodec, packet);
-                    while (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
+                    if (!item.EndOfStream && item.Epoch != Epoch)
+                        continue;
+                    lock (_videoCodecGate)
                     {
-                        var pts = Pts(videoFrame, _videoTimeBase);
-                        if (WaitForPresentation(pts))
-                        {
-                            PresentDecoded(videoFrame, pts);
-                            if (_step)
-                            {
-                                ffmpeg.av_frame_unref(videoFrame);
-                                FinishStep();
-                                break;
-                            }
-                        }
-
-                        ffmpeg.av_frame_unref(videoFrame);
+                        var send = ffmpeg.avcodec_send_packet(_videoCodec, item.EndOfStream ? null : item.Packet);
+                        if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
+                            throw new InvalidOperationException($"视频解码器接收压缩包失败，错误码 {send}。");
+                        ReceiveVideoFrames(frame, item.Epoch);
                     }
+                    if (item.EndOfStream)
+                        _videoFrames!.Write(new VideoQueueItem(null, item.Epoch, true), 0, _cancel.Token);
                 }
-                else if (packet->stream_index == _audioIndex && _audioCodec != null && _resampler != null)
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            RaiseFaulted(ex);
+        }
+        finally
+        {
+            ffmpeg.av_frame_free(&frame);
+        }
+    }
+
+    private void ReceiveVideoFrames(AVFrame* frame, long epoch)
+    {
+        while (true)
+        {
+            var received = ffmpeg.avcodec_receive_frame(_videoCodec, frame);
+            if (received == ffmpeg.AVERROR(ffmpeg.EAGAIN) || FfmpegError.IsEof(received))
+                return;
+            if (received < 0)
+                throw new InvalidOperationException($"视频解码失败，FFmpeg 错误码 {received}。");
+            if (epoch != Epoch)
+            {
+                ffmpeg.av_frame_unref(frame);
+                continue;
+            }
+            var pts = Timestamp(frame);
+            var duration = Math.Max(0, frame->duration);
+            var seek = ActiveSeek(epoch);
+            if (seek != null && pts >= 0)
+            {
+                var target = new MediaTimeBase(_videoTimeBase.num, _videoTimeBase.den).FromTimeSpanTicks(seek.Position.Ticks);
+                if (pts + duration < target)
                 {
-                    ffmpeg.avcodec_send_packet(_audioCodec, packet);
-                    while (ffmpeg.avcodec_receive_frame(_audioCodec, audioFrame) >= 0)
+                    ffmpeg.av_frame_unref(frame);
+                    continue;
+                }
+            }
+            var decoded = ToBgra(frame, pts, duration, epoch);
+            ffmpeg.av_frame_unref(frame);
+            try
+            {
+                var item = new VideoQueueItem(decoded, epoch);
+                Volatile.Write(ref _videoQueueDepth, _videoFrames!.Count + 1);
+                _videoFrames.Write(item, item.Bytes, _cancel!.Token);
+            }
+            catch
+            {
+                decoded.ReturnBuffer();
+                throw;
+            }
+        }
+    }
+
+    private void AudioDecodeLoop()
+    {
+        var frame = ffmpeg.av_frame_alloc();
+        try
+        {
+            while (_cancel is { IsCancellationRequested: false })
+            {
+                if (!_audioPackets!.Read(out var item, _cancel.Token))
+                    break;
+                _audioPackets.Release(item.Bytes);
+                using (item)
+                {
+                    if (!item.EndOfStream && item.Epoch != Epoch)
+                        continue;
+                    lock (_audioCodecGate)
                     {
-                        if (!_step)
-                            EmitAudio(audioFrame);
-                        ffmpeg.av_frame_unref(audioFrame);
+                        if (_audioCodec == null || _resampler == null)
+                            continue;
+                        var send = ffmpeg.avcodec_send_packet(_audioCodec, item.EndOfStream ? null : item.Packet);
+                        if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
+                            throw new InvalidOperationException($"音频解码器接收压缩包失败，错误码 {send}。");
+                        while (true)
+                        {
+                            var received = ffmpeg.avcodec_receive_frame(_audioCodec, frame);
+                            if (received == ffmpeg.AVERROR(ffmpeg.EAGAIN) || FfmpegError.IsEof(received))
+                                break;
+                            if (received < 0)
+                                throw new InvalidOperationException($"音频解码失败，FFmpeg 错误码 {received}。");
+                            if (item.Epoch == Epoch)
+                                EmitAudio(frame, item.Epoch);
+                            ffmpeg.av_frame_unref(frame);
+                        }
+                        if (item.EndOfStream)
+                        {
+                            DrainResampler(item.Epoch);
+                            var tail = _timeStretcher.Flush(OutputChannels, Rate);
+                            if (tail.Length > 0)
+                                EmitPcm(tail, tail.Length, Interlocked.Read(ref _audioEpoch));
+                        }
+                    }
+                    if (item.EndOfStream)
+                        Interlocked.Exchange(ref _audioDone, 1);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            RaiseFaulted(ex);
+        }
+        finally
+        {
+            ffmpeg.av_frame_free(&frame);
+        }
+    }
+
+    private void VideoSchedulerLoop()
+    {
+        var presentedSeekEpoch = -1L;
+        try
+        {
+            while (_cancel is { IsCancellationRequested: false })
+            {
+                if (!_videoFrames!.Read(out var item, _cancel.Token))
+                    break;
+                _videoFrames.Release(item.Bytes);
+                Volatile.Write(ref _videoQueueDepth, _videoFrames.Count);
+                if (item.EndOfStream)
+                {
+                    if (item.Epoch == Epoch)
+                    {
+                        Interlocked.Exchange(ref _videoDone, 1);
+                        CompleteEndOfStream(item.Epoch);
+                    }
+                    continue;
+                }
+                var frame = item.Frame!;
+                if (item.Epoch != Epoch)
+                {
+                    frame.ReturnBuffer();
+                    continue;
+                }
+                var targetFrame = frame.SeekStartedTimestamp > 0 && presentedSeekEpoch != frame.Epoch;
+                if (targetFrame)
+                    presentedSeekEpoch = frame.Epoch;
+                if (!WaitForPresentation(frame, targetFrame))
+                {
+                    frame.ReturnBuffer();
+                    continue;
+                }
+                Volatile.Write(ref _positionTicks, Math.Max(0, frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp)));
+                Deliver(frame);
+                if (_step)
+                {
+                    _step = false;
+                    lock (_gate)
+                    {
+                        _clockOriginTicks = Position.Ticks;
+                        _clock.Reset();
                     }
                 }
             }
@@ -472,58 +787,86 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         catch (Exception ex)
         {
             RaiseFaulted(ex);
-            Pause();
-        }
-        finally
-        {
-            ffmpeg.av_frame_free(&audioFrame);
-            ffmpeg.av_frame_free(&videoFrame);
-            ffmpeg.av_packet_free(&packet);
         }
     }
 
-    private void PresentNearest(AVFrame* videoFrame, double target)
+    private bool WaitForPresentation(VideoFrame frame, bool targetFrame)
     {
-        const int maxPackets = 600;
-        var packet = ffmpeg.av_packet_alloc();
-        var previous = ffmpeg.av_frame_alloc();
-        try
+        while (_cancel is { IsCancellationRequested: false })
         {
-            for (var i = 0; i < maxPackets; i++)
+            if (frame.Epoch != Epoch)
+                return false;
+            if (!_isPlaying && !_step)
             {
-                ffmpeg.av_packet_unref(packet);
-                if (ffmpeg.av_read_frame(_format, packet) < 0)
-                    break;
-                if (packet->stream_index != _videoIndex)
-                    continue;
-                ffmpeg.avcodec_send_packet(_videoCodec, packet);
-                while (ffmpeg.avcodec_receive_frame(_videoCodec, videoFrame) >= 0)
-                {
-                    var pic = videoFrame->best_effort_timestamp;
-                    if (pic == ffmpeg.AV_NOPTS_VALUE)
-                        pic = videoFrame->pts;
-                    if (pic == ffmpeg.AV_NOPTS_VALUE || pic * Q2d(_videoTimeBase) >= target - 0.0005)
-                    {
-                        Deliver(ToBgra(videoFrame));
-                        ffmpeg.av_frame_unref(videoFrame);
-                        return;
-                    }
-
-                    ffmpeg.av_frame_unref(previous);
-                    ffmpeg.av_frame_ref(previous, videoFrame);
-                    ffmpeg.av_frame_unref(videoFrame);
-                }
+                Thread.Sleep(5);
+                continue;
             }
-
-            if (previous->data[0] != null)
-                Deliver(ToBgra(previous));
+            if (_step)
+                return true;
+            var targetSeconds = frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp) / (double)TimeSpan.TicksPerSecond;
+            var wait = targetSeconds - MediaSeconds();
+            if (wait <= 0.005)
+            {
+                var frameDuration = Math.Max(0.001, frame.TimeBase.ToTimeSpanTicks(frame.Duration) / (double)TimeSpan.TicksPerSecond);
+                if (!targetFrame && wait < -Math.Max(0.08, frameDuration * 2))
+                {
+                    Interlocked.Increment(ref _droppedFrames);
+                    return false;
+                }
+                return true;
+            }
+            Thread.Sleep(TimeSpan.FromMilliseconds(Math.Min(10, Math.Max(1, wait * 500))));
         }
-        finally
+        return false;
+    }
+
+    private void CompleteEndOfStream(long epoch)
+    {
+        while (_cancel is { IsCancellationRequested: false } && epoch == Epoch)
         {
-            ffmpeg.av_frame_free(&previous);
-            ffmpeg.av_packet_free(&packet);
+            if (Volatile.Read(ref _demuxEof) == 1
+                && Volatile.Read(ref _videoDone) == 1
+                && (!HasAudio || Volatile.Read(ref _audioDone) == 1)
+                && (AudioOutputDrained?.Invoke() ?? (UnplayedBytes?.Invoke() ?? 0) == 0)
+                && _isPlaying)
+            {
+                Volatile.Write(ref _positionTicks, Duration.Ticks);
+                RaiseEnded();
+                _isPlaying = false;
+                _clock.Stop();
+                return;
+            }
+            Thread.Sleep(5);
         }
     }
+
+    private bool HasTimelineRequest()
+    {
+        lock (_gate)
+            return _seekRequest != null || _requestedAudioIndex != null;
+    }
+
+    private SeekRequest? ActiveSeek(long epoch)
+    {
+        lock (_gate)
+            return _activeSeek?.Epoch == epoch ? _activeSeek : null;
+    }
+
+    private IntPtr RentPacket()
+    {
+        if (_packetPool.TryTake(out var pooled))
+            return pooled;
+        return (IntPtr)ffmpeg.av_packet_alloc();
+    }
+
+    private void ReturnPacket(IntPtr packet)
+    {
+        var native = (AVPacket*)packet;
+        ffmpeg.av_packet_unref(native);
+        _packetPool.Add(packet);
+    }
+
+    private void ReleaseVideoItem(VideoQueueItem item) => item.Frame?.ReturnBuffer();
 
     private bool SwitchAudio(int index)
     {
@@ -532,10 +875,6 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         {
             OpenAudioDecoder(index);
             MarkSelected();
-            if (_videoCodec != null)
-                ffmpeg.avcodec_flush_buffers(_videoCodec);
-            if (_audioCodec != null)
-                ffmpeg.avcodec_flush_buffers(_audioCodec);
             Interlocked.Increment(ref _audioEpoch);
             Interlocked.Exchange(ref _audioWritten, 0);
             return true;
@@ -551,10 +890,33 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             {
                 Volatile.Write(ref _audioIndex, -1);
             }
-
             MarkSelected();
             return false;
         }
+    }
+
+    private void OpenVideoDecoder(AVCodec* decoder, int threadCount)
+    {
+        if (decoder == null)
+            throw new InvalidOperationException("没有可解码的视频流。");
+        var context = ffmpeg.avcodec_alloc_context3(decoder);
+        try
+        {
+            FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
+            context->thread_count = threadCount;
+            FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "打开视频解码器");
+        }
+        catch
+        {
+            ffmpeg.avcodec_free_context(&context);
+            throw;
+        }
+        var previous = _videoCodec;
+        _videoCodec = context;
+        _videoDecoderThreads = threadCount;
+        _videoCodecName = ffmpeg.avcodec_get_name(decoder->id);
+        if (previous != null)
+            ffmpeg.avcodec_free_context(&previous);
     }
 
     private void OpenAudioDecoder(int streamIndex)
@@ -574,6 +936,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, stream->codecpar), "复制音频参数");
             FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, decoder, null), "打开音频解码器");
             _audioCodecName = ffmpeg.avcodec_get_name(decoder->id);
+            _audioTimeBase = stream->time_base;
             _channels = _audioCodec->ch_layout.nb_channels;
             _outputChannels = _channels > 0 ? _channels : 2;
             _sampleRate = _audioCodec->sample_rate;
@@ -585,15 +948,8 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var inputLayout = _audioCodec->ch_layout;
                 SwrContext* resampler = null;
                 FfmpegError.Check(ffmpeg.swr_alloc_set_opts2(
-                    &resampler,
-                    &outputLayout,
-                    AVSampleFormat.AV_SAMPLE_FMT_S16,
-                    48000,
-                    &inputLayout,
-                    _audioCodec->sample_fmt,
-                    _audioCodec->sample_rate,
-                    0,
-                    null), "创建音频重采样");
+                    &resampler, &outputLayout, AVSampleFormat.AV_SAMPLE_FMT_S16, 48000,
+                    &inputLayout, _audioCodec->sample_fmt, _audioCodec->sample_rate, 0, null), "创建音频重采样");
                 _resampler = resampler;
                 FfmpegError.Check(ffmpeg.swr_init(_resampler), "初始化音频重采样");
             }
@@ -601,7 +957,6 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             {
                 ffmpeg.av_channel_layout_uninit(&outputLayout);
             }
-
             Volatile.Write(ref _audioIndex, streamIndex);
         }
         catch
@@ -628,6 +983,194 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _timeStretcher.Reset();
     }
 
+    private void EmitAudio(AVFrame* frame, long epoch)
+    {
+        var pts = Timestamp(frame);
+        var seek = ActiveSeek(epoch);
+        if (seek != null && pts >= 0)
+        {
+            var target = new MediaTimeBase(_audioTimeBase.num, _audioTimeBase.den).FromTimeSpanTicks(seek.Position.Ticks);
+            if (pts < target)
+                return;
+        }
+        var outSamples = (int)ffmpeg.av_rescale_rnd(
+            ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + frame->nb_samples,
+            48000, frame->sample_rate, AVRounding.AV_ROUND_UP);
+        ConvertAudio(frame->extended_data, frame->nb_samples, outSamples, epoch);
+    }
+
+    private void DrainResampler(long epoch)
+    {
+        while (true)
+        {
+            var delay = ffmpeg.swr_get_delay(_resampler, 48000);
+            if (delay <= 0)
+                break;
+            var outSamples = (int)Math.Min(4096, ffmpeg.av_rescale_rnd(delay, 48000, 48000, AVRounding.AV_ROUND_UP));
+            var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(4, outSamples * OutputChannels * 2));
+            try
+            {
+                int converted;
+                fixed (byte* pointer = buffer)
+                {
+                    var dest0 = pointer;
+                    var dest = &dest0;
+                    converted = ffmpeg.swr_convert(_resampler, dest, outSamples, null, 0);
+                }
+                if (converted <= 0)
+                    break;
+                EmitConverted(buffer, converted * OutputChannels * 2, epoch);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+    }
+
+    private void ConvertAudio(byte** source, int inputSamples, int outSamples, long epoch)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(outSamples * OutputChannels * 2, 4));
+        try
+        {
+            int converted;
+            fixed (byte* pointer = buffer)
+            {
+                var dest0 = pointer;
+                var dest = &dest0;
+                converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, inputSamples);
+            }
+            if (converted > 0)
+                EmitConverted(buffer, converted * OutputChannels * 2, epoch);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private void EmitConverted(byte[] buffer, int count, long epoch)
+    {
+        var pcmEpoch = Interlocked.Read(ref _audioEpoch);
+        var output = _timeStretcher.Process(buffer, count, OutputChannels, Rate);
+        if (output.Length > 0 && epoch == Epoch)
+            EmitPcm(output, output.Length, pcmEpoch);
+    }
+
+    private void EmitPcm(byte[] output, int count, long pcmEpoch)
+    {
+        if (pcmEpoch != Interlocked.Read(ref _audioEpoch))
+            return;
+        Interlocked.Add(ref _audioWritten, count);
+        AudioPcm?.Invoke(output, count);
+    }
+
+    private VideoFrame ToBgra(AVFrame* source, long pts, long duration, long epoch)
+    {
+        if (_frameBytes <= 0)
+            _frameBytes = Math.Max(1, ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1));
+        var buffer = _framePool.Rent(_frameBytes);
+        try
+        {
+            var stride = _width * 4;
+            fixed (byte* pointer = buffer)
+            {
+                var data = new byte_ptrArray4();
+                var lines = new int_array4();
+                ffmpeg.av_image_fill_arrays(ref data, ref lines, pointer, AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
+                ffmpeg.sws_scale(_scaler, source->data, source->linesize, 0, source->height, data, lines);
+                stride = lines[0];
+            }
+            var seek = ActiveSeek(epoch);
+            return new VideoFrame
+            {
+                Width = _width,
+                Height = _height,
+                Stride = stride,
+                Data = buffer,
+                PresentationTimestamp = pts,
+                Duration = duration,
+                TimeBase = new MediaTimeBase(_videoTimeBase.num, _videoTimeBase.den),
+                SessionId = SessionId,
+                Epoch = epoch,
+                TimelineId = TimelineId,
+                FrameSequence = Interlocked.Increment(ref _frameSequence),
+                DecodedTimestamp = Stopwatch.GetTimestamp(),
+                OpenedTimestamp = _openedTimestamp,
+                SeekStartedTimestamp = seek?.StartedTimestamp ?? 0,
+                SeekCommandId = seek?.CommandId > 0 ? seek.CommandId : null,
+                ZeroCopyLevel = ZeroCopyLevel.Z1,
+                ReleaseBuffer = () => _framePool.Return(buffer)
+            };
+        }
+        catch
+        {
+            _framePool.Return(buffer);
+            throw;
+        }
+    }
+
+    private double MediaSeconds()
+    {
+        var device = AudioDevicePosition?.Invoke();
+        if (device is double seconds && double.IsFinite(seconds) && seconds >= 0)
+            return seconds;
+        return _clockOriginTicks / (double)TimeSpan.TicksPerSecond + _clock.Elapsed.TotalSeconds * Rate;
+    }
+
+    private void Deliver(VideoFrame frame)
+    {
+        var handler = FrameArrived;
+        if (handler == null)
+        {
+            frame.ReturnBuffer();
+            return;
+        }
+        try
+        {
+            handler(frame);
+        }
+        catch
+        {
+            frame.ReturnBuffer();
+            throw;
+        }
+    }
+
+    private void RaiseEnded()
+    {
+        if (_endedRaised)
+            return;
+        _endedRaised = true;
+        Ended?.Invoke();
+    }
+
+    private void RaiseFaulted(Exception error)
+    {
+        if (_endedRaised)
+            return;
+        _endedRaised = true;
+        _isPlaying = false;
+        Faulted?.Invoke(error);
+    }
+
+    private static int OnInterrupt(void* opaque)
+    {
+        try
+        {
+            if (opaque == null)
+                return 1;
+            var state = GCHandle.FromIntPtr((IntPtr)opaque).Target as FfmpegPlayer;
+            if (state?._cancel?.IsCancellationRequested != false)
+                return 1;
+            return Volatile.Read(ref state._ioInterrupt);
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
     private void LoadAudioTracks()
     {
         var tracks = new List<MediaTrack>();
@@ -638,15 +1181,10 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var stream = _format->streams[i];
                 if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_AUDIO)
                     continue;
-                tracks.Add(new MediaTrack(
-                    i,
-                    MediaTrackKind.Audio,
-                    DictGet(stream->metadata, "title") ?? "",
-                    DictLanguage(stream->metadata),
+                tracks.Add(new MediaTrack(i, MediaTrackKind.Audio, DictGet(stream->metadata, "title") ?? "", DictLanguage(stream->metadata),
                     i == Volatile.Read(ref _audioIndex)));
             }
         }
-
         lock (_gate)
             _audioTracks = tracks;
     }
@@ -661,15 +1199,10 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 var stream = _format->streams[i];
                 if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_SUBTITLE)
                     continue;
-                tracks.Add(new MediaTrack(
-                    i,
-                    MediaTrackKind.Subtitle,
-                    DictGet(stream->metadata, "title") ?? "",
-                    DictLanguage(stream->metadata),
+                tracks.Add(new MediaTrack(i, MediaTrackKind.Subtitle, DictGet(stream->metadata, "title") ?? "", DictLanguage(stream->metadata),
                     i == Volatile.Read(ref _subtitleIndex)));
             }
         }
-
         lock (_gate)
             _subtitleTracks = tracks;
     }
@@ -680,10 +1213,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         lock (_gate)
         {
             for (var i = 0; i < _audioTracks.Count; i++)
-            {
-                var track = _audioTracks[i];
-                _audioTracks[i] = track with { Selected = track.Index == selected };
-            }
+                _audioTracks[i] = _audioTracks[i] with { Selected = _audioTracks[i].Index == selected };
         }
     }
 
@@ -706,14 +1236,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
     private IReadOnlyList<string> FormatSubtitleTracks()
     {
         lock (_gate)
-        {
             return _subtitleTracks.Select(track =>
             {
                 var name = string.IsNullOrWhiteSpace(track.Title) ? $"流 {track.Index}" : track.Title;
                 var language = string.IsNullOrWhiteSpace(track.Language) ? "" : $"，{track.Language}";
                 return $"{name}{language}";
             }).ToList();
-        }
     }
 
     private static string? DictGet(AVDictionary* dict, string key)
@@ -745,201 +1273,14 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         catch (CultureNotFoundException)
         {
         }
-
         return code;
     }
 
-    private void SeekTo(double seconds)
+    private static long Timestamp(AVFrame* frame)
     {
-        var ticks = (long)(seconds / Q2d(_videoTimeBase));
-        if (ffmpeg.av_seek_frame(_format, _videoIndex, Math.Max(0, ticks), ffmpeg.AVSEEK_FLAG_BACKWARD) >= 0)
-            _endedRaised = false;
-        ffmpeg.avcodec_flush_buffers(_videoCodec);
-        if (_audioCodec != null)
-            ffmpeg.avcodec_flush_buffers(_audioCodec);
-        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(seconds).Ticks);
+        var timestamp = frame->best_effort_timestamp;
+        if (timestamp == ffmpeg.AV_NOPTS_VALUE)
+            timestamp = frame->pts;
+        return timestamp == ffmpeg.AV_NOPTS_VALUE ? 0 : timestamp;
     }
-
-    private void PresentDecoded(AVFrame* videoFrame, double? pts = null)
-    {
-        pts ??= Pts(videoFrame, _videoTimeBase);
-        var shown = double.IsFinite(pts.Value) && pts.Value >= 0 ? pts.Value : MediaSeconds();
-        Volatile.Write(ref _positionTicks, TimeSpan.FromSeconds(Math.Max(0, shown)).Ticks);
-        Deliver(ToBgra(videoFrame));
-        _lastPresentMs = Environment.TickCount64;
-    }
-
-    private void FinishStep()
-    {
-        _step = false;
-        Pause();
-        lock (_gate)
-        {
-            _clockOrigin = Position.TotalSeconds;
-            _clock.Reset();
-        }
-
-        Interlocked.Exchange(ref _audioWritten, 0);
-    }
-
-    private bool WaitForPresentation(double pts)
-    {
-        while (_cancel is { IsCancellationRequested: false })
-        {
-            if (_step)
-                return true;
-            if (!IsPlaying)
-                return false;
-            lock (_gate)
-            {
-                if (_seekSeconds != null || _requestedAudioIndex != null)
-                    return false;
-            }
-
-            var wait = pts - MediaSeconds();
-            if (wait <= 0.02)
-            {
-                if (wait < -0.08 && Environment.TickCount64 - _lastPresentMs < 40)
-                    return false;
-                return true;
-            }
-
-            if (wait > 5)
-                return true;
-            Thread.Sleep(TimeSpan.FromMilliseconds(Math.Min(20, Math.Max(1, wait * 1000))));
-        }
-
-        return false;
-    }
-
-    private double MediaSeconds()
-    {
-        var rate = Volatile.Read(ref _rate);
-        if (Math.Abs(rate - 1) < 0.0001 && UnplayedBytes != null)
-        {
-            var queued = Math.Max(0, UnplayedBytes());
-            var played = Math.Max(0, Interlocked.Read(ref _audioWritten) - queued);
-            return _clockOrigin + played / (48000d * OutputChannels * 2);
-        }
-
-        return _clockOrigin + _clock.Elapsed.TotalSeconds * rate;
-    }
-
-    private void Deliver(VideoFrame frame)
-    {
-        var handler = FrameArrived;
-        if (handler == null)
-        {
-            frame.ReturnBuffer();
-            return;
-        }
-
-        try
-        {
-            handler(frame);
-        }
-        catch
-        {
-            frame.ReturnBuffer();
-            throw;
-        }
-    }
-
-    private void EmitAudio(AVFrame* frame)
-    {
-        var epoch = Volatile.Read(ref _audioEpoch);
-        var outSamples = (int)ffmpeg.av_rescale_rnd(
-            ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + frame->nb_samples,
-            48000,
-            frame->sample_rate,
-            AVRounding.AV_ROUND_UP);
-        var bytes = outSamples * OutputChannels * 2;
-        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(bytes * 2, 4));
-        try
-        {
-            int count;
-            fixed (byte* pointer = buffer)
-            {
-                var dest0 = pointer;
-                var dest = &dest0;
-                var source = frame->extended_data;
-                var converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, frame->nb_samples);
-                if (converted <= 0)
-                    return;
-                count = converted * OutputChannels * 2;
-            }
-
-            if (epoch != Volatile.Read(ref _audioEpoch))
-                return;
-            var output = _timeStretcher.Process(buffer, count, OutputChannels, Volatile.Read(ref _rate));
-            if (output.Length <= 0)
-                return;
-            Interlocked.Add(ref _audioWritten, output.Length);
-            AudioPcm?.Invoke(output, output.Length);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    private VideoFrame ToBgra(AVFrame* source)
-    {
-        if (_frameBytes <= 0)
-            _frameBytes = Math.Max(1, ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1));
-        var size = _frameBytes;
-        var buffer = _framePool.Rent(size);
-        try
-        {
-            var stride = _width * 4;
-            fixed (byte* pointer = buffer)
-            {
-                var data = new byte_ptrArray4();
-                var lines = new int_array4();
-                ffmpeg.av_image_fill_arrays(ref data, ref lines, pointer, AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1);
-                ffmpeg.sws_scale(_scaler, source->data, source->linesize, 0, source->height, data, lines);
-                stride = lines[0];
-            }
-
-            return new VideoFrame
-            {
-                Width = _width,
-                Height = _height,
-                Stride = stride,
-                Data = buffer,
-                ReleaseBuffer = () => _framePool.Return(buffer)
-            };
-        }
-        catch
-        {
-            _framePool.Return(buffer);
-            throw;
-        }
-    }
-
-    private void RaiseEnded()
-    {
-        if (_endedRaised)
-            return;
-        _endedRaised = true;
-        Ended?.Invoke();
-    }
-
-    private void RaiseFaulted(Exception error)
-    {
-        if (_endedRaised)
-            return;
-        _endedRaised = true;
-        Faulted?.Invoke(error);
-    }
-
-    private static double Pts(AVFrame* frame, AVRational timeBase)
-    {
-        var ticks = frame->best_effort_timestamp;
-        if (ticks == ffmpeg.AV_NOPTS_VALUE)
-            ticks = frame->pts;
-        return ticks == ffmpeg.AV_NOPTS_VALUE ? 0 : ticks * Q2d(timeBase);
-    }
-
-    private static double Q2d(AVRational rational) => rational.den == 0 ? 0 : rational.num / (double)rational.den;
 }

@@ -221,6 +221,18 @@ public sealed class VideoFrame
     public required int Stride { get; init; }
     public required byte[] Data { get; init; }
     public bool BottomUp { get; init; }
+    public long PresentationTimestamp { get; init; }
+    public long Duration { get; init; }
+    public MediaTimeBase TimeBase { get; init; } = MediaTimeBase.TimeSpanTicks;
+    public Guid SessionId { get; set; }
+    public long Epoch { get; set; }
+    public string TimelineId { get; set; } = "";
+    public long FrameSequence { get; init; }
+    public long DecodedTimestamp { get; init; }
+    public long OpenedTimestamp { get; init; }
+    public long SeekStartedTimestamp { get; init; }
+    public long? SeekCommandId { get; init; }
+    public ZeroCopyLevel ZeroCopyLevel { get; init; } = ZeroCopyLevel.Z1;
     public Action? ReleaseBuffer { get; init; }
 
     public void ReturnBuffer()

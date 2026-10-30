@@ -29,6 +29,10 @@ public sealed class PipelineInfo
     public IReadOnlyList<string> Filters { get; init; } = [];
     public IReadOnlyList<string> Connections { get; init; } = [];
     public IReadOnlyList<string> Usage { get; init; } = [];
+    public string? ClockSource { get; init; }
+    public string? ZeroCopyLevel { get; init; }
+    public int DroppedFrames { get; init; }
+    public int VideoQueueDepth { get; init; }
 
     public string Format()
     {
@@ -61,6 +65,10 @@ public sealed class PipelineInfo
         text.AppendLine($"像素格式：{Value(PixelFormat)}");
         text.AppendLine($"解码器：{Value(VideoDecoder)}");
         text.AppendLine($"硬件加速：{Value(Hardware)}");
+        text.AppendLine($"零拷贝等级：{Value(ZeroCopyLevel)}");
+        text.AppendLine($"主时钟：{Value(ClockSource)}");
+        text.AppendLine($"丢帧：{DroppedFrames}");
+        text.AppendLine($"视频队列：{VideoQueueDepth} 帧");
 
         text.AppendLine();
         text.AppendLine("音频");

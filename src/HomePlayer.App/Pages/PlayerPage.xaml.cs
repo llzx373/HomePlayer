@@ -612,15 +612,22 @@ public sealed partial class PlayerPage : Page
 
     private void Pipeline_Click(object sender, RoutedEventArgs e) => TogglePipeline();
 
-    private async void Ffmpeg_Click(object sender, RoutedEventArgs e)
+    private async void Ffmpeg_Click(object sender, RoutedEventArgs e) => await OpenWithRoute(PlaybackRoute.NativeFfmpeg);
+
+    private async void Lav_Click(object sender, RoutedEventArgs e) => await OpenWithRoute(PlaybackRoute.DirectShow);
+
+    private async Task OpenWithRoute(PlaybackRoute route)
     {
         if (Playback.Playlist.Current == null)
             return;
-        await Playback.PlayPathsAsync(Playback.Playlist.Items.Select(item => item.Path).ToList(), Playback.Playlist.CurrentIndex, true);
+        await Playback.PlayPathsAsync(
+            Playback.Playlist.Items.Select(item => item.Path).ToList(),
+            Playback.Playlist.CurrentIndex,
+            route: route);
     }
 
     private void OpenFlyout_Opening(object sender, object e) =>
-        FfmpegItem.IsEnabled = Playback.Playlist.Current != null;
+        OtherRoutesItem.IsEnabled = Playback.Playlist.Current != null;
 
     private void Fullscreen_Click(object sender, RoutedEventArgs e) =>
         App.Window.SetFullscreen(!App.Window.IsFullscreen);

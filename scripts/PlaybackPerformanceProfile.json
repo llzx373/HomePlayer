@@ -1,0 +1,35 @@
+{
+  "schema": "homeplayer.playback.performance.profile.v1",
+  "profile": "windows-x64-software-bgra-1080p30",
+  "mediaSet": "generated-baseline-v1",
+  "quality": "FFmpeg software decode; swscale bilinear BGRA; no renderer",
+  "environmentRequirements": {
+    "os": "Windows x64",
+    "gpu": "Unknown; GPU and driver must be recorded before real-renderer acceptance",
+    "display": "Unknown; refresh rate and SDR/HDR must be recorded before real-renderer acceptance"
+  },
+  "samples": {
+    "processColdAndWarmOpens": 30,
+    "seeksPerScenario": 100,
+    "steadyMilliseconds": 5000
+  },
+  "observations": {
+    "open": "Decoded",
+    "seek": "TargetDecodedFrameAfterSeekCommand",
+    "present": "PresentReturned when the real presenter is used; otherwise Unknown"
+  },
+  "absoluteBudgets": {
+    "openP95Milliseconds": 50.0,
+    "firstDecodedP95Milliseconds": 75.0,
+    "seekP95Milliseconds": 200.0,
+    "failures": 0
+  },
+  "regressionBudgetsPercent": {
+    "firstDecodedP95": 20.0,
+    "firstDecodedP99": 30.0,
+    "seekP95": 20.0,
+    "seekP99": 30.0,
+    "steadyAllocatedBytes": 30.0
+  },
+  "notes": "The seek observation was revised from any next decoded frame to the exact target frame; the 200 ms absolute budget covers GOP decode to the target. This profile covers the deterministic software pipeline benchmark only. Real-renderer, 4K/4K60, HDR, SMB, soak and device-recovery profiles remain separate and are not marked accepted by this file."
+}

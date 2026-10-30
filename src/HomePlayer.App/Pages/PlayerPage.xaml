@@ -256,10 +256,16 @@
                                             x:Name="OpenFilesItem"
                                             Text="打开文件"
                                             Click="Open_Click" />
-                                        <MenuFlyoutItem
-                                            x:Name="FfmpegItem"
-                                            Text="用 FFmpeg 打开当前项"
-                                            Click="Ffmpeg_Click" />
+                                        <MenuFlyoutSubItem x:Name="OtherRoutesItem" Text="用其他路线打开">
+                                            <MenuFlyoutItem
+                                                x:Name="FfmpegItem"
+                                                Text="HomePlayer 原生（FFmpeg）"
+                                                Click="Ffmpeg_Click" />
+                                            <MenuFlyoutItem
+                                                x:Name="LavItem"
+                                                Text="LAV + HomePlayer"
+                                                Click="Lav_Click" />
+                                        </MenuFlyoutSubItem>
                                     </MenuFlyout>
                                 </Button.Flyout>
                             </Button>
