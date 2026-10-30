@@ -342,6 +342,7 @@ public sealed class VideoPresenter : IDisposable
         stride = 0;
         bottomUp = false;
         data = [];
+        bool gpu;
         lock (_gate)
         {
             if (_lastFrame is VideoFrame bgra)
@@ -364,8 +365,52 @@ public sealed class VideoPresenter : IDisposable
                 height = cpu.Height;
                 return true;
             }
-            return false;
+            gpu = _lastFrame is D3D11FrameLease;
         }
+        if (!gpu)
+            return false;
+
+        D3D11CapturedFrame? captured = null;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Capture()
+        {
+            try
+            {
+                lock (_deviceSync)
+                {
+                    if (_swapChain == null || _device == null || _context == null)
+                        return;
+                    using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+                    captured = D3D11FrameCapture.CopyBgra(_device, _context, back, _hdrOutput);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace("GPU screenshot error " + ex.Message);
+            }
+            finally
+            {
+                completed.TrySetResult();
+            }
+        }
+        if (_render.IsCurrentThread)
+            Capture();
+        else
+        {
+            _render.Post(Capture);
+            if (!completed.Task.Wait(2000))
+            {
+                Trace("GPU screenshot timed out");
+                return false;
+            }
+        }
+        if (captured == null)
+            return false;
+        width = captured.Width;
+        height = captured.Height;
+        stride = captured.Stride;
+        data = captured.Data;
+        return true;
     }
 
     public void Clear()
