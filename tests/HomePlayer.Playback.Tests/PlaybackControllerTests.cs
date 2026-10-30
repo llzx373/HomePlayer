@@ -51,7 +51,59 @@ public class PlaybackControllerTests
     }
 
     [Fact]
-    public async Task Fault_keeps_current_item_and_saves_unfinished_progress()
+    public async Task Fault_reopens_current_item_without_advancing()
+    {
+        var first = new FakeEngine();
+        var second = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, second]);
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engines.Dequeue(), "测试引擎"),
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+
+        first.RaiseFault(new InvalidOperationException("decode failed"));
+        await WaitFor(() => second.PlayCount > 0);
+
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal("one.mkv", controller.Playlist.Current?.Path);
+        Assert.Equal("播放已恢复", controller.Status);
+    }
+
+    [Fact]
+    public async Task Recovery_open_failure_retries_the_same_item_with_auto_route()
+    {
+        var first = new FakeEngine();
+        var recovered = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, recovered]);
+        var calls = 0;
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) =>
+            {
+                calls++;
+                if (calls == 2)
+                    throw new InvalidOperationException("original route failed");
+                return (engines.Dequeue(), "测试引擎");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+
+        first.RaiseFault(new InvalidOperationException("decode failed"));
+        await WaitFor(() => recovered.PlayCount > 0);
+
+        Assert.Equal(3, calls);
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal("one.mkv", controller.Playlist.Current?.Path);
+        Assert.Equal("播放已恢复", controller.Status);
+    }
+
+    [Fact]
+    public async Task Fault_keeps_current_item_and_saves_unfinished_progress_after_recovery_limit()
     {
         var engine = new FakeEngine();
         var store = new FakeStateStore();
@@ -61,12 +113,15 @@ public class PlaybackControllerTests
         store.Saved.Clear();
 
         engine.RaiseFault(new InvalidOperationException("decode failed"));
+        await WaitFor(() => engine.PlayCount >= 2);
+        engine.RaiseFault(new InvalidOperationException("decode failed"));
+        await WaitFor(() => engine.PlayCount >= 3);
+        engine.RaiseFault(new InvalidOperationException("decode failed"));
 
-        Assert.Equal("播放失败：decode failed", controller.Status);
+        Assert.Equal("播放失败：decode failed（已停止自动恢复）", controller.Status);
         Assert.Equal("video.mkv", controller.Playlist.Current?.Path);
-        var state = Assert.Single(store.Saved);
-        Assert.Equal(30, state.PositionSeconds);
-        Assert.False(state.Finished);
+        Assert.Contains(store.Saved, state => state.PositionSeconds == 30 && !state.Finished);
+        Assert.False(store.Saved.Last().Finished);
     }
 
     [Fact]

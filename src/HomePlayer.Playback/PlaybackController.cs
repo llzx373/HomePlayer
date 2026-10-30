@@ -192,6 +192,7 @@ public sealed partial class PlaybackController : IDisposable
         _store?.Flush();
         _token++;
         CancelNextProbe();
+        ResetRecovery();
         _playingPath = null;
         DisposeEngine();
         ClearVideoSize();
@@ -207,6 +208,7 @@ public sealed partial class PlaybackController : IDisposable
         _flushStop.Cancel();
         _token++;
         CancelNextProbe();
+        ResetRecovery();
         _playingPath = null;
         var engine = TakeEngine();
         ClearVideoSize();
@@ -376,10 +378,16 @@ public sealed partial class PlaybackController : IDisposable
         await PlayCurrentAsync(PlaybackRoute.Auto);
     }
 
-    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false)
+    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false, bool recovery = false)
     {
         RememberPosition();
-        if (!string.Equals(_playingPath, Playlist.Current?.Path, StringComparison.OrdinalIgnoreCase))
+        var currentPath = Playlist.Current?.Path;
+        if (!string.Equals(_recoveryPath, currentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _recoveryPath = currentPath;
+            _recoveryAttempts = 0;
+        }
+        if (!string.Equals(_playingPath, currentPath, StringComparison.OrdinalIgnoreCase))
             ClearLoop();
         _playingPath = null;
         _rate = 1.0;
@@ -448,7 +456,7 @@ public sealed partial class PlaybackController : IDisposable
                         if (!restart)
                             ApplyResume(engine, item.Path);
                         engine.Play();
-                        Status = _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
+                        Status = recovery ? "播放已恢复" : _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
                             ? "当前滤镜不支持倍速"
                             : InnerEngine(engine) is LavPlaybackEngine { AudioMissing: true }
                                 ? "正在播放，音频没有接上"
@@ -473,7 +481,12 @@ public sealed partial class PlaybackController : IDisposable
             {
                 failures++;
                 var failed = item;
-                var next = Playlist.NextIndex(false);
+                if (recovery && route != PlaybackRoute.Auto)
+                {
+                    route = PlaybackRoute.Auto;
+                    continue;
+                }
+                var next = recovery ? null : Playlist.NextIndex(false);
                 _post(() =>
                 {
                     failed.Error = ex.Message;
@@ -492,7 +505,7 @@ public sealed partial class PlaybackController : IDisposable
             _post(() =>
             {
                 DisposeEngine();
-                Status = "无法播放";
+                Status = recovery ? "播放恢复失败" : "无法播放";
                 EngineLabel = "未播放";
                 Notify();
             });
@@ -586,7 +599,9 @@ public sealed partial class PlaybackController : IDisposable
                 return;
             _engine?.Pause();
             PersistProgress();
-            Status = "播放失败：" + error.Message;
+            if (TryRecoverFromFault())
+                return;
+            Status = "播放失败：" + error.Message + "（已停止自动恢复）";
             Notify();
         });
     }
