@@ -108,7 +108,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
-    public event Action<byte[], int>? AudioPcm;
+    public event Action<byte[], int, long>? AudioPcm;
     public Func<int>? UnplayedBytes { get; set; }
     public Func<bool>? AudioOutputDrained { get; set; }
     public Func<double?>? AudioDevicePosition { get; set; }
@@ -1018,18 +1018,44 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
 
     private void EmitAudio(AVFrame* frame, long epoch)
     {
-        var pts = Timestamp(frame);
+        var source = frame->extended_data;
+        var inputSamples = frame->nb_samples;
+        var pts = frame->best_effort_timestamp != ffmpeg.AV_NOPTS_VALUE
+            ? frame->best_effort_timestamp
+            : frame->pts;
         var seek = ActiveSeek(epoch);
-        if (seek != null && pts >= 0)
+        if (seek != null && pts != ffmpeg.AV_NOPTS_VALUE && frame->sample_rate > 0)
         {
-            var target = new MediaTimeBase(_audioTimeBase.num, _audioTimeBase.den).FromTimeSpanTicks(seek.Position.Ticks);
-            if (pts < target)
+            var target = new MediaTimeBase(1, frame->sample_rate).FromTimeSpanTicks(seek.Position.Ticks);
+            var skip = (int)Math.Clamp(target - pts, 0, inputSamples);
+            if (skip >= inputSamples && pts < target)
                 return;
+            if (skip > 0)
+            {
+                var bytesPerSample = ffmpeg.av_get_bytes_per_sample((AVSampleFormat)frame->format);
+                var channels = Math.Max(1, frame->ch_layout.nb_channels);
+                if (bytesPerSample <= 0)
+                    throw new InvalidOperationException("音频 seek 遇到不支持的样本格式。");
+                var trimmed = stackalloc byte*[channels];
+                if (ffmpeg.av_sample_fmt_is_planar((AVSampleFormat)frame->format) != 0)
+                {
+                    for (var channel = 0; channel < channels; channel++)
+                        trimmed[channel] = source[channel] + skip * bytesPerSample;
+                }
+                else
+                {
+                    trimmed[0] = source[0] + skip * bytesPerSample * channels;
+                    for (var channel = 1; channel < channels; channel++)
+                        trimmed[channel] = null;
+                }
+                source = trimmed;
+                inputSamples -= skip;
+            }
         }
         var outSamples = (int)ffmpeg.av_rescale_rnd(
-            ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + frame->nb_samples,
+            ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + inputSamples,
             48000, frame->sample_rate, AVRounding.AV_ROUND_UP);
-        ConvertAudio(frame->extended_data, frame->nb_samples, outSamples, epoch);
+        ConvertAudio(source, inputSamples, outSamples, epoch);
     }
 
     private void DrainResampler(long epoch)
@@ -1095,7 +1121,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         if (pcmEpoch != Interlocked.Read(ref _audioEpoch))
             return;
         Interlocked.Add(ref _audioWritten, count);
-        AudioPcm?.Invoke(output, count);
+        AudioPcm?.Invoke(output, count, pcmEpoch);
     }
 
     private FrameLease ToBgra(AVFrame* source, long pts, long duration, long epoch)

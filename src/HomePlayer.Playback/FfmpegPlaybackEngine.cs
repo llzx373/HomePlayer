@@ -260,14 +260,13 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public void SetNightMode(bool enabled) => _nightMode = enabled;
 
-    private void OnPcm(byte[] data, int count)
+    private void OnPcm(byte[] data, int count, long epoch)
     {
         try
         {
             var player = _player;
-            if (player == null)
+            if (player == null || epoch != player.PcmEpoch)
                 return;
-            var epoch = player.PcmEpoch;
             if (_delayBytes > 0)
             {
                 var silence = new byte[_delayBytes];
