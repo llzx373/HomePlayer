@@ -20,6 +20,7 @@ public sealed partial class SettingsPage
         AudioNormalizationSwitch.IsOn = settings.AudioNormalization;
         AudioNightModeSwitch.IsOn = settings.AudioNightMode;
         HardwareAccelerationSwitch.IsOn = settings.HardwareAcceleration;
+        RenderQualityBox.SelectedIndex = (int)settings.RenderQuality;
         SnapshotSubtitlesSwitch.IsOn = settings.SnapshotIncludeSubtitles;
         if (_playbackFeatureEvents)
             return;
@@ -34,6 +35,7 @@ public sealed partial class SettingsPage
         AudioNormalizationSwitch.Toggled += (_, _) => SavePlaybackFeatures();
         AudioNightModeSwitch.Toggled += (_, _) => SavePlaybackFeatures();
         HardwareAccelerationSwitch.Toggled += (_, _) => SavePlaybackFeatures();
+        RenderQualityBox.SelectionChanged += (_, _) => SavePlaybackFeatures();
         SnapshotSubtitlesSwitch.Toggled += (_, _) => SavePlaybackFeatures();
     }
 
@@ -52,6 +54,7 @@ public sealed partial class SettingsPage
         settings.AudioNormalization = AudioNormalizationSwitch.IsOn;
         settings.AudioNightMode = AudioNightModeSwitch.IsOn;
         settings.HardwareAcceleration = HardwareAccelerationSwitch.IsOn;
+        settings.RenderQuality = (HomePlayer.Core.VideoRenderQuality)RenderQualityBox.SelectedIndex;
         settings.SnapshotIncludeSubtitles = SnapshotSubtitlesSwitch.IsOn;
         App.Host.SaveSettings();
     }

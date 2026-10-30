@@ -29,6 +29,7 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     public AppSettings Settings { get; }
+    public event Action? SettingsChanged;
     public LibraryRepository Repository { get; }
     public LibraryCoordinator Libraries { get; }
     public PlaybackController Playback { get; }
@@ -102,6 +103,7 @@ public sealed class AppHost : IAsyncDisposable
             Settings.LastPlaylistIndex = Playback.Playlist.CurrentIndex;
             _settingsStore.Save(Settings, SettingsWarning != null);
             SettingsWarning = null;
+            SettingsChanged?.Invoke();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

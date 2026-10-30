@@ -1,5 +1,13 @@
 namespace HomePlayer.Core;
 
+public enum VideoRenderQuality
+{
+    Basic,
+    Performance,
+    Balanced,
+    HighQuality
+}
+
 public sealed partial class AppSettings
 {
     public bool RestorePlaylist { get; set; } = true;
@@ -14,6 +22,7 @@ public sealed partial class AppSettings
     public bool AudioNormalization { get; set; }
     public bool AudioNightMode { get; set; }
     public bool HardwareAcceleration { get; set; } = true;
+    public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
     public bool SnapshotIncludeSubtitles { get; set; }
     public string UpdateChannel { get; set; } = "stable";
 }

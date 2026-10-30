@@ -86,6 +86,8 @@ public sealed partial class PlayerPage : Page
         DirectShowProvider.DeviceProvider = _presenter.GetSharedDevice;
         NativeFfmpegProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
         DirectShowProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
+        _presenter.RenderQuality = App.Host.Settings.RenderQuality;
+        App.Host.SettingsChanged += () => _presenter.RenderQuality = App.Host.Settings.RenderQuality;
         VideoHost.SizeChanged += (_, _) =>
         {
             _presenter.Refresh();

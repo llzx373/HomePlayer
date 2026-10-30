@@ -34,6 +34,7 @@
     <Content Include="Assets\FileIcons\*.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>

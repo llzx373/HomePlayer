@@ -199,7 +199,10 @@ public sealed class VideoPresenter : IDisposable
     private long _lastDisplayCheck;
     private DisplayOutputInfo _displayInfo = new("", DisplayColorMode.Unknown, "Unknown", "Unknown", 0);
     private nint _gpuTexture;
+    private ID3D11Texture2D? _gpuTextureResource;
     private int _gpuSubresource = -1;
+    private LibplaceboRenderer? _libplacebo;
+    private bool _libplaceboFailed;
     private readonly uint[] _vertexStrides = [16];
     private readonly uint[] _vertexOffsets = [0];
     private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
@@ -208,6 +211,7 @@ public sealed class VideoPresenter : IDisposable
     private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
 
     public Func<bool>? CanRender { get; set; }
+    public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
 
     public DisplayOutputInfo CurrentDisplayOutput
     {
@@ -668,26 +672,29 @@ public sealed class VideoPresenter : IDisposable
                 return;
 
             var yuv = _framePixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010;
-            WriteQuad();
-            _context.OMSetRenderTargets(_target, null);
-            _context.RSSetViewport(0, 0, _width, _height);
-            _context.RSSetState(_rasterizer);
-            _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
-            _context.IASetInputLayout(_layout);
-            _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
-            _vertexBuffers[0] = _vertices;
-            _context.IASetVertexBuffers(0, 1, _vertexBuffers, _vertexStrides, _vertexOffsets);
-            _context.VSSetShader(_vertexShader, null!, 0);
-            _context.PSSetShader(yuv ? _yuvPixelShader : _pixelShader, null!, 0);
-            _frameViews[0] = frameView;
-            _frameViews[1] = _chromaView!;
-            _context.PSSetShaderResources(0, 2, _frameViews);
-            _colorBuffers[0] = _colorConstants;
-            _context.PSSetConstantBuffers(0, 1, _colorBuffers);
-            _samplers[0] = _sampler!;
-            _context.PSSetSamplers(0, 1, _samplers);
-            _context.Draw(4, 0);
-            _context.OMSetRenderTargets(NoTargets, null);
+            if (!TryRenderLibplacebo(frame))
+            {
+                WriteQuad();
+                _context.OMSetRenderTargets(_target, null);
+                _context.RSSetViewport(0, 0, _width, _height);
+                _context.RSSetState(_rasterizer);
+                _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
+                _context.IASetInputLayout(_layout);
+                _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleStrip);
+                _vertexBuffers[0] = _vertices;
+                _context.IASetVertexBuffers(0, 1, _vertexBuffers, _vertexStrides, _vertexOffsets);
+                _context.VSSetShader(_vertexShader, null!, 0);
+                _context.PSSetShader(yuv ? _yuvPixelShader : _pixelShader, null!, 0);
+                _frameViews[0] = frameView;
+                _frameViews[1] = _chromaView!;
+                _context.PSSetShaderResources(0, 2, _frameViews);
+                _colorBuffers[0] = _colorConstants;
+                _context.PSSetConstantBuffers(0, 1, _colorBuffers);
+                _samplers[0] = _sampler!;
+                _context.PSSetSamplers(0, 1, _samplers);
+                _context.Draw(4, 0);
+                _context.OMSetRenderTargets(NoTargets, null);
+            }
             if (frame != null)
                 PlaybackTelemetry.Observe(frame, PresentationObservation.Submitted);
             WaitForFrameLatency();
@@ -720,6 +727,58 @@ public sealed class VideoPresenter : IDisposable
                 newer = _pending != null;
             if (newer)
                 PostDraw();
+        }
+    }
+
+    private bool TryRenderLibplacebo(FrameLease? frame)
+    {
+        if (RenderQuality == VideoRenderQuality.Basic || _libplaceboFailed || _swapChain == null || _device == null)
+            return false;
+        var source = _gpuTextureResource ?? _frameTexture;
+        if (source == null)
+            return false;
+        try
+        {
+            var chroma = _chromaTexture ?? (_framePixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010 ? source : null);
+            if (!LibplaceboRenderer.SupportsInput(_framePixelFormat, chroma != null && ReferenceEquals(source, chroma)))
+                return false;
+            _libplacebo ??= new LibplaceboRenderer(_device, _context!);
+            using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
+            var quality = RenderQuality switch
+            {
+                VideoRenderQuality.Performance => LibplaceboQuality.Fast,
+                VideoRenderQuality.Balanced => LibplaceboQuality.Balanced,
+                _ => LibplaceboQuality.HighQuality
+            };
+            var geometry = VideoAspect.Quad(_width, _height, _frameWidth, _frameHeight,
+                (AspectMode)Volatile.Read(ref _aspectValue), bottomUp: false);
+            var rendered = _libplacebo.Render(
+                source,
+                chroma,
+                Math.Max(0, _gpuSubresource),
+                Math.Max(0, _gpuSubresource),
+                _framePixelFormat,
+                _frameBottomUp,
+                frame?.Color ?? _lastFrame?.Color ?? default,
+                back,
+                _frameWidth,
+                _frameHeight,
+                _width,
+                _height,
+                geometry,
+                _scaleX,
+                _scaleY,
+                _hdrOutput,
+                quality);
+            if (!rendered)
+                throw new InvalidOperationException("libplacebo 渲染调用失败。");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _libplaceboFailed = true;
+            Trace("libplacebo failed, fallback to Basic: " + ex.Message);
+            return false;
         }
     }
 
@@ -1140,6 +1199,8 @@ public sealed class VideoPresenter : IDisposable
         if (chromaFormat != Format.Unknown)
             _chromaView = CreateGpuView(texture, resource.Subresource, description.ArraySize, chromaFormat);
         _gpuTexture = resource.Texture;
+        _gpuTextureResource = texture;
+        texture.AddRef();
         _gpuSubresource = resource.Subresource;
         _frameWidth = frame.Width;
         _frameHeight = frame.Height;
@@ -1187,6 +1248,8 @@ public sealed class VideoPresenter : IDisposable
         _frameTexture = null;
         _chromaTexture?.Dispose();
         _chromaTexture = null;
+        _gpuTextureResource?.Dispose();
+        _gpuTextureResource = null;
         _gpuTexture = 0;
         _gpuSubresource = -1;
         _framePixelFormat = VideoPixelFormat.Unknown;
@@ -1406,6 +1469,9 @@ public sealed class VideoPresenter : IDisposable
     {
         _deviceGeneration++;
         _sharedDevice?.Update(0, 0, _deviceGeneration);
+        _libplacebo?.Dispose();
+        _libplacebo = null;
+        _libplaceboFailed = false;
         ReleaseSwapChain();
         ReleaseFrameResources();
         _vertices?.Dispose();

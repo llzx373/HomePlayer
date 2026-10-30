@@ -34,6 +34,12 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
+## libplacebo 与渲染依赖
+
+高级画质渲染使用未修改的 [libplacebo](https://code.videolan.org/videolan/libplacebo) 7.360.1 MinGW x64 动态库，按 GNU LGPL 2.1 或更高版本分发。完整许可、对应源码入口、构建方式、版本与 DLL 校验值见 `third_party/libplacebo/README.md` 和 `third_party/libplacebo/licenses`，安装后位于程序目录的 `libplacebo` 子目录。HomePlayer 不静态链接 libplacebo，可以替换该动态库。
+
+同目录还包含其 Little CMS、libdovi、shaderc、SPIRV-Cross、Vulkan Loader 和 MinGW 运行时依赖，各自许可证一并保留，不取代 HomePlayer 的 MIT 许可。
+
 ## 主要 NuGet 依赖
 
 | 组件 | 用途 | 协议 |

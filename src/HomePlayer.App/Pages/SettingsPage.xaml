@@ -100,6 +100,13 @@
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="从剧集与合集入口播放时，会按季集顺序自动连播。" />
                                     <ToggleSwitch x:Name="HardwareAccelerationSwitch" Header="硬件加速（D3D11）" OnContent="降低稳态 CPU，失败时自动降级" OffContent="使用软件解码" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="硬解可减少稳态 CPU，但部分设备的随机 seek 会更慢；关闭后从下一次播放开始使用软件路线。" />
+                                    <ComboBox x:Name="RenderQualityBox" Header="渲染质量" SelectedIndex="0">
+                                        <ComboBoxItem Content="Basic（稳定兼容）" />
+                                        <ComboBoxItem Content="性能（libplacebo fast）" />
+                                        <ComboBoxItem Content="平衡（libplacebo default）" />
+                                        <ComboBoxItem Content="高质量（libplacebo high_quality）" />
+                                    </ComboBox>
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="libplacebo 只替换渲染后段；初始化或渲染失败时自动回退 Basic。" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">
