@@ -15,7 +15,7 @@ namespace HomePlayer;
 /// <summary>
 /// 把 CPU 平面或 D3D11 纹理租约呈现到 <see cref="SwapChainPanel"/>。
 /// 所有 D3D 调用都在专用渲染线程上串行执行，UI 线程只负责尺寸/挂载这类轻量工作。
-/// BGRA 帧继续支持直接内存截图，不在热路径上保留额外整帧副本。
+/// BGRA 直接复制、YUV 仅在截图时转换，不在热路径上保留额外 RGB 整帧副本。
 /// </summary>
 public sealed class VideoPresenter : IDisposable
 {
@@ -48,13 +48,20 @@ public sealed class VideoPresenter : IDisposable
         Texture2D lumaTexture : register(t0);
         Texture2D chromaTexture : register(t1);
         SamplerState frameSampler : register(s0);
+        cbuffer ColorConversion : register(b0) {
+            float yOffset;
+            float yScale;
+            float chromaOffset;
+            float padding;
+            float rV;
+            float gU;
+            float gV;
+            float bU;
+        };
         float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-            float y = lumaTexture.Sample(frameSampler, uv).r;
-            float2 chroma = chromaTexture.Sample(frameSampler, uv).rg;
-            y = (y - 0.062745098) * 1.16438356;
-            float u = chroma.x - 0.5;
-            float v = chroma.y - 0.5;
-            return float4(y + 1.79274107 * v, y - 0.213248614 * u - 0.532909328 * v, y + 2.11240179 * u, 1);
+            float y = (lumaTexture.Sample(frameSampler, uv).r - yOffset) * yScale;
+            float2 chroma = chromaTexture.Sample(frameSampler, uv).rg - chromaOffset;
+            return float4(y + rV * chroma.y, y - gU * chroma.x - gV * chroma.y, y + bU * chroma.x, 1);
         }
         """;
 
@@ -109,6 +116,7 @@ public sealed class VideoPresenter : IDisposable
     private ID3D11ShaderResourceView? _frameView;
     private ID3D11ShaderResourceView? _chromaView;
     private ID3D11Buffer? _vertices;
+    private ID3D11Buffer? _colorConstants;
     private ID3D11VertexShader? _vertexShader;
     private ID3D11PixelShader? _pixelShader;
     private ID3D11PixelShader? _yuvPixelShader;
@@ -133,6 +141,7 @@ public sealed class VideoPresenter : IDisposable
     private readonly uint[] _vertexStrides = [16];
     private readonly uint[] _vertexOffsets = [0];
     private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
+    private readonly ID3D11Buffer[] _colorBuffers = new ID3D11Buffer[1];
     private readonly ID3D11ShaderResourceView[] _frameViews = new ID3D11ShaderResourceView[2];
     private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
 
@@ -237,36 +246,34 @@ public sealed class VideoPresenter : IDisposable
 
     public bool TryCopyLastFrame(out int width, out int height, out int stride, out bool bottomUp, out byte[] data)
     {
+        width = 0;
+        height = 0;
+        stride = 0;
+        bottomUp = false;
+        data = [];
         lock (_gate)
         {
-            if (_lastFrame is not VideoFrame frame)
+            if (_lastFrame is VideoFrame bgra)
             {
-                width = 0;
-                height = 0;
-                stride = 0;
-                bottomUp = false;
-                data = [];
-                return false;
+                var length = Math.Min(bgra.Stride * bgra.Height, bgra.Data.Length);
+                if (length <= 0)
+                    return false;
+                width = bgra.Width;
+                height = bgra.Height;
+                stride = bgra.Stride;
+                bottomUp = bgra.BottomUp;
+                data = new byte[length];
+                Buffer.BlockCopy(bgra.Data, 0, data, 0, length);
+                return true;
             }
 
-            var length = Math.Min(frame.Stride * frame.Height, frame.Data.Length);
-            if (length <= 0)
+            if (_lastFrame is CpuFrameLease cpu && YuvFrameConverter.TryCopyBgra(cpu, out stride, out data))
             {
-                width = 0;
-                height = 0;
-                stride = 0;
-                bottomUp = false;
-                data = [];
-                return false;
+                width = cpu.Width;
+                height = cpu.Height;
+                return true;
             }
-
-            width = frame.Width;
-            height = frame.Height;
-            stride = frame.Stride;
-            bottomUp = frame.BottomUp;
-            data = new byte[length];
-            Buffer.BlockCopy(frame.Data, 0, data, 0, length);
-            return true;
+            return false;
         }
     }
 
@@ -459,7 +466,7 @@ public sealed class VideoPresenter : IDisposable
             AttachSwapChainToPanel(_swapChain.NativePointer);
 
         if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _pixelShader == null
-            || _yuvPixelShader == null || _vertices == null || _layout == null || _sampler == null || _rasterizer == null)
+            || _yuvPixelShader == null || _vertices == null || _colorConstants == null || _layout == null || _sampler == null || _rasterizer == null)
         {
             if (_device != null && _context != null && _vertexShader == null)
                 TryEnsurePipeline();
@@ -485,10 +492,17 @@ public sealed class VideoPresenter : IDisposable
 
         try
         {
-            if (upload && frame != null && !PrepareFrame(frame))
+            if (upload && frame != null)
             {
-                frame.ReturnBuffer();
-                frame = null;
+                if (!PrepareFrame(frame))
+                {
+                    frame.ReturnBuffer();
+                    frame = null;
+                }
+                else
+                {
+                    UpdateColorConversion(frame.Color, frame.Height);
+                }
             }
 
             var frameView = _frameView;
@@ -510,6 +524,8 @@ public sealed class VideoPresenter : IDisposable
             _frameViews[0] = frameView;
             _frameViews[1] = _chromaView!;
             _context.PSSetShaderResources(0, 2, _frameViews);
+            _colorBuffers[0] = _colorConstants;
+            _context.PSSetConstantBuffers(0, 1, _colorBuffers);
             _samplers[0] = _sampler!;
             _context.PSSetSamplers(0, 1, _samplers);
             _context.Draw(4, 0);
@@ -874,6 +890,21 @@ public sealed class VideoPresenter : IDisposable
         _framePixelFormat = VideoPixelFormat.Unknown;
     }
 
+    private unsafe void UpdateColorConversion(VideoColorMetadata color, int frameHeight)
+    {
+        if (_context == null || _colorConstants == null)
+            return;
+        var value = YuvColorConversion.For(color, frameHeight);
+        var constants = stackalloc float[8]
+        {
+            value.YOffset, value.YScale, value.ChromaOffset, 0,
+            value.RedV, value.GreenU, value.GreenV, value.BlueU
+        };
+        var mapped = _context.Map(_colorConstants, 0, MapMode.WriteDiscard);
+        Buffer.MemoryCopy(constants, (void*)mapped.DataPointer, 32, 32);
+        _context.Unmap(_colorConstants, 0);
+    }
+
     private unsafe void WriteQuad()
     {
         if (_context == null || _vertices == null || _width < 2 || _height < 2 || _frameWidth < 1 || _frameHeight < 1)
@@ -1035,6 +1066,13 @@ public sealed class VideoPresenter : IDisposable
             BindFlags = BindFlags.VertexBuffer,
             CPUAccessFlags = CpuAccessFlags.Write
         });
+        _colorConstants = _device.CreateBuffer(new BufferDescription
+        {
+            ByteWidth = 32,
+            Usage = ResourceUsage.Dynamic,
+            BindFlags = BindFlags.ConstantBuffer,
+            CPUAccessFlags = CpuAccessFlags.Write
+        });
         _sampler = _device.CreateSamplerState(new SamplerDescription
         {
             Filter = Filter.MinMagMipLinear,
@@ -1061,6 +1099,8 @@ public sealed class VideoPresenter : IDisposable
         ReleaseFrameResources();
         _vertices?.Dispose();
         _vertices = null;
+        _colorConstants?.Dispose();
+        _colorConstants = null;
         _layout?.Dispose();
         _layout = null;
         _vertexShader?.Dispose();

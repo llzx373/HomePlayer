@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$BaselinePath,
     [Parameter(Mandatory = $true)][string]$CurrentPath,
     [string]$OutputPath = "artifacts/performance/playback-comparison.json",
-    [string]$ProfilePath = (Join-Path $PSScriptRoot "PlaybackPerformanceProfile.json")
+    [string]$ProfilePath = (Join-Path $PSScriptRoot "PlaybackPerformanceProfile.json"),
+    [switch]$AllowDifferentQuality
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,8 +16,9 @@ if ($baseline.schema -ne $current.schema -or $baseline.schema -ne "homeplayer.pl
 if ($baseline.media.sha256 -ne $current.media.sha256) {
     throw "A/B inputs must use the same media file."
 }
-if ($baseline.environment.quality -ne $current.environment.quality) {
-    throw "Quality paths differ; this is not an equivalent-quality comparison."
+$qualityEquivalent = $baseline.environment.quality -eq $current.environment.quality
+if (-not $qualityEquivalent -and -not $AllowDifferentQuality) {
+    throw "Quality paths differ; use -AllowDifferentQuality only when the output must record that difference explicitly."
 }
 if ($baseline.protocol.openObservation -ne $current.protocol.openObservation -or
     $baseline.protocol.seekObservation -ne $current.protocol.seekObservation) {
@@ -78,6 +80,9 @@ $comparison = [ordered]@{
     acceptance = "Passed"
     recordedUtc = [DateTime]::UtcNow.ToString("o")
     mediaSha256 = $current.media.sha256
+    qualityEquivalent = $qualityEquivalent
+    baselineQuality = $baseline.environment.quality
+    currentQuality = $current.environment.quality
     quality = $current.environment.quality
     metrics = @(
         Compare-Metric $baseline.firstDecodedFrame $current.firstDecodedFrame "firstDecodedFrame"

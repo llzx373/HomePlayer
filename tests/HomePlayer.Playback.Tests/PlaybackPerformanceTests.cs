@@ -9,6 +9,11 @@ namespace HomePlayer.Playback.Tests;
 
 public sealed class PlaybackPerformanceTests
 {
+    private static bool DirectYuvEnabled => Environment.GetEnvironmentVariable("HOMEPLAYER_PERF_DISABLE_YUV") != "1";
+    private static string Quality => DirectYuvEnabled
+        ? "FFmpeg software decode; direct YUV planes with BGRA fallback; no renderer"
+        : "FFmpeg software decode; swscale bilinear BGRA; no renderer";
+
     [Fact]
     public async Task Measure_native_playback_pipeline()
     {
@@ -44,7 +49,7 @@ public sealed class PlaybackPerformanceTests
         var seekFailureIndices = new List<int>();
         var seekFailures = 0;
         Exception? playbackFault = null;
-        using (var player = new FfmpegPlayer())
+        using (var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled })
         {
             player.Faulted += error => playbackFault = error;
             var nextFrame = NewFrameSignal(player);
@@ -111,7 +116,7 @@ public sealed class PlaybackPerformanceTests
                 dotnet = RuntimeInformation.FrameworkDescription,
                 gpu = "Unknown",
                 display = "Unknown",
-                quality = "FFmpeg software decode; swscale bilinear BGRA; no renderer"
+                quality = Quality
             },
             protocol = new
             {
@@ -141,7 +146,7 @@ public sealed class PlaybackPerformanceTests
 
     private static async Task<(double OpenMilliseconds, double FirstDecodedMilliseconds)> MeasureOpenAsync(string media)
     {
-        using var player = new FfmpegPlayer();
+        using var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled };
         var firstFrame = NewFrameSignal(player);
         var started = Stopwatch.GetTimestamp();
         player.Open(media);
@@ -154,7 +159,7 @@ public sealed class PlaybackPerformanceTests
 
     private static async Task<object> MeasureSteadyAsync(string media, int milliseconds)
     {
-        using var player = new FfmpegPlayer();
+        using var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled };
         var frames = 0;
         player.FrameArrived += frame =>
         {
@@ -177,10 +182,13 @@ public sealed class PlaybackPerformanceTests
         player.Pause();
         var elapsed = Stopwatch.GetElapsedTime(started);
         var cpu = process.TotalProcessorTime - cpuStart;
+        var pipeline = player.GetPipeline();
         return new
         {
             elapsedMilliseconds = elapsed.TotalMilliseconds,
             decodedFrames = Volatile.Read(ref frames),
+            pixelFormat = pipeline.PixelFormat,
+            zeroCopyLevel = pipeline.ZeroCopyLevel,
             processCpuMilliseconds = cpu.TotalMilliseconds,
             cpuUtilizationPercent = cpu.TotalMilliseconds / elapsed.TotalMilliseconds / Environment.ProcessorCount * 100,
             allocatedBytes = GC.GetTotalAllocatedBytes(true) - allocatedStart,

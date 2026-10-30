@@ -8,7 +8,7 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Ffmpeg;
 
-public sealed unsafe class FfmpegPlayer : IDisposable
+public sealed unsafe partial class FfmpegPlayer : IDisposable
 {
     private sealed record SeekRequest(TimeSpan Position, long Epoch, long CommandId, long StartedTimestamp);
 
@@ -128,6 +128,9 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         _path = path;
         SessionId = Guid.NewGuid();
         TimelineId = SessionId.ToString("N");
+        Volatile.Write(ref _outputPixelFormat, "unknown");
+        Volatile.Write(ref _outputZeroCopyLevel, "Unknown");
+        _yuvPlanes = null;
         _openedTimestamp = Stopwatch.GetTimestamp();
         Interlocked.Exchange(ref _ioInterrupt, 0);
         _cancel = new CancellationTokenSource();
@@ -370,7 +373,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             VideoDecoder = $"{_videoCodecName}（FFmpeg 软件解码）",
             Width = _width,
             Height = _height,
-            PixelFormat = "bgra",
+            PixelFormat = Volatile.Read(ref _outputPixelFormat),
             Hardware = "未使用",
             AudioCodec = _audioCodecName,
             AudioDecoder = _audioCodecName == null ? null : $"{_audioCodecName}（FFmpeg 软件解码）",
@@ -378,12 +381,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
             SampleRate = HasAudio ? 48000 : null,
             AudioTracks = FormatAudioTracks(),
             SubtitleTracks = FormatSubtitleTracks(),
-            Filters = ["FFmpeg demuxer → bounded packet queues", "FFmpeg video decoder → swscale BGRA", "HomePlayer video scheduler", HasAudio ? "FFmpeg audio decoder → bounded WASAPI output" : "无音频"],
-            Connections = [$"视频 {_videoCodecName} {_width}×{_height} · Z1", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"],
+            Filters = ["FFmpeg demuxer → bounded packet queues", VideoFilterDescription(), "HomePlayer video scheduler", HasAudio ? "FFmpeg audio decoder → bounded WASAPI output" : "无音频"],
+            Connections = [$"视频 {_videoCodecName} {_width}×{_height} · {Volatile.Read(ref _outputZeroCopyLevel)}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"],
             DroppedFrames = DroppedFrames,
             VideoQueueDepth = VideoQueueDepth,
             ClockSource = AudioDevicePosition == null ? "Monotonic" : "WasapiDeviceWithMonotonicFallback",
-            ZeroCopyLevel = "Z1"
+            ZeroCopyLevel = Volatile.Read(ref _outputZeroCopyLevel)
         };
     }
 
@@ -660,7 +663,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                     continue;
                 }
             }
-            var decoded = ToBgra(frame, pts, duration, epoch);
+            var decoded = ToFrame(frame, pts, duration, epoch);
             ffmpeg.av_frame_unref(frame);
             try
             {
@@ -1082,12 +1085,15 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                 stride = lines[0];
             }
             var seek = ActiveSeek(epoch);
+            MarkBgraPipeline();
             return new VideoFrame
             {
                 Width = _width,
                 Height = _height,
                 Stride = stride,
                 Data = buffer,
+                Color = ColorOf(source),
+                Geometry = GeometryOf(source),
                 PresentationTimestamp = pts,
                 Duration = duration,
                 TimeBase = new MediaTimeBase(_videoTimeBase.num, _videoTimeBase.den),
