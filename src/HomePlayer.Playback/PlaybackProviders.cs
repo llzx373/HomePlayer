@@ -105,6 +105,7 @@ public sealed class NativeFfmpegProvider : IPlaybackProvider
     public string DisplayName => "HomePlayer 原生（FFmpeg）";
     public string Maturity => "stable";
     public static Func<D3D11SharedDevice?>? DeviceProvider { get; set; }
+    public static Func<bool> HardwareAccelerationEnabled { get; set; } = () => true;
     public IReadOnlyList<PlaybackCapability> DeclaredCapabilities { get; } =
     [
         new("playback.seek", CapabilityStatus.Supported, CapabilityOwner.Engine),
@@ -119,7 +120,8 @@ public sealed class NativeFfmpegProvider : IPlaybackProvider
         D3D11SharedDevice? device = null;
         try
         {
-            device = DeviceProvider?.Invoke();
+            if (HardwareAccelerationEnabled())
+                device = DeviceProvider?.Invoke();
         }
         catch
         {
@@ -147,6 +149,7 @@ public sealed class DirectShowProvider : IPlaybackProvider
     public string DisplayName => "LAV + HomePlayer";
     public string Maturity => "compatible";
     public static Func<D3D11SharedDevice?>? DeviceProvider { get; set; }
+    public static Func<bool> HardwareAccelerationEnabled { get; set; } = () => true;
     public IReadOnlyList<PlaybackCapability> DeclaredCapabilities { get; } =
     [
         new("playback.seek", CapabilityStatus.Supported, CapabilityOwner.Engine),
@@ -161,7 +164,8 @@ public sealed class DirectShowProvider : IPlaybackProvider
         D3D11SharedDevice? device = null;
         try
         {
-            device = DeviceProvider?.Invoke();
+            if (HardwareAccelerationEnabled())
+                device = DeviceProvider?.Invoke();
         }
         catch
         {

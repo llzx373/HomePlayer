@@ -13,6 +13,7 @@ public sealed partial class AppSettings
     public string PreferredAudioLanguage { get; set; } = "";
     public bool AudioNormalization { get; set; }
     public bool AudioNightMode { get; set; }
+    public bool HardwareAcceleration { get; set; } = true;
     public bool SnapshotIncludeSubtitles { get; set; }
     public string UpdateChannel { get; set; } = "stable";
 }

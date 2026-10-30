@@ -19,6 +19,7 @@ public sealed partial class SettingsPage
         PreferredAudioLanguageBox.Text = settings.PreferredAudioLanguage;
         AudioNormalizationSwitch.IsOn = settings.AudioNormalization;
         AudioNightModeSwitch.IsOn = settings.AudioNightMode;
+        HardwareAccelerationSwitch.IsOn = settings.HardwareAcceleration;
         SnapshotSubtitlesSwitch.IsOn = settings.SnapshotIncludeSubtitles;
         if (_playbackFeatureEvents)
             return;
@@ -32,6 +33,7 @@ public sealed partial class SettingsPage
         PreferredAudioLanguageBox.TextChanged += (_, _) => SavePlaybackFeatures();
         AudioNormalizationSwitch.Toggled += (_, _) => SavePlaybackFeatures();
         AudioNightModeSwitch.Toggled += (_, _) => SavePlaybackFeatures();
+        HardwareAccelerationSwitch.Toggled += (_, _) => SavePlaybackFeatures();
         SnapshotSubtitlesSwitch.Toggled += (_, _) => SavePlaybackFeatures();
     }
 
@@ -49,6 +51,7 @@ public sealed partial class SettingsPage
         settings.PreferredAudioLanguage = PreferredAudioLanguageBox.Text.Trim();
         settings.AudioNormalization = AudioNormalizationSwitch.IsOn;
         settings.AudioNightMode = AudioNightModeSwitch.IsOn;
+        settings.HardwareAcceleration = HardwareAccelerationSwitch.IsOn;
         settings.SnapshotIncludeSubtitles = SnapshotSubtitlesSwitch.IsOn;
         App.Host.SaveSettings();
     }
