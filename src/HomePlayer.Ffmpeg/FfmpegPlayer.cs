@@ -154,8 +154,25 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 callback = InterruptCallback,
                 opaque = GCHandle.ToIntPtr(_interruptHandle).ToPointer()
             };
+            var inputProfile = FfmpegInputProfile.ForPath(path);
+            AVDictionary* options = null;
+            if (inputProfile.IsUnc)
+            {
+                FfmpegError.Check(ffmpeg.av_dict_set(&options, "probesize", inputProfile.ProbeSize.ToString(CultureInfo.InvariantCulture), 0), "配置 UNC 探测预算");
+                FfmpegError.Check(ffmpeg.av_dict_set(&options, "analyzeduration", inputProfile.AnalyzeDurationMicroseconds.ToString(CultureInfo.InvariantCulture), 0), "配置 UNC 分析预算");
+                FfmpegError.Check(ffmpeg.av_dict_set(&options, "buffer_size", inputProfile.ReadBufferSize.ToString(CultureInfo.InvariantCulture), 0), "配置 UNC 播放预读");
+                FfmpegError.Check(ffmpeg.av_dict_set(&options, "rw_timeout", inputProfile.ReadWriteTimeoutMicroseconds.ToString(CultureInfo.InvariantCulture), 0), "配置 UNC 读写超时");
+            }
             var opened = _format;
-            var openResult = ffmpeg.avformat_open_input(&opened, path, null, null);
+            int openResult;
+            try
+            {
+                openResult = ffmpeg.avformat_open_input(&opened, path, null, &options);
+            }
+            finally
+            {
+                ffmpeg.av_dict_free(&options);
+            }
             _format = opened;
             FfmpegError.Check(openResult, "FFmpeg 打开文件");
             FfmpegError.Check(ffmpeg.avformat_find_stream_info(_format, null), "FFmpeg 读取媒体信息");
