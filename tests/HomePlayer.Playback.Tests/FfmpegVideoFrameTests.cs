@@ -52,6 +52,22 @@ public sealed class FfmpegVideoFrameTests
         Assert.Equal(frame.Width * frame.Height * 4, bgra.Length);
     }
 
+    [Fact]
+    public async Task Hdr_media_preserves_bt2020_and_pq_metadata()
+    {
+        var media = Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_HDR_MEDIA");
+        if (string.IsNullOrWhiteSpace(media))
+            return;
+
+        var frame = await CaptureAsync(media, true);
+        Assert.Equal(VideoPixelFormat.P010, frame.PixelFormat);
+        Assert.Equal(VideoColorMatrix.Bt2020, frame.Color.Matrix);
+        Assert.Equal(VideoColorPrimaries.Bt2020, frame.Color.Primaries);
+        Assert.Equal(VideoTransferFunction.Pq, frame.Color.Transfer);
+        Assert.Equal(VideoOutputTransform.PqToSdr, DisplayOutputPolicy.Select(false, frame.Color.Transfer).Transform);
+        Assert.Equal(VideoOutputTransform.None, DisplayOutputPolicy.Select(true, frame.Color.Transfer).Transform);
+    }
+
     private static async Task<FrameSnapshot> CaptureAsync(string media, bool directYuv)
     {
         using var player = new FfmpegPlayer { EnableDirectYuv = directYuv };

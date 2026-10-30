@@ -125,7 +125,9 @@ public sealed partial class PlayerPage : Page
             UpdateSubtitleOverlay();
             if (_statusHold != null)
                 ApplyStatusText();
-            if (++_pipelineTicks % 50 == 0 && PipelinePanel.Visibility == Visibility.Visible)
+            if (++_pipelineTicks % 10 == 0)
+                _presenter.Refresh();
+            if (_pipelineTicks % 50 == 0 && PipelinePanel.Visibility == Visibility.Visible)
                 _ = RefreshPipelineAsync();
             AdjustTimerInterval();
         };
@@ -1653,6 +1655,10 @@ public sealed partial class PlayerPage : Page
         try
         {
             var text = await Task.Run(() => Playback.Pipeline()?.Format() ?? "当前没有播放。");
+            var output = _presenter.CurrentDisplayOutput;
+            text += $"\n\n显示输出\n显示器：{(string.IsNullOrWhiteSpace(output.DeviceName) ? "未知" : output.DeviceName)}\n模式：{output.Mode}\n交换链：{output.SwapChainFormat} / {output.SwapChainColorSpace}\n显示代际：{output.DisplayGeneration}";
+            if (!string.IsNullOrWhiteSpace(output.Reason))
+                text += $"\n说明：{output.Reason}";
             if (!App.Host.Exiting)
                 PipelineText.Text = text;
         }

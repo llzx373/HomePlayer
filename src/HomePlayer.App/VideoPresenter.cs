@@ -36,32 +36,81 @@ public sealed class VideoPresenter : IDisposable
         }
         """;
 
-    private const string PixelShaderCode = """
-        Texture2D frameTexture : register(t0);
-        SamplerState frameSampler : register(s0);
-        float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
-            return float4(frameTexture.Sample(frameSampler, uv).rgb, 1);
-        }
-        """;
-
-    private const string YuvPixelShaderCode = """
-        Texture2D lumaTexture : register(t0);
-        Texture2D chromaTexture : register(t1);
-        SamplerState frameSampler : register(s0);
+    private const string ColorTransformCode = """
         cbuffer ColorConversion : register(b0) {
             float yOffset;
             float yScale;
             float chromaOffset;
-            float padding;
+            float outputTransform;
             float rV;
             float gU;
             float gV;
             float bU;
         };
+        float3 hp_to2020(float3 rgb) {
+            return float3(0.627403 * rgb.r + 0.329283 * rgb.g + 0.0433136 * rgb.b,
+                0.069097 * rgb.r + 0.91954 * rgb.g + 0.0113612 * rgb.b,
+                0.0163916 * rgb.r + 0.0880132 * rgb.g + 0.895595 * rgb.b);
+        }
+        float3 hp_to709(float3 rgb) {
+            return float3(1.660491 * rgb.r - 0.587641 * rgb.g - 0.07285 * rgb.b,
+                -0.12455 * rgb.r + 1.1329 * rgb.g - 0.008349 * rgb.b,
+                -0.018151 * rgb.r - 0.100579 * rgb.g + 1.11873 * rgb.b);
+        }
+        float3 hp_sdr_linear(float3 rgb) { return pow(max(rgb, 0), 2.2); }
+        float3 hp_sdr_encode(float3 rgb) { return pow(max(rgb, 0), 1.0 / 2.2); }
+        float3 hp_pq_linear(float3 rgb) {
+            float3 p = pow(max(rgb, 0), 1.0 / 78.84375);
+            return pow(max(p - 0.8359375, 0) / (18.8515625 - 18.6875 * p), 1.0 / 0.1593017578125);
+        }
+        float3 hp_pq_encode(float3 rgb) {
+            float3 p = pow(max(rgb, 0), 0.1593017578125);
+            return pow((0.8359375 + 18.8515625 * p) / (1 + 18.6875 * p), 78.84375);
+        }
+        float3 hp_hlg_linear(float3 rgb) {
+            float3 low = rgb * rgb / 3;
+            float3 high = (exp((rgb - 0.55991073) / 0.17883277) + 0.28466892) / 12;
+            return rgb <= 0.5 ? low : high;
+        }
+        float3 hp_transform(float3 rgb) {
+            if (outputTransform == 1)
+                return hp_pq_encode(hp_to2020(hp_sdr_linear(rgb)));
+            if (outputTransform == 2)
+                return hp_sdr_encode(hp_to709(rgb / (1 + rgb)));
+            if (outputTransform == 3)
+                return hp_pq_encode(rgb);
+            if (outputTransform == 4)
+                return hp_sdr_encode(hp_to709(rgb / (1 + rgb)));
+            return rgb;
+        }
+        """;
+
+    private const string PixelShaderCode = ColorTransformCode + """
+        Texture2D frameTexture : register(t0);
+        SamplerState frameSampler : register(s0);
+        float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+            float3 rgb = frameTexture.Sample(frameSampler, uv).rgb;
+            if (outputTransform == 2 || outputTransform == 4)
+                rgb = hp_pq_linear(rgb);
+            else if (outputTransform == 3)
+                rgb = hp_hlg_linear(rgb);
+            return float4(hp_transform(rgb), 1);
+        }
+        """;
+
+    private const string YuvPixelShaderCode = ColorTransformCode + """
+        Texture2D lumaTexture : register(t0);
+        Texture2D chromaTexture : register(t1);
+        SamplerState frameSampler : register(s0);
         float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
             float y = (lumaTexture.Sample(frameSampler, uv).r - yOffset) * yScale;
             float2 chroma = chromaTexture.Sample(frameSampler, uv).rg - chromaOffset;
-            return float4(y + rV * chroma.y, y - gU * chroma.x - gV * chroma.y, y + bU * chroma.x, 1);
+            float3 rgb = float3(y + rV * chroma.y, y - gU * chroma.x - gV * chroma.y, y + bU * chroma.x);
+            if (outputTransform == 2 || outputTransform == 4)
+                rgb = hp_pq_linear(rgb);
+            else if (outputTransform == 3)
+                rgb = hp_hlg_linear(rgb);
+            return float4(hp_transform(rgb), 1);
         }
         """;
 
@@ -140,6 +189,13 @@ public sealed class VideoPresenter : IDisposable
     private long _lastPipelineTryMs;
     private long _deviceGeneration;
     private long _adapterLuid;
+    private bool _hdrOutput;
+    private bool _hdrOutputBlocked;
+    private bool _displaySupportsHdr;
+    private string _displayName = "";
+    private long _displayGeneration;
+    private long _lastDisplayCheck;
+    private DisplayOutputInfo _displayInfo = new("", DisplayColorMode.Unknown, "Unknown", "Unknown", 0);
     private nint _gpuTexture;
     private int _gpuSubresource = -1;
     private readonly uint[] _vertexStrides = [16];
@@ -150,6 +206,15 @@ public sealed class VideoPresenter : IDisposable
     private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
 
     public Func<bool>? CanRender { get; set; }
+
+    public DisplayOutputInfo CurrentDisplayOutput
+    {
+        get
+        {
+            lock (_gate)
+                return _displayInfo;
+        }
+    }
 
     public VideoPresenter(SwapChainPanel panel)
     {
@@ -532,6 +597,7 @@ public sealed class VideoPresenter : IDisposable
         if (!upload && (_frameView == null || _frameWidth < 1 || _frameHeight < 1))
             return;
 
+        var outputTransform = EnsureDisplayOutput(frame?.Color.Transfer ?? _lastFrame?.Color.Transfer ?? VideoTransferFunction.Unknown);
         try
         {
             if (upload && frame != null)
@@ -543,7 +609,7 @@ public sealed class VideoPresenter : IDisposable
                 }
                 else
                 {
-                    UpdateColorConversion(frame.Color, frame.Height);
+                    UpdateColorConversion(frame.Color, frame.Height, outputTransform);
                 }
             }
 
@@ -651,6 +717,7 @@ public sealed class VideoPresenter : IDisposable
         if (_device == null || _context == null)
             return;
         UnbindTarget();
+        var swapChainFormat = _hdrOutput ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
         if (_swapChain == null)
         {
             using var dxgi = _device.QueryInterface<IDXGIDevice>();
@@ -660,7 +727,7 @@ public sealed class VideoPresenter : IDisposable
             {
                 Width = (uint)width,
                 Height = (uint)height,
-                Format = Format.B8G8R8A8_UNorm,
+                Format = swapChainFormat,
                 SampleDescription = new SampleDescription(1, 0),
                 BufferUsage = Usage.RenderTargetOutput,
                 BufferCount = 2,
@@ -679,7 +746,7 @@ public sealed class VideoPresenter : IDisposable
         }
         else
         {
-            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, Format.B8G8R8A8_UNorm, SwapChainFlags.FrameLatencyWaitableObject);
+            _swapChain.ResizeBuffers(2, (uint)width, (uint)height, swapChainFormat, SwapChainFlags.FrameLatencyWaitableObject);
         }
 
         _width = width;
@@ -689,6 +756,8 @@ public sealed class VideoPresenter : IDisposable
         ApplyPanelTransform();
         using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
         _target = _device.CreateRenderTargetView(back);
+        ConfigureSwapChainColorSpace();
+        UpdateDisplayCapabilities(true);
         try
         {
             EnsurePipeline();
@@ -697,6 +766,121 @@ public sealed class VideoPresenter : IDisposable
         {
             Trace("pipeline error " + ex);
         }
+    }
+
+    private VideoOutputTransform EnsureDisplayOutput(VideoTransferFunction input)
+    {
+        UpdateDisplayCapabilities();
+        var selection = DisplayOutputPolicy.Select(_displaySupportsHdr && !_hdrOutputBlocked, input);
+        if (selection.HdrOutput != _hdrOutput)
+        {
+            _hdrOutput = selection.HdrOutput;
+            ReleaseSwapChain();
+            Interlocked.Exchange(ref _resizeRequested, 1);
+            TryResize();
+        }
+        return selection.Transform;
+    }
+
+    private unsafe void ConfigureSwapChainColorSpace()
+    {
+        if (_swapChain == null)
+            return;
+        using var chain = _swapChain.QueryInterface<IDXGISwapChain3>();
+        var colorSpace = _hdrOutput ? ColorSpaceType.RgbFullG2084NoneP2020 : ColorSpaceType.RgbFullG22NoneP709;
+        var support = chain.CheckColorSpaceSupport(colorSpace);
+        if (!support.HasFlag(SwapChainColorSpaceSupportFlags.Present))
+        {
+            if (_hdrOutput)
+            {
+                _hdrOutputBlocked = true;
+                _hdrOutput = false;
+                ReleaseSwapChain();
+                Interlocked.Exchange(ref _resizeRequested, 1);
+                PostDraw();
+            }
+            return;
+        }
+        chain.SetColorSpace1(colorSpace);
+        if (!_hdrOutput)
+            return;
+        try
+        {
+            var metadata = new HdrMetadataHdr10
+            {
+                MaxMasteringLuminance = 1000,
+                MinMasteringLuminance = 50,
+                MaxContentLightLevel = 1000,
+                MaxFrameAverageLightLevel = 400
+            };
+            metadata.RedPrimary[0] = 13200;
+            metadata.RedPrimary[1] = 34500;
+            metadata.GreenPrimary[0] = 7500;
+            metadata.GreenPrimary[1] = 30000;
+            metadata.BluePrimary[0] = 30000;
+            metadata.BluePrimary[1] = 7500;
+            metadata.WhitePoint[0] = 15635;
+            metadata.WhitePoint[1] = 16450;
+            using var chain4 = _swapChain.QueryInterface<IDXGISwapChain4>();
+            var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<HdrMetadataHdr10>());
+            try
+            {
+                Marshal.StructureToPtr(metadata, pointer, false);
+                chain4.SetHDRMetaData(HdrMetadataType.Hdr10, (uint)Marshal.SizeOf<HdrMetadataHdr10>(), pointer);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(pointer);
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace("HDR metadata error " + ex.Message);
+        }
+    }
+
+    private void UpdateDisplayCapabilities(bool force = false)
+    {
+        var now = Environment.TickCount64;
+        if (_swapChain == null || (!force && now - _lastDisplayCheck < 1000))
+            return;
+        _lastDisplayCheck = now;
+        var previousName = _displayName;
+        var previousHdr = _displaySupportsHdr;
+        try
+        {
+            using var output = _swapChain.GetContainingOutput();
+            using var output6 = output.QueryInterface<IDXGIOutput6>();
+            var description = output6.Description1;
+            _displayName = description.DeviceName;
+            _displaySupportsHdr = description.ColorSpace == ColorSpaceType.RgbFullG2084NoneP2020;
+            if (previousName != _displayName || previousHdr != _displaySupportsHdr)
+            {
+                _displayGeneration++;
+                _hdrOutputBlocked = false;
+            }
+            PublishDisplayOutput();
+        }
+        catch (Exception ex)
+        {
+            _displaySupportsHdr = false;
+            PublishDisplayOutput("当前显示能力不可观测：" + ex.Message);
+        }
+    }
+
+    private void PublishDisplayOutput(string? reason = null)
+    {
+        var mode = _displaySupportsHdr ? DisplayColorMode.Hdr : DisplayColorMode.Sdr;
+        var info = new DisplayOutputInfo(
+            _displayName,
+            mode,
+            _hdrOutput ? "R16G16B16A16_Float" : "B8G8R8A8_UNorm",
+            _hdrOutput ? "RGB_FULL_G2084_NONE_P2020" : "RGB_FULL_G22_NONE_P709",
+            _displayGeneration,
+            null,
+            reason ?? (_hdrOutputBlocked ? "交换链不支持 HDR，已回退 SDR。" : null));
+        lock (_gate)
+            _displayInfo = info;
     }
 
     private void UnbindTarget()
@@ -953,14 +1137,14 @@ public sealed class VideoPresenter : IDisposable
         _frameUvScaleY = 1;
     }
 
-    private unsafe void UpdateColorConversion(VideoColorMetadata color, int frameHeight)
+    private unsafe void UpdateColorConversion(VideoColorMetadata color, int frameHeight, VideoOutputTransform transform)
     {
         if (_context == null || _colorConstants == null)
             return;
         var value = YuvColorConversion.For(color, frameHeight);
         var constants = stackalloc float[8]
         {
-            value.YOffset, value.YScale, value.ChromaOffset, 0,
+            value.YOffset, value.YScale, value.ChromaOffset, (float)transform,
             value.RedV, value.GreenU, value.GreenV, value.BlueU
         };
         var mapped = _context.Map(_colorConstants, 0, MapMode.WriteDiscard);
