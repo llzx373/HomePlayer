@@ -72,6 +72,7 @@ public sealed class VideoPresenter : IDisposable
     private readonly DispatcherQueue _ui;
     private readonly RenderThread _render;
     private readonly object _gate = new();
+    private readonly object _deviceSync = new();
     private ISwapChainPanelNative? _native;
 
     private FrameLease? _pending;
@@ -130,6 +131,8 @@ public sealed class VideoPresenter : IDisposable
     private int _frameHeight;
     private VideoPixelFormat _framePixelFormat;
     private bool _frameBottomUp;
+    private float _frameUvScaleX = 1;
+    private float _frameUvScaleY = 1;
     private float _scaleX = 1;
     private float _scaleY = 1;
     private long _lastRecoveryMs;
@@ -157,6 +160,22 @@ public sealed class VideoPresenter : IDisposable
         panel.SizeChanged += (_, _) => Refresh();
         panel.CompositionScaleChanged += (_, _) => Refresh();
     }
+
+    public D3D11SharedDevice GetSharedDevice() => _render.Invoke(() =>
+    {
+        lock (_deviceSync)
+        {
+            EnsureDevice();
+            if (_device == null || _context == null)
+                throw new InvalidOperationException("无法创建 D3D11 播放设备。");
+            return new D3D11SharedDevice(
+                _device.NativePointer,
+                _context.NativePointer,
+                _adapterLuid,
+                _deviceGeneration,
+                _deviceSync);
+        }
+    });
 
     /// <summary>
     /// 面板的 WinRT 接口必须在 UI 线程上取，第一次用到时再拿，避免构造阶段过早访问。
@@ -295,6 +314,12 @@ public sealed class VideoPresenter : IDisposable
     }
 
     private void ClearFrame()
+    {
+        lock (_deviceSync)
+            ClearFrameCore();
+    }
+
+    private void ClearFrameCore()
     {
         ReleaseFrameResources();
         _frameWidth = 0;
@@ -442,6 +467,12 @@ public sealed class VideoPresenter : IDisposable
 
     private void ReleaseSwapChain()
     {
+        lock (_deviceSync)
+            ReleaseSwapChainCore();
+    }
+
+    private void ReleaseSwapChainCore()
+    {
         UnbindTarget();
         var chain = _swapChain;
         _swapChain = null;
@@ -455,6 +486,12 @@ public sealed class VideoPresenter : IDisposable
     }
 
     private void Draw()
+    {
+        lock (_deviceSync)
+            DrawCore();
+    }
+
+    private void DrawCore()
     {
         Interlocked.Exchange(ref _posted, 0);
         if (_suspended || !_allowed)
@@ -816,13 +853,14 @@ public sealed class VideoPresenter : IDisposable
         if (_device == null || resource.Texture == 0 || frame.DeviceGeneration != _deviceGeneration
             || resource.AdapterLuid != _adapterLuid)
             return false;
-        if (_gpuTexture == resource.Texture && _gpuSubresource == resource.Subresource && _framePixelFormat == frame.PixelFormat)
+        if (_gpuTexture == resource.Texture && _gpuSubresource == resource.Subresource && _framePixelFormat == frame.PixelFormat
+            && _frameWidth == frame.Width && _frameHeight == frame.Height)
             return true;
 
         using var texture = new ID3D11Texture2D(resource.Texture);
         texture.AddRef();
         var description = texture.Description;
-        if (description.Width != (uint)frame.Width || description.Height != (uint)frame.Height
+        if (description.Width < (uint)frame.Width || description.Height < (uint)frame.Height
             || resource.Subresource < 0 || resource.Subresource >= description.ArraySize)
             return false;
         var (expectedFormat, lumaFormat, chromaFormat) = frame.PixelFormat switch
@@ -845,6 +883,8 @@ public sealed class VideoPresenter : IDisposable
         _frameHeight = frame.Height;
         _framePixelFormat = frame.PixelFormat;
         _frameBottomUp = false;
+        _frameUvScaleX = (float)frame.Width / description.Width;
+        _frameUvScaleY = (float)frame.Height / description.Height;
         return true;
     }
 
@@ -888,6 +928,8 @@ public sealed class VideoPresenter : IDisposable
         _gpuTexture = 0;
         _gpuSubresource = -1;
         _framePixelFormat = VideoPixelFormat.Unknown;
+        _frameUvScaleX = 1;
+        _frameUvScaleY = 1;
     }
 
     private unsafe void UpdateColorConversion(VideoColorMetadata color, int frameHeight)
@@ -912,10 +954,10 @@ public sealed class VideoPresenter : IDisposable
         var q = VideoAspect.Quad(_width, _height, _frameWidth, _frameHeight, (AspectMode)Volatile.Read(ref _aspectValue), _frameBottomUp);
         var quad = stackalloc float[16]
         {
-            q.Left, q.Top, q.UvLeft, q.UvTop,
-            q.Right, q.Top, q.UvRight, q.UvTop,
-            q.Left, q.Bottom, q.UvLeft, q.UvBottom,
-            q.Right, q.Bottom, q.UvRight, q.UvBottom
+            q.Left, q.Top, q.UvLeft * _frameUvScaleX, q.UvTop * _frameUvScaleY,
+            q.Right, q.Top, q.UvRight * _frameUvScaleX, q.UvTop * _frameUvScaleY,
+            q.Left, q.Bottom, q.UvLeft * _frameUvScaleX, q.UvBottom * _frameUvScaleY,
+            q.Right, q.Bottom, q.UvRight * _frameUvScaleX, q.UvBottom * _frameUvScaleY
         };
         var mapped = _context.Map(_vertices, 0, MapMode.WriteDiscard);
         Buffer.MemoryCopy(quad, (void*)mapped.DataPointer, 64, 64);
@@ -1093,6 +1135,12 @@ public sealed class VideoPresenter : IDisposable
     }
 
     private void ReleaseDeviceResources()
+    {
+        lock (_deviceSync)
+            ReleaseDeviceResourcesCore();
+    }
+
+    private void ReleaseDeviceResourcesCore()
     {
         _deviceGeneration++;
         ReleaseSwapChain();

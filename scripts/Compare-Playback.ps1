@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)][string]$CurrentPath,
     [string]$OutputPath = "artifacts/performance/playback-comparison.json",
     [string]$ProfilePath = (Join-Path $PSScriptRoot "PlaybackPerformanceProfile.json"),
-    [switch]$AllowDifferentQuality
+    [switch]$AllowDifferentQuality,
+    [switch]$AbsoluteOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,16 +69,18 @@ if ($current.protocol.openIterations -lt $profile.samples.processColdAndWarmOpen
 Assert-AbsoluteBudget "open P95" $current.open.p95Milliseconds $profile.absoluteBudgets.openP95Milliseconds
 Assert-AbsoluteBudget "first decoded P95" $current.firstDecodedFrame.p95Milliseconds $profile.absoluteBudgets.firstDecodedP95Milliseconds
 Assert-AbsoluteBudget "seek P95" $current.seekToTargetDecodedFrame.p95Milliseconds $profile.absoluteBudgets.seekP95Milliseconds
-Assert-RegressionBudget "first decoded P95" $baseline.firstDecodedFrame.p95Milliseconds $current.firstDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.firstDecodedP95
-Assert-RegressionBudget "first decoded P99" $baseline.firstDecodedFrame.p99Milliseconds $current.firstDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.firstDecodedP99
-Assert-RegressionBudget "seek P95" $baseline.seekToTargetDecodedFrame.p95Milliseconds $current.seekToTargetDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.seekP95
-Assert-RegressionBudget "seek P99" $baseline.seekToTargetDecodedFrame.p99Milliseconds $current.seekToTargetDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.seekP99
-Assert-RegressionBudget "steady allocated bytes" $baseline.steady.allocatedBytes $current.steady.allocatedBytes $profile.regressionBudgetsPercent.steadyAllocatedBytes
+if (-not $AbsoluteOnly) {
+    Assert-RegressionBudget "first decoded P95" $baseline.firstDecodedFrame.p95Milliseconds $current.firstDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.firstDecodedP95
+    Assert-RegressionBudget "first decoded P99" $baseline.firstDecodedFrame.p99Milliseconds $current.firstDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.firstDecodedP99
+    Assert-RegressionBudget "seek P95" $baseline.seekToTargetDecodedFrame.p95Milliseconds $current.seekToTargetDecodedFrame.p95Milliseconds $profile.regressionBudgetsPercent.seekP95
+    Assert-RegressionBudget "seek P99" $baseline.seekToTargetDecodedFrame.p99Milliseconds $current.seekToTargetDecodedFrame.p99Milliseconds $profile.regressionBudgetsPercent.seekP99
+    Assert-RegressionBudget "steady allocated bytes" $baseline.steady.allocatedBytes $current.steady.allocatedBytes $profile.regressionBudgetsPercent.steadyAllocatedBytes
+}
 
 $comparison = [ordered]@{
     schema = "homeplayer.playback.performance.comparison.v1"
     profile = $profile.profile
-    acceptance = "Passed"
+    acceptance = if ($AbsoluteOnly) { "PassedAbsoluteBudgetsOnly; regression baseline not evaluated" } else { "Passed" }
     recordedUtc = [DateTime]::UtcNow.ToString("o")
     mediaSha256 = $current.media.sha256
     qualityEquivalent = $qualityEquivalent

@@ -41,6 +41,28 @@ public sealed class RenderThread : IDisposable
         }
     }
 
+    public T Invoke<T>(Func<T> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        if (IsCurrentThread)
+            return function();
+        if (Volatile.Read(ref _stopped) != 0)
+            throw new ObjectDisposedException(nameof(RenderThread));
+        var completed = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(() =>
+        {
+            try
+            {
+                completed.TrySetResult(function());
+            }
+            catch (Exception ex)
+            {
+                completed.TrySetException(ex);
+            }
+        });
+        return completed.Task.GetAwaiter().GetResult();
+    }
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _stopped, 1) != 0)

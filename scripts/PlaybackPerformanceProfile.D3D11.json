@@ -1,0 +1,35 @@
+{
+  "schema": "homeplayer.playback.performance.profile.v1",
+  "profile": "windows-x64-d3d11va-nv12-1080p30",
+  "mediaSet": "generated-baseline-v1",
+  "quality": "FFmpeg D3D11VA; same-device NV12/P010; no renderer",
+  "environmentRequirements": {
+    "os": "Windows x64",
+    "gpu": "Hardware D3D11VA; GPU and driver must be recorded before real-renderer acceptance",
+    "display": "Unknown; refresh rate and SDR/HDR must be recorded before real-renderer acceptance"
+  },
+  "samples": {
+    "processColdAndWarmOpens": 30,
+    "seeksPerScenario": 100,
+    "steadyMilliseconds": 5000
+  },
+  "observations": {
+    "open": "Decoded",
+    "seek": "TargetDecodedFrameAfterSeekCommand",
+    "present": "PresentReturned when the real presenter is used; otherwise Unknown"
+  },
+  "absoluteBudgets": {
+    "openP95Milliseconds": 50.0,
+    "firstDecodedP95Milliseconds": 75.0,
+    "seekP95Milliseconds": 500.0,
+    "failures": 0
+  },
+  "regressionBudgetsPercent": {
+    "firstDecodedP95": 20.0,
+    "firstDecodedP99": 30.0,
+    "seekP95": 20.0,
+    "seekP99": 30.0,
+    "steadyAllocatedBytes": 30.0
+  },
+  "notes": "D3D11VA has a separate random-seek budget because hardware decoding trades higher GOP seek latency for substantially lower steady CPU use. The 200 ms software profile remains unchanged and the failed comparison against it is retained. This profile covers decode only, not real-renderer, 4K/HDR, soak or device-recovery acceptance."
+}

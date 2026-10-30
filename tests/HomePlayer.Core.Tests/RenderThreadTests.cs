@@ -51,6 +51,15 @@ public class RenderThreadTests
     }
 
     [Fact]
+    public void Invoke_returns_value_and_propagates_errors()
+    {
+        using var thread = new RenderThread("test");
+
+        Assert.Equal(42, thread.Invoke(() => 42));
+        Assert.Throws<InvalidOperationException>(() => thread.Invoke<int>(() => throw new InvalidOperationException("boom")));
+    }
+
+    [Fact]
     public void Dispose_runs_work_that_is_already_queued()
     {
         var thread = new RenderThread("test");

@@ -17,6 +17,8 @@ public sealed unsafe partial class FfmpegPlayer
 
     private FrameLease ToFrame(AVFrame* source, long pts, long duration, long epoch)
     {
+        if (source->format == (int)AVPixelFormat.AV_PIX_FMT_D3D11)
+            return ToD3D11(source, pts, duration, epoch);
         if (EnableDirectYuv && source->width == _width && source->height == _height
             && _width >= 2 && _height >= 2 && _width % 2 == 0 && _height % 2 == 0
             && source->format is (int)AVPixelFormat.AV_PIX_FMT_NV12 or (int)AVPixelFormat.AV_PIX_FMT_P010LE
@@ -109,9 +111,12 @@ public sealed unsafe partial class FfmpegPlayer
     }
 
     private string VideoFilterDescription() =>
-        Volatile.Read(ref _outputZeroCopyLevel) == "Z2"
-            ? "FFmpeg video decoder → direct YUV planes"
-            : "FFmpeg video decoder → swscale BGRA";
+        Volatile.Read(ref _outputZeroCopyLevel) switch
+        {
+            "Z3" => "FFmpeg D3D11VA → same-device texture",
+            "Z2" => "FFmpeg video decoder → direct YUV planes",
+            _ => "FFmpeg video decoder → swscale BGRA"
+        };
 
     private static void CopyAvPlane(byte* source, int sourceStride, int rowBytes, int rows, byte* destination)
     {

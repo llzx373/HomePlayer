@@ -104,17 +104,27 @@ public sealed class NativeFfmpegProvider : IPlaybackProvider
     public string Id => StableId;
     public string DisplayName => "HomePlayer 原生（FFmpeg）";
     public string Maturity => "stable";
+    public static Func<D3D11SharedDevice?>? DeviceProvider { get; set; }
     public IReadOnlyList<PlaybackCapability> DeclaredCapabilities { get; } =
     [
         new("playback.seek", CapabilityStatus.Supported, CapabilityOwner.Engine),
         new("playback.rate", CapabilityStatus.Supported, CapabilityOwner.Engine),
         new("video.frame-cpu", CapabilityStatus.Supported, CapabilityOwner.Renderer),
-        new("video.zero-copy", CapabilityStatus.Unsupported, CapabilityOwner.Renderer, "BGRA_COMPAT", "当前保留 BGRA 兼容渲染路径。")
+        new("video.frame-gpu-d3d11", CapabilityStatus.Supported, CapabilityOwner.Renderer),
+        new("video.zero-copy", CapabilityStatus.Supported, CapabilityOwner.Renderer)
     ];
 
     public IPlaybackSession Open(string path, string? audioOutputId)
     {
-        var engine = new FfmpegPlaybackEngine(audioOutputId);
+        D3D11SharedDevice? device = null;
+        try
+        {
+            device = DeviceProvider?.Invoke();
+        }
+        catch
+        {
+        }
+        var engine = new FfmpegPlaybackEngine(audioOutputId) { D3D11Device = device };
         try
         {
             engine.Open(path);

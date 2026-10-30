@@ -4,15 +4,22 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using HomePlayer.Core;
 using HomePlayer.Ffmpeg;
+using Vortice.Direct3D;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
 
 namespace HomePlayer.Playback.Tests;
 
 public sealed class PlaybackPerformanceTests
 {
     private static bool DirectYuvEnabled => Environment.GetEnvironmentVariable("HOMEPLAYER_PERF_DISABLE_YUV") != "1";
-    private static string Quality => DirectYuvEnabled
-        ? "FFmpeg software decode; direct YUV planes with BGRA fallback; no renderer"
-        : "FFmpeg software decode; swscale bilinear BGRA; no renderer";
+    private static bool D3D11Enabled => Environment.GetEnvironmentVariable("HOMEPLAYER_PERF_D3D11") == "1";
+    private static D3D11SharedDevice? SharedDevice;
+    private static string Quality => D3D11Enabled
+        ? "FFmpeg D3D11VA; same-device NV12/P010; no renderer"
+        : DirectYuvEnabled
+            ? "FFmpeg software decode; direct YUV planes with BGRA fallback; no renderer"
+            : "FFmpeg software decode; swscale bilinear BGRA; no renderer";
 
     [Fact]
     public async Task Measure_native_playback_pipeline()
@@ -22,6 +29,8 @@ public sealed class PlaybackPerformanceTests
             return;
 
         media = Path.GetFullPath(media);
+        using var device = D3D11Enabled ? new PerformanceDevice() : null;
+        SharedDevice = device?.Shared;
         var output = Environment.GetEnvironmentVariable("HOMEPLAYER_PERF_OUTPUT")
             ?? Path.Combine("artifacts", "performance", $"playback-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
         var openIterations = PositiveEnvironmentInteger("HOMEPLAYER_PERF_OPENS", 30);
@@ -49,7 +58,7 @@ public sealed class PlaybackPerformanceTests
         var seekFailureIndices = new List<int>();
         var seekFailures = 0;
         Exception? playbackFault = null;
-        using (var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled })
+        using (var player = NewPlayer())
         {
             player.Faulted += error => playbackFault = error;
             var nextFrame = NewFrameSignal(player);
@@ -146,7 +155,7 @@ public sealed class PlaybackPerformanceTests
 
     private static async Task<(double OpenMilliseconds, double FirstDecodedMilliseconds)> MeasureOpenAsync(string media)
     {
-        using var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled };
+        using var player = NewPlayer();
         var firstFrame = NewFrameSignal(player);
         var started = Stopwatch.GetTimestamp();
         player.Open(media);
@@ -159,7 +168,7 @@ public sealed class PlaybackPerformanceTests
 
     private static async Task<object> MeasureSteadyAsync(string media, int milliseconds)
     {
-        using var player = new FfmpegPlayer { EnableDirectYuv = DirectYuvEnabled };
+        using var player = NewPlayer();
         var frames = 0;
         player.FrameArrived += frame =>
         {
@@ -246,6 +255,43 @@ public sealed class PlaybackPerformanceTests
             return null;
         var rank = Math.Clamp((int)Math.Ceiling(percentile * samples.Count), 1, samples.Count);
         return samples[rank - 1];
+    }
+
+    private static FfmpegPlayer NewPlayer() => new()
+    {
+        EnableDirectYuv = DirectYuvEnabled,
+        EnableD3D11Va = D3D11Enabled,
+        D3D11Device = SharedDevice
+    };
+
+    private sealed class PerformanceDevice : IDisposable
+    {
+        private readonly ID3D11Device _device;
+        private readonly ID3D11DeviceContext _context;
+
+        public PerformanceDevice()
+        {
+            var result = D3D11.D3D11CreateDevice(
+                null,
+                DriverType.Hardware,
+                DeviceCreationFlags.BgraSupport,
+                new[] { FeatureLevel.Level_11_0 },
+                out _device,
+                out _context);
+            result.CheckError();
+            using var dxgi = _device.QueryInterface<IDXGIDevice>();
+            using var adapter = dxgi.GetAdapter();
+            var luid = (uint)adapter.Description.Luid.LowPart | ((long)adapter.Description.Luid.HighPart << 32);
+            Shared = new D3D11SharedDevice(_device.NativePointer, _context.NativePointer, luid, 0, new object());
+        }
+
+        public D3D11SharedDevice Shared { get; }
+
+        public void Dispose()
+        {
+            _context.Dispose();
+            _device.Dispose();
+        }
     }
 
     private static int PositiveEnvironmentInteger(string name, int fallback) =>

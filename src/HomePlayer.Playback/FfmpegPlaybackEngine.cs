@@ -33,6 +33,8 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
 
     public FfmpegPlaybackEngine(string? audioOutputId = null) => _audioOutputId = audioOutputId;
 
+    public D3D11SharedDevice? D3D11Device { get; set; }
+
     public string Name => "FFmpeg";
     public bool IsOpen => _player?.IsOpen == true;
     public bool IsPlaying => _player?.IsPlaying == true;
@@ -48,7 +50,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public void Open(string path)
     {
         Stop();
-        var player = new FfmpegPlayer();
+        var player = new FfmpegPlayer { D3D11Device = D3D11Device };
         try
         {
             player.FrameArrived += frame =>

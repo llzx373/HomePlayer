@@ -17,7 +17,12 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         public FrameLease? Frame { get; } = frame;
         public long Epoch { get; } = epoch;
         public bool EndOfStream { get; } = endOfStream;
-        public long Bytes => Frame is CpuFrameLease cpu ? cpu.Data.Length : 0;
+        public long Bytes => Frame switch
+        {
+            CpuFrameLease cpu => cpu.Data.Length,
+            D3D11FrameLease gpu => (long)gpu.Width * gpu.Height * 2,
+            _ => 0
+        };
     }
 
     private sealed class PacketLease(FfmpegPlayer owner, IntPtr packet, long epoch, bool endOfStream = false) : IDisposable
@@ -370,11 +375,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             FileSize = size,
             BitrateMbps = bitrate,
             VideoCodec = _videoCodecName,
-            VideoDecoder = $"{_videoCodecName}（FFmpeg 软件解码）",
+            VideoDecoder = _usingD3D11 ? $"{_videoCodecName}（FFmpeg D3D11VA）" : $"{_videoCodecName}（FFmpeg 软件解码）",
             Width = _width,
             Height = _height,
             PixelFormat = Volatile.Read(ref _outputPixelFormat),
-            Hardware = "未使用",
+            Hardware = _usingD3D11 ? "D3D11VA（同设备纹理）" : "未使用",
             AudioCodec = _audioCodecName,
             AudioDecoder = _audioCodecName == null ? null : $"{_audioCodecName}（FFmpeg 软件解码）",
             Channels = HasAudio ? OutputChannels : null,
@@ -424,6 +429,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         if (videoCodec != null)
             ffmpeg.avcodec_free_context(&videoCodec);
         _videoCodec = null;
+        ReleaseD3D11Device();
         var format = _format;
         if (format != null)
             ffmpeg.avformat_close_input(&format);
@@ -907,7 +913,20 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         {
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
             context->thread_count = threadCount;
-            FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "打开视频解码器");
+            var hardware = TryConfigureD3D11(context);
+            try
+            {
+                FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "打开视频解码器");
+            }
+            catch when (hardware)
+            {
+                ffmpeg.avcodec_free_context(&context);
+                context = ffmpeg.avcodec_alloc_context3(decoder);
+                FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
+                context->thread_count = threadCount;
+                _usingD3D11 = false;
+                FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "回退软件视频解码器");
+            }
         }
         catch
         {
