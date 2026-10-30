@@ -219,4 +219,47 @@ public sealed class LavPlaybackTests
         }
         session.Stop();
     }
+
+    [Fact]
+    public void External_audio_rebuilds_graph_without_losing_session_state()
+    {
+        var media = Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_LAV_MEDIA");
+        if (string.IsNullOrWhiteSpace(media))
+            return;
+        var plan = CodecCatalog.Plan(new AppSettings());
+        if (plan.Splitters.Count == 0 || plan.VideoDecoders.Count == 0)
+            return;
+        using var engine = new LavPlaybackEngine(plan);
+        engine.Open(media);
+        engine.Play();
+        engine.Seek(TimeSpan.FromSeconds(2));
+        var position = engine.Position;
+        engine.SetExternalAudio(media);
+        Assert.True(engine.IsOpen);
+        Assert.True(engine.IsPlaying);
+        Assert.Equal(Path.GetFullPath(media), engine.ExternalAudioPath);
+        Assert.InRange((engine.Position - position).Duration(), TimeSpan.Zero, TimeSpan.FromSeconds(2));
+        Assert.Contains(engine.GetPipeline().Usage, line => line.Contains("外挂音轨", StringComparison.Ordinal));
+        var missing = Assert.Throws<AggregateException>(() => engine.SetExternalAudio(media + ".missing"));
+        Assert.IsType<FileNotFoundException>(missing.InnerException);
+        Assert.Equal(Path.GetFullPath(media), engine.ExternalAudioPath);
+        var invalid = Path.Combine(Path.GetTempPath(), $"homeplayer-invalid-{Guid.NewGuid():N}.aac");
+        File.WriteAllText(invalid, "not audio");
+        try
+        {
+            Assert.Throws<AggregateException>(() => engine.SetExternalAudio(invalid));
+            Assert.Equal(Path.GetFullPath(media), engine.ExternalAudioPath);
+            Assert.True(engine.IsOpen);
+        }
+        finally
+        {
+            File.Delete(invalid);
+        }
+        engine.Pause();
+        engine.SetExternalAudio(null);
+        Assert.True(engine.IsOpen);
+        Assert.False(engine.IsPlaying);
+        Assert.Null(engine.ExternalAudioPath);
+        engine.Stop();
+    }
 }

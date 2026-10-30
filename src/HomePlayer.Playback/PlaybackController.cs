@@ -76,6 +76,17 @@ public sealed partial class PlaybackController : IDisposable
     public int VideoWidth => _videoWidth;
     public int VideoHeight => _videoHeight;
     public bool UsesExternalVideoOutput => _engine != null && InnerEngine(_engine) is LavPlaybackEngine { ExternalOutput: not null };
+    public bool SupportsExternalAudio => _engine != null && InnerEngine(_engine) is IExternalAudioTrack;
+    public string? ExternalAudioPath => _engine != null && InnerEngine(_engine) is IExternalAudioTrack tracks ? tracks.ExternalAudioPath : null;
+    public void SetExternalAudio(string? path)
+    {
+        if (_engine == null)
+            throw new InvalidOperationException("请先打开视频，再选择外挂音轨。");
+        if (InnerEngine(_engine) is not IExternalAudioTrack tracks)
+            throw new NotSupportedException("当前 Native 路线尚不支持外挂音轨，请使用 LAV 路线。");
+        tracks.SetExternalAudio(path);
+        Notify();
+    }
     public event Action? Changed;
     public event Action<FrameLease>? FrameArrived;
     public event Action? VideoSizeChanged;

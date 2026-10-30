@@ -767,6 +767,24 @@ public sealed partial class PlayerPage : Page
         if (AudioFlyout == null)
             return;
         AudioFlyout.Items.Clear();
+        if (Playback.SupportsExternalAudio)
+        {
+            var openExternal = new MenuFlyoutItem { Text = "打开外挂音轨…" };
+            openExternal.Click += OpenExternalAudioFile_Click;
+            AudioFlyout.Items.Add(openExternal);
+            if (Playback.ExternalAudioPath != null)
+            {
+                AudioFlyout.Items.Add(new MenuFlyoutItem
+                {
+                    Text = $"当前外挂：{Path.GetFileName(Playback.ExternalAudioPath)}",
+                    IsEnabled = false
+                });
+                var embedded = new MenuFlyoutItem { Text = "恢复内嵌音轨" };
+                embedded.Click += (_, _) => Playback.SetExternalAudio(null);
+                AudioFlyout.Items.Add(embedded);
+            }
+            AudioFlyout.Items.Add(new MenuFlyoutSeparator());
+        }
         var tracks = Playback.GetAudioTracks();
         for (var i = 0; i < tracks.Count; i++)
         {
@@ -797,12 +815,41 @@ public sealed partial class PlayerPage : Page
         var reset = new MenuFlyoutItem { Text = "重置音频延迟" };
         reset.Click += (_, _) => Playback.SetAudioDelay(0);
         AudioFlyout.Items.Add(reset);
+        var enhancementsAvailable = Playback.ExternalAudioPath == null;
+        earlier.IsEnabled = enhancementsAvailable;
+        later.IsEnabled = enhancementsAvailable;
+        reset.IsEnabled = enhancementsAvailable;
     }
 
     private void AudioItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: int index })
+        {
+            if (Playback.ExternalAudioPath != null)
+                Playback.SetExternalAudio(null);
             Playback.SetAudioTrack(index);
+        }
+    }
+
+    private async void OpenExternalAudioFile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker();
+            foreach (var extension in new[] { ".aac", ".ac3", ".dts", ".flac", ".m4a", ".mka", ".mkv", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".wma" })
+                picker.FileTypeFilter.Add(extension);
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(App.Window));
+            var file = await picker.PickSingleFileAsync();
+            if (file == null)
+                return;
+            Playback.SetExternalAudio(file.Path);
+            _audioTracksKey = null;
+            ShowStatusHold("已加载外挂音轨");
+        }
+        catch (Exception ex)
+        {
+            ShowStatusHold(ex.Message);
+        }
     }
 
     private void CycleAudioTrack()
@@ -810,6 +857,8 @@ public sealed partial class PlayerPage : Page
         var tracks = Playback.GetAudioTracks();
         if (tracks.Count == 0)
             return;
+        if (Playback.ExternalAudioPath != null)
+            Playback.SetExternalAudio(null);
         var current = Playback.AudioTrackIndex;
         var position = -1;
         for (var i = 0; i < tracks.Count; i++)
@@ -838,8 +887,8 @@ public sealed partial class PlayerPage : Page
             _hasAudioTracks = Playback.GetAudioTracks().Count > 0;
         }
 
-        AudioButton.IsEnabled = _hasAudioTracks;
-        ApplyTip(AudioButton, _hasAudioTracks ? "音轨" : "没有音轨", HotkeyCatalog.CycleAudioTrack);
+        AudioButton.IsEnabled = _hasAudioTracks || Playback.SupportsExternalAudio;
+        ApplyTip(AudioButton, _hasAudioTracks || Playback.SupportsExternalAudio ? "音轨" : "没有音轨", HotkeyCatalog.CycleAudioTrack);
     }
 
     private static string AudioTrackText(MediaTrack track, int number)

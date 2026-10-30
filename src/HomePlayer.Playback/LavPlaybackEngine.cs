@@ -4,7 +4,7 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Playback;
 
-public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhancements
+public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhancements, IExternalAudioTrack
 {
     private readonly StaThread _sta = new("LAV playback");
     private bool _normalize;
@@ -32,6 +32,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     private bool _audioMissing;
     private string? _audioDevice;
     private string _path = "";
+    private string? _externalAudioPath;
     private bool _muted;
     private double _volume = 0.8;
     private double _rate = 1.0;
@@ -84,6 +85,52 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         }
         _open = 1;
     }
+
+    public string? ExternalAudioPath => _externalAudioPath;
+
+    public void SetExternalAudio(string? path) => _sta.Invoke(() =>
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
+        if (normalized != null && !File.Exists(normalized))
+            throw new FileNotFoundException("外挂音轨文件不存在。", normalized);
+        if (string.Equals(normalized, _externalAudioPath, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (_graph == null)
+        {
+            _externalAudioPath = normalized;
+            return;
+        }
+        var previous = _externalAudioPath;
+        var position = ReadPosition();
+        var playing = _isPlaying;
+        void Rebuild()
+        {
+            OpenGraph(_path);
+            _open = 1;
+            SeekCore(position);
+            if (playing)
+            {
+                Hr.Throw(_control?.Run() ?? Hr.Fail, "恢复播放");
+                _externalWindow?.put_Visible(1);
+            }
+            else
+            {
+                _control?.Pause();
+            }
+            _isPlaying = playing;
+        }
+        try
+        {
+            _externalAudioPath = normalized;
+            Rebuild();
+        }
+        catch
+        {
+            _externalAudioPath = previous;
+            Rebuild();
+            throw;
+        }
+    });
 
     public void Play() => _sta.Invoke(() =>
     {
@@ -426,8 +473,32 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         throw new InvalidOperationException("视频解码器都无法连接。" + detail);
     }
 
+    private void ConnectExternalAudio(string path)
+    {
+        var reader = CreateFilter(DsGuid.AsyncReader, "External Audio Source");
+        Hr.Throw(_graph!.AddFilter((IBaseFilter)reader, "External Audio Source"), "加入外挂音轨文件源");
+        Hr.Throw(((IFileSourceFilter)reader).Load(path, 0), "打开外挂音轨");
+        var output = FindPin((IBaseFilter)reader, output: true, video: false, anyOutput: true)
+            ?? throw new InvalidOperationException("外挂音轨文件没有输出。");
+        try
+        {
+            Hr.Throw(ConnectSound(output), "连接外挂音轨");
+        }
+        finally
+        {
+            ReleasePin(output);
+        }
+        _audioMissing = false;
+        _audioWarning = $"外挂音轨：{Path.GetFileName(path)}，解码链由 DirectShow 建立。";
+    }
+
     private void ConnectAudio()
     {
+        if (_externalAudioPath != null)
+        {
+            ConnectExternalAudio(_externalAudioPath);
+            return;
+        }
         var splitterAudio = _splitter == null ? null : FindPin((IBaseFilter)_splitter, output: true, video: false);
         if (splitterAudio == null)
         {
@@ -961,6 +1032,8 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         lines.Add(UsageOf("视频解码", _videoCodec, _video));
         lines.Add(UsageOf("音频解码", _audioCodec, _audioFilter));
         lines.Add("声音出口：" + (_audioDevice ?? AudioOutputs.Describe(_audioOutputId)));
+        if (_externalAudioPath != null)
+            lines.Add("外挂音轨：" + _externalAudioPath);
         if (ExternalOutput != null)
         {
             lines.Add($"视频输出：{Name}，独立原生窗口，呈现与调度由外部渲染器负责。");
