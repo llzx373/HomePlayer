@@ -122,6 +122,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     public bool IsOpen { get; private set; }
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration { get; private set; }
+    public MatroskaTimelineInfo TimelineInfo { get; private set; } = MatroskaTimelineInfo.Empty;
     public TimeSpan Position => TimeSpan.FromTicks(Volatile.Read(ref _positionTicks));
     public bool HasAudio => Volatile.Read(ref _audioIndex) >= 0;
     public int OutputChannels => Math.Max(1, _outputChannels);
@@ -134,6 +135,9 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         Close();
         FfmpegNative.Ensure();
         _path = path;
+        TimelineInfo = MatroskaTimelineInspector.Inspect(path);
+        if (TimelineInfo.RequiresExplicitDegradation)
+            throw new NotSupportedException("当前版本不能正确拼接该 Matroska 时间线，已停止而不是静默播放错误内容。" + TimelineInfo.Describe());
         SessionId = Guid.NewGuid();
         TimelineId = SessionId.ToString("N");
         Volatile.Write(ref _outputPixelFormat, "unknown");
@@ -412,6 +416,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             SubtitleTracks = FormatSubtitleTracks(),
             Filters = ["FFmpeg demuxer → bounded packet queues", VideoFilterDescription(), "HomePlayer video scheduler", HasAudio ? "FFmpeg audio decoder → bounded WASAPI output" : "无音频"],
             Connections = [$"视频 {_videoCodecName} {_width}×{_height} · {Volatile.Read(ref _outputZeroCopyLevel)}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"],
+            Usage = TimelineInfo.EditionCount > 0 || TimelineInfo.HasTrackJoins ? [TimelineInfo.Describe()] : [],
             DroppedFrames = DroppedFrames,
             VideoQueueDepth = VideoQueueDepth,
             ClockSource = AudioDevicePosition == null ? "Monotonic" : "WasapiDeviceWithMonotonicFallback",
