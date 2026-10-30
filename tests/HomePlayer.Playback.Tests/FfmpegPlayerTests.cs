@@ -110,6 +110,35 @@ public class FfmpegPlayerTests : IDisposable
     }
 
     [Fact]
+    public async Task Watchdog_cancels_a_session_when_frame_delivery_stalls()
+    {
+        using var player = new FfmpegPlayer { WatchdogTimeout = TimeSpan.FromMilliseconds(100) };
+        var entered = NewSignal();
+        var release = NewSignal();
+        var fault = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.FrameArrived += frame =>
+        {
+            entered.TrySetResult();
+            release.Task.GetAwaiter().GetResult();
+            frame.ReturnBuffer();
+        };
+        player.Faulted += error => fault.TrySetResult(error);
+        player.Open(_mediaPath);
+        player.Play();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            var error = await fault.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("看门狗超时", error.Message);
+            Assert.False(player.IsPlaying);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Fact]
     public void Invalid_media_reports_an_open_error()
     {
         var invalid = Path.Combine(_directory, "invalid.mkv");

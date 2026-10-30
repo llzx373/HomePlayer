@@ -209,6 +209,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             _audioPackets = new BoundedPipelineQueue<PacketLease>(192, 8 * 1024 * 1024);
             _videoFrames = new BoundedPipelineQueue<VideoQueueItem>(4, 96 * 1024 * 1024);
             IsOpen = true;
+            StartWatchdog();
             _videoThread = StartThread(VideoDecodeLoop, "FFmpeg video decode");
             if (HasAudio)
                 _audioThread = StartThread(AudioDecodeLoop, "FFmpeg audio decode");
@@ -239,6 +240,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             Interlocked.Exchange(ref _videoDone, 0);
             Interlocked.Exchange(ref _audioDone, 0);
         }
+        MarkPlaybackProgress();
     }
 
     public void Pause()
@@ -299,6 +301,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             Volatile.Write(ref _positionTicks, position.Ticks);
             _endedRaised = false;
         }
+        MarkPlaybackProgress();
     }
 
     public IReadOnlyList<MediaTrack> GetAudioTracks()
@@ -425,22 +428,23 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         _videoPackets?.Complete();
         _audioPackets?.Complete();
         _videoFrames?.Complete();
-        var threads = new[] { _demuxThread, _videoThread, _audioThread, _schedulerThread };
+        var threads = new[] { _demuxThread, _videoThread, _audioThread, _schedulerThread, _watchdogThread };
         var exited = true;
         foreach (var thread in threads)
         {
             if (thread is { IsAlive: true } && thread != Thread.CurrentThread)
                 exited &= thread.Join(2000);
         }
+        if (!exited)
+            return;
         _demuxThread = null;
         _videoThread = null;
         _audioThread = null;
         _schedulerThread = null;
+        _watchdogThread = null;
         _videoPackets?.Clear(packet => packet.Dispose());
         _audioPackets?.Clear(packet => packet.Dispose());
         _videoFrames?.Clear(ReleaseVideoItem);
-        if (!exited)
-            return;
 
         CloseAudioDecoder();
         if (_scaler != null)
@@ -1151,6 +1155,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             return;
         Interlocked.Add(ref _audioWritten, count);
         AudioPcm?.Invoke(output, count, pcmEpoch);
+        MarkPlaybackProgress();
     }
 
     private FrameLease ToBgra(AVFrame* source, long pts, long duration, long epoch)
@@ -1220,6 +1225,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         try
         {
             handler(frame);
+            MarkPlaybackProgress();
         }
         catch
         {
