@@ -82,7 +82,7 @@ public sealed class PlaybackSessionTests
         public int AudioTrackIndex => -1;
         public int SubtitleTrackIndex => -1;
         public int DisposeCount { get; private set; }
-        public event Action<VideoFrame>? FrameArrived;
+        public event Action<FrameLease>? FrameArrived;
         public event Action? Ended { add { } remove { } }
         public void Open(string path) { }
         public void Play() => IsPlaying = true;

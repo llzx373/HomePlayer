@@ -40,7 +40,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public TimeSpan Duration => _player?.Duration ?? TimeSpan.Zero;
     public double Rate => _player?.Rate ?? _rate;
 
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
     public event Action<Exception>? AudioOutputFailed;

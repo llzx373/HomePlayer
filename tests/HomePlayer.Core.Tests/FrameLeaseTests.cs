@@ -104,4 +104,33 @@ public class FrameLeaseTests
 
         Assert.False(lease.IsCurrent(Guid.Empty, 0, "", 11));
     }
+
+    [Fact]
+    public void Cpu_plane_validation_accepts_padding_and_rejects_out_of_bounds_data()
+    {
+        var lease = new CpuFrameLease
+        {
+            Width = 4,
+            Height = 2,
+            PixelFormat = VideoPixelFormat.Nv12,
+            Data = new byte[24],
+            Planes = [new VideoFramePlane(2, 8), new VideoFramePlane(0, 4)]
+        };
+
+        Assert.True(VideoFrameLayout.TryGetPlane(lease, 0, 4, 2, out var plane));
+        Assert.Equal(2, plane.Offset);
+        Assert.Equal(8, plane.Stride);
+        Assert.False(VideoFrameLayout.TryGetPlane(lease, 1, 4, 7, out _));
+        Assert.False(VideoFrameLayout.TryGetPlane(lease, 2, 4, 2, out _));
+
+        lease = new CpuFrameLease
+        {
+            Width = 4,
+            Height = 2,
+            PixelFormat = VideoPixelFormat.Nv12,
+            Data = new byte[16],
+            Planes = [new VideoFramePlane(0, 3)]
+        };
+        Assert.False(VideoFrameLayout.TryGetPlane(lease, 0, 4, 2, out _));
+    }
 }

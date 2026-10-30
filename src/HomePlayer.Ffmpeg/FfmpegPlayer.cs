@@ -12,12 +12,12 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 {
     private sealed record SeekRequest(TimeSpan Position, long Epoch, long CommandId, long StartedTimestamp);
 
-    private sealed class VideoQueueItem(VideoFrame? frame, long epoch, bool endOfStream = false)
+    private sealed class VideoQueueItem(FrameLease? frame, long epoch, bool endOfStream = false)
     {
-        public VideoFrame? Frame { get; } = frame;
+        public FrameLease? Frame { get; } = frame;
         public long Epoch { get; } = epoch;
         public bool EndOfStream { get; } = endOfStream;
-        public long Bytes => Frame?.Data.Length ?? 0;
+        public long Bytes => Frame is CpuFrameLease cpu ? cpu.Data.Length : 0;
     }
 
     private sealed class PacketLease(FfmpegPlayer owner, IntPtr packet, long epoch, bool endOfStream = false) : IDisposable
@@ -99,7 +99,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
 
     private static readonly AVIOInterruptCB_callback InterruptCallback = OnInterrupt;
 
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
     public event Action<byte[], int>? AudioPcm;
@@ -614,7 +614,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
                         var send = ffmpeg.avcodec_send_packet(_videoCodec, item.EndOfStream ? null : item.Packet);
                         if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                             throw new InvalidOperationException($"视频解码器接收压缩包失败，错误码 {send}。");
-                        ReceiveVideoFrames(frame, item.Epoch);
+                        ReceiveFrameLeases(frame, item.Epoch);
                     }
                     if (item.EndOfStream)
                         _videoFrames!.Write(new VideoQueueItem(null, item.Epoch, true), 0, _cancel.Token);
@@ -634,7 +634,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         }
     }
 
-    private void ReceiveVideoFrames(AVFrame* frame, long epoch)
+    private void ReceiveFrameLeases(AVFrame* frame, long epoch)
     {
         while (true)
         {
@@ -790,7 +790,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         }
     }
 
-    private bool WaitForPresentation(VideoFrame frame, bool targetFrame)
+    private bool WaitForPresentation(FrameLease frame, bool targetFrame)
     {
         while (_cancel is { IsCancellationRequested: false })
         {
@@ -1065,7 +1065,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         AudioPcm?.Invoke(output, count);
     }
 
-    private VideoFrame ToBgra(AVFrame* source, long pts, long duration, long epoch)
+    private FrameLease ToBgra(AVFrame* source, long pts, long duration, long epoch)
     {
         if (_frameBytes <= 0)
             _frameBytes = Math.Max(1, ffmpeg.av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_BGRA, _width, _height, 1));
@@ -1118,7 +1118,7 @@ public sealed unsafe class FfmpegPlayer : IDisposable
         return _clockOriginTicks / (double)TimeSpan.TicksPerSecond + _clock.Elapsed.TotalSeconds * Rate;
     }
 
-    private void Deliver(VideoFrame frame)
+    private void Deliver(FrameLease frame)
     {
         var handler = FrameArrived;
         if (handler == null)

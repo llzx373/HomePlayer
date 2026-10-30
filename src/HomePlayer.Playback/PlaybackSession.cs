@@ -56,7 +56,7 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
         }
     }
 
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public event Action<PlaybackCommandResult>? CommandCompleted;
     public event Action<Exception>? Faulted;
@@ -165,7 +165,7 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
         _transport = PlaybackTransportState.Stopped;
     }
 
-    private void OnFrame(VideoFrame frame)
+    private void OnFrame(FrameLease frame)
     {
         if (_closed)
         {

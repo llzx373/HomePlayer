@@ -37,7 +37,7 @@ public static class PlaybackTelemetry
         Traced?.Invoke(item);
     }
 
-    public static void Observe(VideoFrame frame, PresentationObservation observation)
+    public static void Observe(FrameLease frame, PresentationObservation observation)
     {
         var now = Stopwatch.GetTimestamp();
         var sampled = frame.FrameSequence % FrameSampling == 0;

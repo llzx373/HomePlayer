@@ -360,7 +360,7 @@ public class PlaybackControllerTests
         public TimeSpan LastSeek { get; private set; }
         public List<MediaTrack> AudioTracks { get; } = [];
 
-        public event Action<VideoFrame>? FrameArrived;
+        public event Action<FrameLease>? FrameArrived;
         public event Action? Ended;
         public event Action<Exception>? Faulted;
         public event Action<Exception>? AudioOutputFailed;
@@ -422,7 +422,7 @@ public class PlaybackControllerTests
 
         public void Dispose() => IsOpen = false;
 
-        public void RaiseFrame(VideoFrame frame) => FrameArrived?.Invoke(frame);
+        public void RaiseFrame(FrameLease frame) => FrameArrived?.Invoke(frame);
 
         public void RaiseEnded()
         {

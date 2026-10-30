@@ -409,7 +409,7 @@ public sealed partial class PlayerPage : Page
         SnapshotButton.IsEnabled = _presenter.HasLastFrame;
     }
 
-    private void OnVideoFrame(VideoFrame frame)
+    private void OnVideoFrame(FrameLease frame)
     {
         _presenter.Submit(frame);
         if (!_presenter.HasLastFrame || Interlocked.Exchange(ref _snapshotArmed, 1) == 1)

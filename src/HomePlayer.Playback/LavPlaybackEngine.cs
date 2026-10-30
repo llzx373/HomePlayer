@@ -51,7 +51,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
     public TimeSpan Position => ReadPosition();
     public double Rate => _rate;
 
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
 
     public void Open(string path)

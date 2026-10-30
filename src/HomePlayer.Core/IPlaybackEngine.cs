@@ -24,7 +24,7 @@ public interface IPlaybackEngine : IDisposable
     int SubtitleTrackIndex { get; }
     void SetSubtitleTrack(int index);
     PipelineInfo GetPipeline();
-    event Action<VideoFrame>? FrameArrived;
+    event Action<FrameLease>? FrameArrived;
     event Action? Ended;
 }
 

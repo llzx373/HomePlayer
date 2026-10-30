@@ -195,10 +195,10 @@ public sealed class PlaybackPerformanceTests
         };
     }
 
-    private static TaskCompletionSource NewFrameSignal(FfmpegPlayer player, Func<VideoFrame, bool>? predicate = null)
+    private static TaskCompletionSource NewFrameSignal(FfmpegPlayer player, Func<FrameLease, bool>? predicate = null)
     {
         var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Handler(VideoFrame frame)
+        void Handler(FrameLease frame)
         {
             var matches = predicate?.Invoke(frame) != false;
             frame.ReturnBuffer();

@@ -27,7 +27,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
     public BgraSinkFilter() => _pin = new BgraSinkPin(this);
 
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public bool HasPresented => Interlocked.Read(ref _presentedTicks) >= 0;
     internal bool Paused => _state == RendererGate.Paused;
@@ -136,7 +136,7 @@ public sealed class BgraSinkFilter : IBaseFilterSink
 
     internal bool IsRunning => _state == 2;
 
-    internal void Deliver(VideoFrame frame)
+    internal void Deliver(FrameLease frame)
     {
         var handler = FrameArrived;
         if (handler == null)

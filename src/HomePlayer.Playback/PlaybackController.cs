@@ -74,7 +74,7 @@ public sealed partial class PlaybackController : IDisposable
     public int VideoWidth => _videoWidth;
     public int VideoHeight => _videoHeight;
     public event Action? Changed;
-    public event Action<VideoFrame>? FrameArrived;
+    public event Action<FrameLease>? FrameArrived;
     public event Action? VideoSizeChanged;
     public event Action<bool>? PlaybackActiveChanged;
     public event Action? Stopped;
@@ -539,7 +539,7 @@ public sealed partial class PlaybackController : IDisposable
             audioEvents.AudioOutputFailed -= OnAudioOutputFailed;
     }
 
-    private void OnFrame(VideoFrame frame)
+    private void OnFrame(FrameLease frame)
     {
         if (_firstFramePending)
         {

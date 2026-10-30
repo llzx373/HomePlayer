@@ -13,10 +13,9 @@ using WinRT;
 namespace HomePlayer;
 
 /// <summary>
-/// 把解码线程送来的帧上传成纹理并呈现到 <see cref="SwapChainPanel"/>。
+/// 把 CPU 平面或 D3D11 纹理租约呈现到 <see cref="SwapChainPanel"/>。
 /// 所有 D3D 调用都在专用渲染线程上串行执行，UI 线程只负责尺寸/挂载这类轻量工作。
-/// 最近一次上传的帧会保留在 <see cref="_lastFrame"/> 里，截图时直接读内存，
-/// 因此热路径上不再有额外的一整帧拷贝。
+/// BGRA 帧继续支持直接内存截图，不在热路径上保留额外整帧副本。
 /// </summary>
 public sealed class VideoPresenter : IDisposable
 {
@@ -45,8 +44,22 @@ public sealed class VideoPresenter : IDisposable
         }
         """;
 
+    private const string YuvPixelShaderCode = """
+        Texture2D lumaTexture : register(t0);
+        Texture2D chromaTexture : register(t1);
+        SamplerState frameSampler : register(s0);
+        float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target {
+            float y = lumaTexture.Sample(frameSampler, uv).r;
+            float2 chroma = chromaTexture.Sample(frameSampler, uv).rg;
+            y = (y - 0.062745098) * 1.16438356;
+            float u = chroma.x - 0.5;
+            float v = chroma.y - 0.5;
+            return float4(y + 1.79274107 * v, y - 0.213248614 * u - 0.532909328 * v, y + 2.11240179 * u, 1);
+        }
+        """;
+
     private static readonly ID3D11RenderTargetView[] NoTargets = [];
-    private static readonly ID3D11ShaderResourceView[] NoFrameViews = new ID3D11ShaderResourceView[1];
+    private static readonly ID3D11ShaderResourceView[] NoFrameViews = new ID3D11ShaderResourceView[2];
 
     private readonly SwapChainPanel _panel;
     private readonly DispatcherQueue _ui;
@@ -54,8 +67,8 @@ public sealed class VideoPresenter : IDisposable
     private readonly object _gate = new();
     private ISwapChainPanelNative? _native;
 
-    private VideoFrame? _pending;
-    private VideoFrame? _lastFrame;
+    private FrameLease? _pending;
+    private FrameLease? _lastFrame;
 
     private int _desiredWidth;
     private int _desiredHeight;
@@ -92,10 +105,13 @@ public sealed class VideoPresenter : IDisposable
     private IntPtr _frameLatencyWaitable;
     private ID3D11RenderTargetView? _target;
     private ID3D11Texture2D? _frameTexture;
+    private ID3D11Texture2D? _chromaTexture;
     private ID3D11ShaderResourceView? _frameView;
+    private ID3D11ShaderResourceView? _chromaView;
     private ID3D11Buffer? _vertices;
     private ID3D11VertexShader? _vertexShader;
     private ID3D11PixelShader? _pixelShader;
+    private ID3D11PixelShader? _yuvPixelShader;
     private ID3D11InputLayout? _layout;
     private ID3D11SamplerState? _sampler;
     private ID3D11RasterizerState? _rasterizer;
@@ -104,15 +120,20 @@ public sealed class VideoPresenter : IDisposable
     private int _height;
     private int _frameWidth;
     private int _frameHeight;
+    private VideoPixelFormat _framePixelFormat;
     private bool _frameBottomUp;
     private float _scaleX = 1;
     private float _scaleY = 1;
     private long _lastRecoveryMs;
     private long _lastPipelineTryMs;
+    private long _deviceGeneration;
+    private long _adapterLuid;
+    private nint _gpuTexture;
+    private int _gpuSubresource = -1;
     private readonly uint[] _vertexStrides = [16];
     private readonly uint[] _vertexOffsets = [0];
     private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
-    private readonly ID3D11ShaderResourceView[] _frameViews = new ID3D11ShaderResourceView[1];
+    private readonly ID3D11ShaderResourceView[] _frameViews = new ID3D11ShaderResourceView[2];
     private readonly ID3D11SamplerState[] _samplers = new ID3D11SamplerState[1];
 
     public Func<bool>? CanRender { get; set; }
@@ -200,9 +221,9 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
-    public void Submit(VideoFrame frame)
+    public void Submit(FrameLease frame)
     {
-        VideoFrame? replaced;
+        FrameLease? replaced;
         lock (_gate)
         {
             replaced = _pending;
@@ -218,8 +239,7 @@ public sealed class VideoPresenter : IDisposable
     {
         lock (_gate)
         {
-            var frame = _lastFrame;
-            if (frame == null)
+            if (_lastFrame is not VideoFrame frame)
             {
                 width = 0;
                 height = 0;
@@ -252,8 +272,8 @@ public sealed class VideoPresenter : IDisposable
 
     public void Clear()
     {
-        VideoFrame? pending;
-        VideoFrame? last;
+        FrameLease? pending;
+        FrameLease? last;
         lock (_gate)
         {
             pending = _pending;
@@ -269,11 +289,7 @@ public sealed class VideoPresenter : IDisposable
 
     private void ClearFrame()
     {
-        _context?.PSSetShaderResources(0, 1, NoFrameViews);
-        _frameView?.Dispose();
-        _frameView = null;
-        _frameTexture?.Dispose();
-        _frameTexture = null;
+        ReleaseFrameResources();
         _frameWidth = 0;
         _frameHeight = 0;
         if (_context == null || _target == null || _swapChain == null)
@@ -302,8 +318,8 @@ public sealed class VideoPresenter : IDisposable
         _render.Post(ReleaseDeviceResources);
         _render.Dispose();
 
-        VideoFrame? pending;
-        VideoFrame? last;
+        FrameLease? pending;
+        FrameLease? last;
         lock (_gate)
         {
             pending = _pending;
@@ -431,7 +447,7 @@ public sealed class VideoPresenter : IDisposable
         chain.Dispose();
     }
 
-    private unsafe void Draw()
+    private void Draw()
     {
         Interlocked.Exchange(ref _posted, 0);
         if (_suspended || !_allowed)
@@ -443,14 +459,14 @@ public sealed class VideoPresenter : IDisposable
             AttachSwapChainToPanel(_swapChain.NativePointer);
 
         if (_context == null || _swapChain == null || _target == null || _vertexShader == null || _pixelShader == null
-            || _vertices == null || _layout == null || _sampler == null || _rasterizer == null)
+            || _yuvPixelShader == null || _vertices == null || _layout == null || _sampler == null || _rasterizer == null)
         {
             if (_device != null && _context != null && _vertexShader == null)
                 TryEnsurePipeline();
             return;
         }
 
-        VideoFrame? frame;
+        FrameLease? frame;
         lock (_gate)
         {
             frame = _pending;
@@ -464,32 +480,22 @@ public sealed class VideoPresenter : IDisposable
             frame = null;
         }
 
-        if (!upload && (_frameTexture == null || _frameView == null || _frameWidth < 1 || _frameHeight < 1))
+        if (!upload && (_frameView == null || _frameWidth < 1 || _frameHeight < 1))
             return;
 
         try
         {
-            if (upload && frame != null)
+            if (upload && frame != null && !PrepareFrame(frame))
             {
-                EnsureFrameTexture(frame.Width, frame.Height);
-                if (_frameTexture == null || _frameView == null)
-                {
-                    frame.ReturnBuffer();
-                    frame = null;
-                }
-                else
-                {
-                    var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
-                    CopyFrame(frame, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
-                    _context.Unmap(_frameTexture, 0);
-                    _frameBottomUp = frame.BottomUp;
-                }
+                frame.ReturnBuffer();
+                frame = null;
             }
 
             var frameView = _frameView;
             if (frameView == null)
                 return;
 
+            var yuv = _framePixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010;
             WriteQuad();
             _context.OMSetRenderTargets(_target, null);
             _context.RSSetViewport(0, 0, _width, _height);
@@ -500,9 +506,10 @@ public sealed class VideoPresenter : IDisposable
             _vertexBuffers[0] = _vertices;
             _context.IASetVertexBuffers(0, 1, _vertexBuffers, _vertexStrides, _vertexOffsets);
             _context.VSSetShader(_vertexShader, null!, 0);
-            _context.PSSetShader(_pixelShader, null!, 0);
+            _context.PSSetShader(yuv ? _yuvPixelShader : _pixelShader, null!, 0);
             _frameViews[0] = frameView;
-            _context.PSSetShaderResources(0, 1, _frameViews);
+            _frameViews[1] = _chromaView!;
+            _context.PSSetShaderResources(0, 2, _frameViews);
             _samplers[0] = _sampler!;
             _context.PSSetSamplers(0, 1, _samplers);
             _context.Draw(4, 0);
@@ -520,6 +527,7 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
+            Trace("draw error " + ex);
             if (frame != null)
             {
                 frame.ReturnBuffer();
@@ -541,9 +549,9 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
-    private void SwapLastFrame(VideoFrame frame)
+    private void SwapLastFrame(FrameLease frame)
     {
-        VideoFrame? previous;
+        FrameLease? previous;
         lock (_gate)
         {
             previous = _lastFrame;
@@ -689,29 +697,181 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
+    private unsafe bool PrepareFrame(FrameLease frame)
+    {
+        if (_device == null || _context == null)
+            return false;
+        switch (frame)
+        {
+            case VideoFrame bgra when bgra.PixelFormat == VideoPixelFormat.Bgra32:
+                EnsureFrameTexture(bgra.Width, bgra.Height);
+                if (_frameTexture == null)
+                    return false;
+                var mapped = _context.Map(_frameTexture, 0, MapMode.WriteDiscard);
+                CopyFrame(bgra, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
+                _context.Unmap(_frameTexture, 0);
+                _frameBottomUp = bgra.BottomUp;
+                _framePixelFormat = VideoPixelFormat.Bgra32;
+                return true;
+            case CpuFrameLease cpu when cpu.PixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010:
+                return UploadYuv(cpu);
+            case D3D11FrameLease gpu:
+                return PrepareGpuFrame(gpu);
+            default:
+                Trace($"unsupported frame storage={frame.Storage} format={frame.PixelFormat}");
+                return false;
+        }
+    }
+
     private void EnsureFrameTexture(int width, int height)
     {
-        if (_device == null || (_frameTexture != null && width == _frameWidth && height == _frameHeight))
+        if (_device == null || (_frameTexture != null && _framePixelFormat == VideoPixelFormat.Bgra32
+            && width == _frameWidth && height == _frameHeight))
             return;
-        _context?.PSSetShaderResources(0, 1, NoFrameViews);
+        ReleaseFrameResources();
+        _frameTexture = CreateDynamicTexture(width, height, Format.B8G8R8A8_UNorm);
+        _frameView = _device!.CreateShaderResourceView(_frameTexture);
+        _frameWidth = width;
+        _frameHeight = height;
+        _framePixelFormat = VideoPixelFormat.Bgra32;
+    }
 
-        _frameView?.Dispose();
-        _frameTexture?.Dispose();
-        _frameTexture = _device.CreateTexture2D(new Texture2DDescription
+    private unsafe bool UploadYuv(CpuFrameLease frame)
+    {
+        if (frame.Width < 2 || frame.Height < 2 || frame.Width % 2 != 0 || frame.Height % 2 != 0)
+            return false;
+        var bytesPerSample = frame.PixelFormat == VideoPixelFormat.P010 ? 2 : 1;
+        var lumaRowBytes = frame.Width * bytesPerSample;
+        var chromaRowBytes = frame.Width * bytesPerSample;
+        if (!VideoFrameLayout.TryGetPlane(frame, 0, lumaRowBytes, frame.Height, out var luma)
+            || !VideoFrameLayout.TryGetPlane(frame, 1, chromaRowBytes, frame.Height / 2, out var chroma))
+            return false;
+
+        EnsureYuvTextures(frame.Width, frame.Height, frame.PixelFormat);
+        if (_frameTexture == null || _chromaTexture == null)
+            return false;
+        UploadPlane(frame.Data, luma, lumaRowBytes, frame.Height, _frameTexture);
+        UploadPlane(frame.Data, chroma, chromaRowBytes, frame.Height / 2, _chromaTexture);
+        _frameWidth = frame.Width;
+        _frameHeight = frame.Height;
+        _framePixelFormat = frame.PixelFormat;
+        _frameBottomUp = false;
+        return true;
+    }
+
+    private void EnsureYuvTextures(int width, int height, VideoPixelFormat format)
+    {
+        if (_frameTexture != null && _chromaTexture != null && _framePixelFormat == format
+            && width == _frameWidth && height == _frameHeight)
+            return;
+        ReleaseFrameResources();
+        var tenBit = format == VideoPixelFormat.P010;
+        _frameTexture = CreateDynamicTexture(width, height, tenBit ? Format.R16_UNorm : Format.R8_UNorm);
+        _chromaTexture = CreateDynamicTexture(width / 2, height / 2, tenBit ? Format.R16G16_UNorm : Format.R8G8_UNorm);
+        _frameView = _device!.CreateShaderResourceView(_frameTexture);
+        _chromaView = _device.CreateShaderResourceView(_chromaTexture);
+    }
+
+    private ID3D11Texture2D CreateDynamicTexture(int width, int height, Format format) =>
+        _device!.CreateTexture2D(new Texture2DDescription
         {
             Width = (uint)width,
             Height = (uint)height,
             MipLevels = 1,
             ArraySize = 1,
-            Format = Format.B8G8R8A8_UNorm,
+            Format = format,
             SampleDescription = new SampleDescription(1, 0),
             Usage = ResourceUsage.Dynamic,
             BindFlags = BindFlags.ShaderResource,
             CPUAccessFlags = CpuAccessFlags.Write
         });
-        _frameView = _device.CreateShaderResourceView(_frameTexture);
-        _frameWidth = width;
-        _frameHeight = height;
+
+    private unsafe void UploadPlane(byte[] data, VideoFramePlane plane, int rowBytes, int rows, ID3D11Texture2D texture)
+    {
+        var mapped = _context!.Map(texture, 0, MapMode.WriteDiscard);
+        fixed (byte* source = data)
+            CopyPlane(source + plane.Offset, plane.Stride, rowBytes, rows, (byte*)mapped.DataPointer, (int)mapped.RowPitch);
+        _context.Unmap(texture, 0);
+    }
+
+    private bool PrepareGpuFrame(D3D11FrameLease frame)
+    {
+        var resource = frame.Resource;
+        if (_device == null || resource.Texture == 0 || frame.DeviceGeneration != _deviceGeneration
+            || resource.AdapterLuid != _adapterLuid)
+            return false;
+        if (_gpuTexture == resource.Texture && _gpuSubresource == resource.Subresource && _framePixelFormat == frame.PixelFormat)
+            return true;
+
+        using var texture = new ID3D11Texture2D(resource.Texture);
+        texture.AddRef();
+        var description = texture.Description;
+        if (description.Width != (uint)frame.Width || description.Height != (uint)frame.Height
+            || resource.Subresource < 0 || resource.Subresource >= description.ArraySize)
+            return false;
+        var (expectedFormat, lumaFormat, chromaFormat) = frame.PixelFormat switch
+        {
+            VideoPixelFormat.Bgra32 => (Format.B8G8R8A8_UNorm, Format.B8G8R8A8_UNorm, Format.Unknown),
+            VideoPixelFormat.Nv12 => (Format.NV12, Format.R8_UNorm, Format.R8G8_UNorm),
+            VideoPixelFormat.P010 => (Format.P010, Format.R16_UNorm, Format.R16G16_UNorm),
+            _ => (Format.Unknown, Format.Unknown, Format.Unknown)
+        };
+        if (description.Format != expectedFormat)
+            return false;
+
+        ReleaseFrameResources();
+        _frameView = CreateGpuView(texture, resource.Subresource, description.ArraySize, lumaFormat);
+        if (chromaFormat != Format.Unknown)
+            _chromaView = CreateGpuView(texture, resource.Subresource, description.ArraySize, chromaFormat);
+        _gpuTexture = resource.Texture;
+        _gpuSubresource = resource.Subresource;
+        _frameWidth = frame.Width;
+        _frameHeight = frame.Height;
+        _framePixelFormat = frame.PixelFormat;
+        _frameBottomUp = false;
+        return true;
+    }
+
+    private ID3D11ShaderResourceView CreateGpuView(ID3D11Texture2D texture, int subresource, uint arraySize, Format format)
+    {
+        if (arraySize > 1 || subresource > 0)
+        {
+            return _device!.CreateShaderResourceView(texture, new ShaderResourceViewDescription
+            {
+                Format = format,
+                ViewDimension = ShaderResourceViewDimension.Texture2DArray,
+                Texture2DArray = new Texture2DArrayShaderResourceView
+                {
+                    MostDetailedMip = 0,
+                    MipLevels = 1,
+                    FirstArraySlice = (uint)subresource,
+                    ArraySize = 1
+                }
+            });
+        }
+
+        return _device!.CreateShaderResourceView(texture, new ShaderResourceViewDescription
+        {
+            Format = format,
+            ViewDimension = ShaderResourceViewDimension.Texture2D,
+            Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
+        });
+    }
+
+    private void ReleaseFrameResources()
+    {
+        _context?.PSSetShaderResources(0, 2, NoFrameViews);
+        _frameView?.Dispose();
+        _frameView = null;
+        _chromaView?.Dispose();
+        _chromaView = null;
+        _frameTexture?.Dispose();
+        _frameTexture = null;
+        _chromaTexture?.Dispose();
+        _chromaTexture = null;
+        _gpuTexture = 0;
+        _gpuSubresource = -1;
+        _framePixelFormat = VideoPixelFormat.Unknown;
     }
 
     private unsafe void WriteQuad()
@@ -756,13 +916,25 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
+    private static unsafe void CopyPlane(
+        byte* source,
+        int sourceStride,
+        int rowBytes,
+        int rows,
+        byte* destination,
+        int destinationStride)
+    {
+        for (var y = 0; y < rows; y++)
+            Buffer.MemoryCopy(source + (long)y * sourceStride, destination + (long)y * destinationStride, rowBytes, rowBytes);
+    }
+
     private void WaitForFrameLatency()
     {
         if (_frameLatencyWaitable != IntPtr.Zero)
             WaitForSingleObject(_frameLatencyWaitable, 100);
     }
 
-    private void TracePresentStatistics(VideoFrame frame)
+    private void TracePresentStatistics(FrameLease frame)
     {
         if (_swapChain == null || _swapChain.GetFrameStatistics(out var statistics).Failure)
             return;
@@ -808,7 +980,12 @@ public sealed class VideoPresenter : IDisposable
 
         _device = device;
         _context = context;
+        using var dxgi = device.QueryInterface<IDXGIDevice>();
+        using var adapter = dxgi.GetAdapter();
+        _adapterLuid = ToInt64(adapter.Description.Luid);
     }
+
+    private static long ToInt64(Vortice.Luid value) => (uint)value.LowPart | ((long)value.HighPart << 32);
 
     private void TryEnsurePipeline()
     {
@@ -832,13 +1009,16 @@ public sealed class VideoPresenter : IDisposable
             return;
         _vertexBytecode = CompileShader(VertexShaderCode, "vs_4_0");
         var pixelBytecode = CompileShader(PixelShaderCode, "ps_4_0");
-        if (_vertexBytecode == null || pixelBytecode == null)
+        var yuvBytecode = CompileShader(YuvPixelShaderCode, "ps_4_0");
+        if (_vertexBytecode == null || pixelBytecode == null || yuvBytecode == null)
             return;
         fixed (byte* vertex = _vertexBytecode)
         fixed (byte* pixel = pixelBytecode)
+        fixed (byte* yuv = yuvBytecode)
         {
             _vertexShader = _device.CreateVertexShader(vertex, (nuint)_vertexBytecode.Length);
             _pixelShader = _device.CreatePixelShader(pixel, (nuint)pixelBytecode.Length);
+            _yuvPixelShader = _device.CreatePixelShader(yuv, (nuint)yuvBytecode.Length);
         }
 
         _layout = _device.CreateInputLayout(
@@ -876,11 +1056,9 @@ public sealed class VideoPresenter : IDisposable
 
     private void ReleaseDeviceResources()
     {
+        _deviceGeneration++;
         ReleaseSwapChain();
-        _frameView?.Dispose();
-        _frameView = null;
-        _frameTexture?.Dispose();
-        _frameTexture = null;
+        ReleaseFrameResources();
         _vertices?.Dispose();
         _vertices = null;
         _layout?.Dispose();
@@ -889,6 +1067,8 @@ public sealed class VideoPresenter : IDisposable
         _vertexShader = null;
         _pixelShader?.Dispose();
         _pixelShader = null;
+        _yuvPixelShader?.Dispose();
+        _yuvPixelShader = null;
         _sampler?.Dispose();
         _sampler = null;
         _rasterizer?.Dispose();
