@@ -6,7 +6,11 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Ffmpeg;
 
-public sealed record FfmpegSubtitleStream(int Index, string Title, string? Language, string Codec, bool IsText);
+public sealed record FfmpegSubtitleStream(int Index, string Title, string? Language, string Codec, bool IsText)
+{
+    public string? StableId { get; init; }
+    public MediaTrackDisposition Disposition { get; init; }
+}
 
 public static unsafe class FfmpegSubtitles
 {
@@ -57,12 +61,13 @@ public static unsafe class FfmpegSubtitles
             if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_SUBTITLE)
                 continue;
             var codec = ffmpeg.avcodec_get_name(stream->codecpar->codec_id) ?? "";
-            tracks.Add(new FfmpegSubtitleStream(
-                i,
-                DictGet(stream->metadata, "title") ?? "",
-                DictLanguage(stream->metadata),
-                codec,
-                IsText(stream->codecpar->codec_id)));
+            var title = DictGet(stream->metadata, "title") ?? "";
+            var language = DictLanguage(stream->metadata);
+            tracks.Add(new FfmpegSubtitleStream(i, title, language, codec, IsText(stream->codecpar->codec_id))
+            {
+                StableId = FfmpegTrackIdentity.StableId(stream, MediaTrackKind.Subtitle, title, language),
+                Disposition = FfmpegTrackIdentity.Disposition(stream)
+            });
         }
 
         return tracks;

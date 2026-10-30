@@ -287,7 +287,9 @@ public class LibraryRepositoryTests
             SubtitleTrackIndex = 4,
             SubtitleTrackTitle = "Signs",
             SubtitleTrackLanguage = "zh",
-            SubtitleDelayMs = 250
+            SubtitleDelayMs = 250,
+            AudioTrackStableId = "audio:uid:11",
+            SubtitleTrackStableId = "subtitle:uid:22"
         };
 
         fixture.Repository.SavePreference(preference);

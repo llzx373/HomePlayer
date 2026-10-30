@@ -30,6 +30,8 @@ public class FfmpegPlayerTests : IDisposable
         Assert.True(Math.Abs((player.Duration - TimeSpan.FromSeconds(2)).TotalMilliseconds) <= 100,
             $"媒体时长应为 2 秒，实际为 {player.Duration}。");
         Assert.Equal(2, player.GetAudioTracks().Count);
+        Assert.All(player.GetAudioTracks(), track => Assert.False(string.IsNullOrWhiteSpace(track.StableId)));
+        Assert.Equal(2, player.GetAudioTracks().Select(track => track.StableId).Distinct().Count());
 
         player.Play();
         await WaitUntilAsync(() => Volatile.Read(ref frames) >= 1);

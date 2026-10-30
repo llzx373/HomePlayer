@@ -1278,8 +1278,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 var stream = _format->streams[i];
                 if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_AUDIO)
                     continue;
-                tracks.Add(new MediaTrack(i, MediaTrackKind.Audio, DictGet(stream->metadata, "title") ?? "", DictLanguage(stream->metadata),
-                    i == Volatile.Read(ref _audioIndex)));
+                var title = DictGet(stream->metadata, "title") ?? "";
+                var language = DictLanguage(stream->metadata);
+                tracks.Add(new MediaTrack(i, MediaTrackKind.Audio, title, language, i == Volatile.Read(ref _audioIndex))
+                {
+                    StableId = FfmpegTrackIdentity.StableId(stream, MediaTrackKind.Audio, title, language),
+                    Disposition = FfmpegTrackIdentity.Disposition(stream)
+                });
             }
         }
         lock (_gate)
@@ -1296,8 +1301,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 var stream = _format->streams[i];
                 if (stream->codecpar == null || stream->codecpar->codec_type != AVMediaType.AVMEDIA_TYPE_SUBTITLE)
                     continue;
-                tracks.Add(new MediaTrack(i, MediaTrackKind.Subtitle, DictGet(stream->metadata, "title") ?? "", DictLanguage(stream->metadata),
-                    i == Volatile.Read(ref _subtitleIndex)));
+                var title = DictGet(stream->metadata, "title") ?? "";
+                var language = DictLanguage(stream->metadata);
+                tracks.Add(new MediaTrack(i, MediaTrackKind.Subtitle, title, language, i == Volatile.Read(ref _subtitleIndex))
+                {
+                    StableId = FfmpegTrackIdentity.StableId(stream, MediaTrackKind.Subtitle, title, language),
+                    Disposition = FfmpegTrackIdentity.Disposition(stream)
+                });
             }
         }
         lock (_gate)

@@ -134,6 +134,7 @@ internal sealed class SubtitleSession
             SubtitleTrackIndex = _choice == Choice.Embedded ? _embedded : null,
             SubtitleTrackTitle = _choice == Choice.Embedded ? track?.Title : null,
             SubtitleTrackLanguage = _choice == Choice.Embedded ? track?.Language : null,
+            SubtitleTrackStableId = _choice == Choice.Embedded ? track?.StableId : null,
             SubtitlePath = _choice == Choice.Sidecar ? _sidecar : null,
             SubtitleDelayMs = _delayMs
         };
@@ -144,16 +145,15 @@ internal sealed class SubtitleSession
         Embedded = tracks;
         if (_choice == Choice.Embedded && _preferred != null)
         {
-            var exact = tracks.FirstOrDefault(track => string.Equals(track.Title, _preferred.SubtitleTrackTitle, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase));
-            var language = !string.IsNullOrWhiteSpace(_preferred.SubtitleTrackLanguage)
-                ? tracks.FirstOrDefault(track => string.Equals(track.Language, _preferred.SubtitleTrackLanguage, StringComparison.OrdinalIgnoreCase))
-                : null;
-            var selected = exact ?? language
-                ?? tracks.FirstOrDefault(track => track.Index == _preferred.SubtitleTrackIndex);
+            var candidates = tracks.Select(track => new MediaTrack(track.Index, MediaTrackKind.Subtitle, track.Title, track.Language, false)
+            {
+                StableId = track.StableId,
+                Disposition = track.Disposition
+            }).ToList();
+            var selected = MediaPreferenceSelection.SubtitleTrack(_preferred, candidates);
             _preferred = null;
-            if (selected != null)
-                _embedded = selected.Index;
+            if (selected is int index)
+                _embedded = index;
             else
                 Auto();
         }

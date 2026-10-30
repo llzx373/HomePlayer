@@ -282,7 +282,8 @@ public sealed partial class PlaybackController : IDisposable
         {
             AudioTrackIndex = null,
             AudioTrackTitle = null,
-            AudioTrackLanguage = null
+            AudioTrackLanguage = null,
+            AudioTrackStableId = null
         });
     }
 
@@ -755,7 +756,8 @@ public sealed partial class PlaybackController : IDisposable
             {
                 AudioTrackIndex = track.Index,
                 AudioTrackTitle = track.Title,
-                AudioTrackLanguage = track.Language
+                AudioTrackLanguage = track.Language,
+                AudioTrackStableId = track.StableId
             });
         }
         catch (Exception)

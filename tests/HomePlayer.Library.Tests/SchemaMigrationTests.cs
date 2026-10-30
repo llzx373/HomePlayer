@@ -20,6 +20,8 @@ public class SchemaMigrationTests
         Assert.True(temp.HasColumn("MediaPreference", "Volume"));
         Assert.True(temp.HasColumn("MediaPreference", "PlaybackRate"));
         Assert.True(temp.HasColumn("MediaPreference", "AudioDelayMs"));
+        Assert.True(temp.HasColumn("MediaPreference", "AudioTrackStableId"));
+        Assert.True(temp.HasColumn("MediaPreference", "SubtitleTrackStableId"));
         Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM MediaBookmark;"));
         Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM Tag;"));
         Assert.Equal(0L, temp.Integer("SELECT COUNT(*) FROM MediaCollection;"));

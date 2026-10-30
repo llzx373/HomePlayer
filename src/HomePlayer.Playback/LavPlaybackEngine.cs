@@ -1034,7 +1034,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         {
             if (major != DsGuid.Audio)
                 return;
-            tracks.Add(new MediaTrack(index, MediaTrackKind.Audio, name, LanguageFromLcid(lcid), (flags & 1) != 0));
+            var language = LanguageFromLcid(lcid);
+            tracks.Add(new MediaTrack(index, MediaTrackKind.Audio, name, language, (flags & 1) != 0)
+            {
+                StableId = MediaTrackIdentity.Create(MediaTrackKind.Audio, null, name, language, MediaTrackDisposition.None)
+            });
         });
         return tracks;
     }
@@ -1046,7 +1050,11 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
         {
             if (major == DsGuid.Audio || major == DsGuid.Video)
                 return;
-            tracks.Add(new MediaTrack(index, MediaTrackKind.Subtitle, name, LanguageFromLcid(lcid), false));
+            var language = LanguageFromLcid(lcid);
+            tracks.Add(new MediaTrack(index, MediaTrackKind.Subtitle, name, language, false)
+            {
+                StableId = MediaTrackIdentity.Create(MediaTrackKind.Subtitle, null, name, language, MediaTrackDisposition.None)
+            });
         });
         return tracks;
     }
