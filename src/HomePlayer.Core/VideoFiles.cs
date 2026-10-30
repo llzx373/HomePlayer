@@ -14,7 +14,9 @@ public static class VideoFiles
     public static readonly string[] Extensions =
     [
         ".mkv", ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".flv",
-        ".ts", ".m2ts", ".mpg", ".mpeg", ".webm", ".rmvb"
+        ".ts", ".m2ts", ".mpg", ".mpeg", ".webm", ".rmvb", ".rm",
+        ".3gp", ".3g2", ".ogv", ".mts", ".vob", ".mxf", ".dv",
+        ".wtv", ".y4m"
     ];
 
     public static bool IsVideo(string path)

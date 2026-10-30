@@ -30,19 +30,29 @@ $sizes = @(16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
 $appPalette = @{ Light = '#7ED3C9'; Dark = '#2F8A82' }
 
 $filePalettes = [ordered]@{
-    mkv  = @{ Light = '#7BCFC6'; Dark = '#2E8B83' }
-    mp4  = @{ Light = '#82B4E2'; Dark = '#3A6CA6' }
-    m4v  = @{ Light = '#8FA0DA'; Dark = '#4A58A0' }
-    mov  = @{ Light = '#B49EDA'; Dark = '#6E56A0' }
-    avi  = @{ Light = '#E7BD7B'; Dark = '#AF7932' }
-    wmv  = @{ Light = '#9DB2C4'; Dark = '#5A7387' }
-    flv  = @{ Light = '#E5A599'; Dark = '#B0604F' }
-    ts   = @{ Light = '#8FCB9C'; Dark = '#468853' }
-    m2ts = @{ Light = '#7FC7D8'; Dark = '#3B8397' }
-    mpg  = @{ Light = '#E9AE7D'; Dark = '#AE6C34' }
-    mpeg = @{ Light = '#E4C67F'; Dark = '#A98C3A' }
-    webm = @{ Light = '#B5C67C'; Dark = '#74873B' }
-    rmvb = @{ Light = '#DFA1B5'; Dark = '#A4556F' }
+    mkv  = @{ Light = '#65E8D4'; Dark = '#20B8A7' }
+    mp4  = @{ Light = '#64C7FF'; Dark = '#3478F6' }
+    m4v  = @{ Light = '#B5C0FF'; Dark = '#7C83F0' }
+    mov  = @{ Light = '#E0B7FF'; Dark = '#AF72E8' }
+    avi  = @{ Light = '#FFD58A'; Dark = '#FF9F0A' }
+    wmv  = @{ Light = '#C4E2F5'; Dark = '#70A7C9' }
+    flv  = @{ Light = '#FFB4A6'; Dark = '#FF6F61' }
+    ts   = @{ Light = '#A0F2B8'; Dark = '#34C759' }
+    m2ts = @{ Light = '#93E7F5'; Dark = '#32ADE6' }
+    mpg  = @{ Light = '#FFC48A'; Dark = '#FF8A34' }
+    mpeg = @{ Light = '#FFE49A'; Dark = '#E5B93B' }
+    webm = @{ Light = '#DDF19A'; Dark = '#9EC13E' }
+    rmvb = @{ Light = '#FFC2D5'; Dark = '#F7779E' }
+    rm   = @{ Light = '#FFC2D5'; Dark = '#F7779E' }
+    '3gp' = @{ Light = '#64C7FF'; Dark = '#3478F6' }
+    '3g2' = @{ Light = '#64C7FF'; Dark = '#3478F6' }
+    ogv  = @{ Light = '#DDF19A'; Dark = '#9EC13E' }
+    mts  = @{ Light = '#93E7F5'; Dark = '#32ADE6' }
+    vob  = @{ Light = '#FFC48A'; Dark = '#FF8A34' }
+    mxf  = @{ Light = '#B5C0FF'; Dark = '#7C83F0' }
+    dv   = @{ Light = '#FFD58A'; Dark = '#FF9F0A' }
+    wtv  = @{ Light = '#C4E2F5'; Dark = '#70A7C9' }
+    y4m  = @{ Light = '#FFE49A'; Dark = '#E5B93B' }
 }
 
 function Get-Color {
@@ -89,11 +99,160 @@ function Add-PlayTriangle {
     $brush.Dispose()
 }
 
+function New-FilePath {
+    param(
+        [System.Drawing.RectangleF]$Rect,
+        [single]$Radius,
+        [single]$Fold
+    )
+
+    $d = $Radius * 2
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddArc($Rect.X, $Rect.Y, $d, $d, 180, 90)
+    $path.AddLine($Rect.X + $Radius, $Rect.Y, $Rect.Right - $Fold, $Rect.Y)
+    $path.AddLine($Rect.Right - $Fold, $Rect.Y, $Rect.Right, $Rect.Y + $Fold)
+    $path.AddLine($Rect.Right, $Rect.Y + $Fold, $Rect.Right, $Rect.Bottom - $Radius)
+    $path.AddArc($Rect.Right - $d, $Rect.Bottom - $d, $d, $d, 0, 90)
+    $path.AddArc($Rect.X, $Rect.Bottom - $d, $d, $d, 90, 90)
+    $path.CloseFigure()
+    return $path
+}
+
+function Add-ModernPlayMark {
+    param(
+        [System.Drawing.Graphics]$Graphics,
+        [int]$Size,
+        [bool]$ShowOrbit = $true
+    )
+
+    $centerY = if ($ShowOrbit) { 0.39 } else { 0.46 }
+    $diameter = [single]($Size * 0.39)
+    $orbitRect = New-Object System.Drawing.RectangleF(
+        [single]($Size * 0.5 - $diameter / 2),
+        [single]($Size * $centerY - $diameter / 2),
+        $diameter,
+        $diameter)
+
+    if ($ShowOrbit) {
+        $glowPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(24, 126, 211, 201), [single]($Size * 0.070))
+        $glowPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $glowPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $Graphics.DrawArc($glowPen, $orbitRect, 38, 286)
+        $glowPen.Dispose()
+
+        $orbitBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+            $orbitRect,
+            [System.Drawing.Color]::FromArgb(235, 190, 255, 246),
+            [System.Drawing.Color]::FromArgb(75, 255, 255, 255),
+            [single]45)
+        $orbitPen = New-Object System.Drawing.Pen($orbitBrush, [single]([Math]::Max(0.8, $Size * 0.018)))
+        $orbitPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $orbitPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $Graphics.DrawArc($orbitPen, $orbitRect, 38, 286)
+        $orbitPen.Dispose()
+        $orbitBrush.Dispose()
+    }
+
+    $triangleRect = New-Object System.Drawing.RectangleF(
+        [single]($Size * 0.415),
+        [single]($Size * $centerY - $Size * 0.105),
+        [single]($Size * 0.19),
+        [single]($Size * 0.21))
+    $points = [System.Drawing.PointF[]]@(
+        (New-Object System.Drawing.PointF($triangleRect.X, $triangleRect.Y)),
+        (New-Object System.Drawing.PointF($triangleRect.X, $triangleRect.Bottom)),
+        (New-Object System.Drawing.PointF($triangleRect.Right, [single]($triangleRect.Y + $triangleRect.Height / 2)))
+    )
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddPolygon($points)
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+        $triangleRect, [System.Drawing.Color]::White, [System.Drawing.Color]::FromArgb(255, 206, 248, 242), [single]90)
+    $Graphics.FillPath($brush, $path)
+    $pen = New-Object System.Drawing.Pen($brush, [single]([Math]::Max(0.6, $Size * 0.016)))
+    $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+    $Graphics.DrawPath($pen, $path)
+    $pen.Dispose()
+    $brush.Dispose()
+    $path.Dispose()
+}
+
+function Add-ModernFileIcon {
+    param(
+        [System.Drawing.Graphics]$Graphics,
+        [int]$Size,
+        [string]$Label,
+        [System.Drawing.Color]$Light,
+        [System.Drawing.Color]$Dark
+    )
+
+    $rect = New-Object System.Drawing.RectangleF(
+        [single]($Size * 0.14), [single]($Size * 0.055),
+        [single]($Size * 0.72), [single]($Size * 0.875))
+    $fold = [single]($Size * 0.19)
+    $radius = [single]($Size * 0.105)
+    $file = New-FilePath -Rect $rect -Radius $radius -Fold $fold
+
+    for ($i = 7; $i -ge 1; $i--) {
+        $shadow = $file.Clone()
+        $matrix = New-Object System.Drawing.Drawing2D.Matrix
+        $matrix.Translate(0, [single]($Size * (0.008 + $i * 0.0025)))
+        $shadow.Transform($matrix)
+        $shadowBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(4, 5, 20, 24))
+        $Graphics.FillPath($shadowBrush, $shadow)
+        $shadowBrush.Dispose()
+        $matrix.Dispose()
+        $shadow.Dispose()
+    }
+
+    $baseBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $Light, $Dark, [single]55)
+    $Graphics.FillPath($baseBrush, $file)
+    $baseBrush.Dispose()
+
+    $Graphics.SetClip($file)
+    $glowPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $glowPath.AddEllipse([single](-$Size * 0.18), [single](-$Size * 0.24), [single]($Size * 1.05), [single]($Size * 0.92))
+    $glowBrush = New-Object System.Drawing.Drawing2D.PathGradientBrush($glowPath)
+    $glowBrush.CenterColor = [System.Drawing.Color]::FromArgb(64, 255, 255, 255)
+    $glowBrush.SurroundColors = @([System.Drawing.Color]::FromArgb(0, 255, 255, 255))
+    $glowBrush.CenterPoint = New-Object System.Drawing.PointF([single]($Size * 0.28), [single]($Size * 0.18))
+    $Graphics.FillEllipse($glowBrush, [single](-$Size * 0.18), [single](-$Size * 0.24), [single]($Size * 1.05), [single]($Size * 0.92))
+    $glowBrush.Dispose()
+    $glowPath.Dispose()
+    $Graphics.ResetClip()
+
+    $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(105, 255, 255, 255), [single]([Math]::Max(0.45, $Size * 0.006)))
+    $Graphics.DrawPath($borderPen, $file)
+    $borderPen.Dispose()
+
+    $foldPoints = [System.Drawing.PointF[]]@(
+        (New-Object System.Drawing.PointF([single]($rect.Right - $fold), $rect.Y)),
+        (New-Object System.Drawing.PointF($rect.Right, [single]($rect.Y + $fold))),
+        (New-Object System.Drawing.PointF([single]($rect.Right - $fold), [single]($rect.Y + $fold)))
+    )
+    $foldBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(64, 255, 255, 255))
+    $Graphics.FillPolygon($foldBrush, $foldPoints)
+    $foldBrush.Dispose()
+    $foldPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(82, 255, 255, 255), [single]([Math]::Max(0.4, $Size * 0.005)))
+    $Graphics.DrawLine($foldPen, [single]($rect.Right - $fold), $rect.Y, [single]($rect.Right - $fold), [single]($rect.Y + $fold))
+    $Graphics.DrawLine($foldPen, [single]($rect.Right - $fold), [single]($rect.Y + $fold), $rect.Right, [single]($rect.Y + $fold))
+    $foldPen.Dispose()
+
+    $showDetails = $Size -ge 32
+    Add-ModernPlayMark -Graphics $Graphics -Size $Size -ShowOrbit $showDetails
+    if ($showDetails) {
+        Add-ExtensionLabel -Graphics $Graphics -Size $Size -Label $Label -CenterY 0.79 -MaxWidthRatio 0.58 -MaxHeightRatio 0.16
+    }
+    $file.Dispose()
+}
+
 function Add-ExtensionLabel {
     param(
         [System.Drawing.Graphics]$Graphics,
         [int]$Size,
-        [string]$Label
+        [string]$Label,
+        [single]$CenterY = 0.5,
+        [single]$MaxWidthRatio = 0.80,
+        [single]$MaxHeightRatio = 0.46
     )
 
     $family = New-Object System.Drawing.FontFamily('Segoe UI')
@@ -101,8 +260,8 @@ function Add-ExtensionLabel {
     $format.Alignment = [System.Drawing.StringAlignment]::Near
     $format.LineAlignment = [System.Drawing.StringAlignment]::Near
 
-    $maxWidth = [single]($Size * 0.80)
-    $maxHeight = [single]($Size * 0.46)
+    $maxWidth = [single]($Size * $MaxWidthRatio)
+    $maxHeight = [single]($Size * $MaxHeightRatio)
     $layout = New-Object System.Drawing.RectangleF(0, 0, [single]($Size * 4), [single]($Size * 4))
 
     $fontSize = [single]($Size * 0.52)
@@ -120,7 +279,7 @@ function Add-ExtensionLabel {
 
     $bounds = $path.GetBounds()
     $dx = [single](($Size - $bounds.Width) / 2 - $bounds.X)
-    $dy = [single](($Size - $bounds.Height) / 2 - $bounds.Y)
+    $dy = [single]($Size * $CenterY - $bounds.Height / 2 - $bounds.Y)
     $matrix = New-Object System.Drawing.Drawing2D.Matrix
     $matrix.Translate($dx, $dy)
     $path.Transform($matrix)
@@ -167,20 +326,7 @@ function Write-IcoFile {
             Add-PlayTriangle -Graphics $graphics -Size $size
         }
         else {
-            $pad = [single]($size * 0.04)
-            $rect = New-Object System.Drawing.RectangleF($pad, $pad, [single]($size - 2 * $pad), [single]($size - 2 * $pad))
-            $tile = New-RoundedRectPath -Rect $rect -Radius ([single]($size * 0.24))
-            $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $lightColor, $darkColor, [single]90)
-            $graphics.FillPath($brush, $tile)
-            $brush.Dispose()
-            $tile.Dispose()
-
-            if ($size -ge 32) {
-                Add-ExtensionLabel -Graphics $graphics -Size $size -Label $Label
-            }
-            else {
-                Add-PlayTriangle -Graphics $graphics -Size $size
-            }
+            Add-ModernFileIcon -Graphics $graphics -Size $size -Label $Label -Light $lightColor -Dark $darkColor
         }
 
         $stream = New-Object System.IO.MemoryStream

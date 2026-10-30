@@ -63,6 +63,16 @@ Name: "assoc\mpg"; Description: "MPEG (.mpg)"; Flags: checkedonce
 Name: "assoc\mpeg"; Description: "MPEG (.mpeg)"; Flags: checkedonce
 Name: "assoc\webm"; Description: "WebM (.webm)"; Flags: checkedonce
 Name: "assoc\rmvb"; Description: "RealMedia (.rmvb)"; Flags: checkedonce
+Name: "assoc\rm"; Description: "RealMedia (.rm)"; Flags: checkedonce
+Name: "assoc\3gp"; Description: "3GPP (.3gp)"; Flags: checkedonce
+Name: "assoc\3g2"; Description: "3GPP2 (.3g2)"; Flags: checkedonce
+Name: "assoc\ogv"; Description: "Ogg 视频 (.ogv)"; Flags: checkedonce
+Name: "assoc\mts"; Description: "AVCHD (.mts)"; Flags: checkedonce
+Name: "assoc\vob"; Description: "DVD 视频对象 (.vob)"; Flags: checkedonce
+Name: "assoc\mxf"; Description: "Material Exchange Format (.mxf)"; Flags: checkedonce
+Name: "assoc\dv"; Description: "Digital Video (.dv)"; Flags: checkedonce
+Name: "assoc\wtv"; Description: "Windows Recorded TV (.wtv)"; Flags: checkedonce
+Name: "assoc\y4m"; Description: "YUV4MPEG2 (.y4m)"; Flags: checkedonce
 Name: "context"; Description: "右键菜单添加「用 HomePlayer 播放」（即使不是默认播放器）"; GroupDescription: "文件关联:"; Flags: checkedonce
 
 [Dirs]
@@ -126,6 +136,36 @@ Root: HKLM; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"
 #include "assoc-entry.iss"
 #define Ext "rmvb"
 #define Desc "RealMedia 视频"
+#include "assoc-entry.iss"
+#define Ext "rm"
+#define Desc "RealMedia 视频"
+#include "assoc-entry.iss"
+#define Ext "3gp"
+#define Desc "3GPP 视频"
+#include "assoc-entry.iss"
+#define Ext "3g2"
+#define Desc "3GPP2 视频"
+#include "assoc-entry.iss"
+#define Ext "ogv"
+#define Desc "Ogg 视频"
+#include "assoc-entry.iss"
+#define Ext "mts"
+#define Desc "AVCHD 视频"
+#include "assoc-entry.iss"
+#define Ext "vob"
+#define Desc "DVD 视频对象"
+#include "assoc-entry.iss"
+#define Ext "mxf"
+#define Desc "MXF 视频"
+#include "assoc-entry.iss"
+#define Ext "dv"
+#define Desc "DV 视频"
+#include "assoc-entry.iss"
+#define Ext "wtv"
+#define Desc "Windows Recorded TV 视频"
+#include "assoc-entry.iss"
+#define Ext "y4m"
+#define Desc "YUV4MPEG2 视频"
 #include "assoc-entry.iss"
 
 [Run]
