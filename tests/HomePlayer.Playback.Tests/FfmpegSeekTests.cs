@@ -53,6 +53,62 @@ public sealed class FfmpegSeekTests : IDisposable
             $"AAC seek 的首段 PCM 应对齐目标样本，实际偏移为 {bestOffset} 个样本。");
     }
 
+    [Fact]
+    public async Task Open_gop_seek_matches_sequential_decode()
+    {
+        var media = CreateOpenGopMedia();
+        var target = TimeSpan.FromMilliseconds(1040);
+
+        var expected = await CaptureBgra(media, target, false);
+        var actual = await CaptureBgra(media, target, true);
+
+        Assert.Equal(expected.PositionTicks, actual.PositionTicks);
+        Assert.Equal(expected.Width, actual.Width);
+        Assert.Equal(expected.Height, actual.Height);
+        Assert.Equal(expected.Data, actual.Data);
+    }
+
+    private static async Task<FrameSnapshot> CaptureBgra(string media, TimeSpan target, bool seek)
+    {
+        using var player = new FfmpegPlayer { EnableDirectYuv = false };
+        var captured = new TaskCompletionSource<FrameSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        player.FrameArrived += frame =>
+        {
+            var position = frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp);
+            if (position < target.Ticks)
+            {
+                frame.ReturnBuffer();
+                return;
+            }
+            var bgra = (HomePlayer.Core.VideoFrame)frame;
+            var data = new byte[bgra.Stride * bgra.Height];
+            Buffer.BlockCopy(bgra.Data, 0, data, 0, data.Length);
+            captured.TrySetResult(new FrameSnapshot(position, bgra.Width, bgra.Height, data));
+            frame.ReturnBuffer();
+        };
+        player.Open(media);
+        if (seek)
+            player.Seek(target);
+        player.Play();
+        return await captured.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private string CreateOpenGopMedia()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "open-gop.mp4");
+        using var process = Process.Start(new ProcessStartInfo("ffmpeg")
+        {
+            UseShellExecute = false,
+            Arguments = $"-y -loglevel error -f lavfi -i \"testsrc2=size=64x48:rate=25:duration=3\" -c:v libx264 -pix_fmt yuv420p -g 25 -keyint_min 25 -sc_threshold 0 -bf 3 -x264-params \"open-gop=1:b-pyramid=2\" -an \"{path}\""
+        })!;
+        Assert.True(process.WaitForExit(30_000), "生成 open GOP 测试媒体超时。");
+        Assert.Equal(0, process.ExitCode);
+        return path;
+    }
+
+    private sealed record FrameSnapshot(long PositionTicks, int Width, int Height, byte[] Data);
+
     private string CreateAacMedia()
     {
         Directory.CreateDirectory(_directory);
