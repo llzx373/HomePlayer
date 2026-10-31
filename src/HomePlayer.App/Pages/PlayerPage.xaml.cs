@@ -46,10 +46,7 @@ public sealed partial class PlayerPage : Page
     private bool _pointerDown;
     private bool _layingProgress;
     private double _scrubSeconds;
-    private bool _haveAnchor;
-    private bool _anchorPlaying;
-    private TimeSpan _anchor;
-    private long _anchorStamp;
+    private readonly PlaybackProgressClock _progressClock = new();
     private string? _progressMedia;
     private bool _progressOpen;
     private bool _updatingVolume;
@@ -164,6 +161,8 @@ public sealed partial class PlayerPage : Page
             SyncAlwaysOnTopButton();
             SyncAspectMenu();
             LayoutProgress(ShownSeconds());
+            CompositionTarget.Rendering -= Progress_Rendering;
+            CompositionTarget.Rendering += Progress_Rendering;
             _presenter.Resume();
             FitWindow(false);
             if (!_timer.IsEnabled)
@@ -172,6 +171,7 @@ public sealed partial class PlayerPage : Page
         Unloaded += (_, _) =>
         {
             HideSeekPreview();
+            CompositionTarget.Rendering -= Progress_Rendering;
             _timer.Stop();
             _presenter.Suspend();
             DetachWindowEvents();
@@ -181,6 +181,7 @@ public sealed partial class PlayerPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         HideSeekPreview();
+        CompositionTarget.Rendering -= Progress_Rendering;
         _timer.Stop();
         _presenter.Suspend();
         DetachWindowEvents();
@@ -514,20 +515,27 @@ public sealed partial class PlayerPage : Page
         LayoutProgress(seconds);
     }
 
+    private void Progress_Rendering(object? sender, object e)
+    {
+        if (App.Host.Exiting || !_progressClock.HasAnchor || !Playback.IsPlaying || _scrubbing || _pointerDown)
+            return;
+        LayoutProgress(Predicted().TotalSeconds);
+    }
+
     private double ShownSeconds()
     {
         SyncProgressMedia();
         var duration = Playback.Duration;
         var engine = Playback.Position;
         var playing = Playback.IsPlaying;
-        if (!_haveAnchor)
+        if (!_progressClock.HasAnchor)
         {
             var initial = engine;
             if (duration > TimeSpan.FromSeconds(10) && engine >= duration - TimeSpan.FromSeconds(0.75))
                 initial = TimeSpan.Zero;
             Anchor(initial, playing);
         }
-        else if (playing != _anchorPlaying)
+        else if (playing != _progressClock.AnchorPlaying)
         {
             Anchor(engine, playing);
         }
@@ -537,8 +545,8 @@ public sealed partial class PlayerPage : Page
             var stuckAtEnd = duration > TimeSpan.FromSeconds(10)
                 && engine >= duration - TimeSpan.FromSeconds(0.75)
                 && predicted < duration - TimeSpan.FromSeconds(3);
-            if (!stuckAtEnd && (engine - predicted).Duration() < TimeSpan.FromSeconds(1.5))
-                Anchor(engine, playing);
+            if (!stuckAtEnd)
+                CorrectAnchor(engine, predicted, playing);
         }
 
         return Predicted().TotalSeconds;
@@ -551,45 +559,26 @@ public sealed partial class PlayerPage : Page
         if (!string.Equals(path, _progressMedia, StringComparison.OrdinalIgnoreCase))
         {
             _progressMedia = path;
-            _haveAnchor = false;
+            _progressClock.Reset();
         }
 
         if (open == _progressOpen)
             return;
         _progressOpen = open;
         if (open)
-            _haveAnchor = false;
+            _progressClock.Reset();
     }
 
-    private void Anchor(TimeSpan position, bool playing)
-    {
-        var duration = Playback.Duration;
-        if (position < TimeSpan.Zero)
-            position = TimeSpan.Zero;
-        if (duration > TimeSpan.Zero && position > duration)
-            position = duration;
-        _anchor = position;
-        _anchorPlaying = playing;
-        _anchorStamp = System.Diagnostics.Stopwatch.GetTimestamp();
-        _haveAnchor = true;
-    }
+    private void CorrectAnchor(TimeSpan engine, TimeSpan predicted, bool playing) =>
+        _progressClock.Correct(engine, predicted, Playback.Duration, playing, ProgressNow());
 
-    private TimeSpan Predicted()
-    {
-        var position = _anchor;
-        if (_anchorPlaying)
-        {
-            var elapsed = (System.Diagnostics.Stopwatch.GetTimestamp() - _anchorStamp) / (double)System.Diagnostics.Stopwatch.Frequency;
-            position += TimeSpan.FromSeconds(Math.Max(0, elapsed));
-        }
+    private void Anchor(TimeSpan position, bool playing) =>
+        _progressClock.Anchor(position, Playback.Duration, playing, ProgressNow());
 
-        var duration = Playback.Duration;
-        if (position < TimeSpan.Zero)
-            position = TimeSpan.Zero;
-        if (duration > TimeSpan.Zero && position > duration)
-            position = duration;
-        return position;
-    }
+    private TimeSpan Predicted() => _progressClock.Predict(Playback.Duration, Playback.Rate, ProgressNow());
+
+    private static double ProgressNow() =>
+        System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
 
     private void LayoutProgress(double seconds)
     {
@@ -1319,6 +1308,8 @@ public sealed partial class PlayerPage : Page
     private void ApplyPlaybackRate(double rate)
     {
         Playback.SetRate(rate);
+        if (Playback.IsOpen)
+            Anchor(Playback.Position, Playback.IsPlaying);
         UpdateSpeedChrome();
         if (Playback.Status == "当前滤镜不支持倍速")
             ShowStatusHold("当前滤镜不支持倍速");
