@@ -1,10 +1,16 @@
 using FFmpeg.AutoGen;
+using HomePlayer.Core;
 
 namespace HomePlayer.Ffmpeg;
 
 public static class FfmpegNative
 {
     private static readonly object Gate = new();
+    private static readonly string[] RequiredFiles =
+    [
+        "avcodec-63.dll", "avdevice-63.dll", "avfilter-12.dll", "avformat-63.dll",
+        "avutil-61.dll", "swresample-7.dll", "swscale-10.dll"
+    ];
     private static bool _ready;
 
     public static string Root { get; private set; } = "";
@@ -16,6 +22,7 @@ public static class FfmpegNative
             if (_ready)
                 return;
             Root = Resolve();
+            NativeDependencyIntegrity.Verify(Root, "ffmpeg", RequiredFiles);
             ffmpeg.RootPath = Root;
             try
             {
@@ -32,19 +39,10 @@ public static class FfmpegNative
 
     public static string Resolve()
     {
-        var candidates = new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "ffmpeg"),
-            AppContext.BaseDirectory,
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "third_party", "ffmpeg"))
-        };
-        foreach (var dir in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (Directory.Exists(dir) && Directory.EnumerateFiles(dir, "avcodec-*.dll").Any())
-                return dir;
-        }
-
-        throw new InvalidOperationException("未找到随身的 FFmpeg 动态库。");
+        var directory = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+        if (Directory.Exists(directory) && File.Exists(Path.Combine(directory, "avcodec-63.dll")))
+            return directory;
+        throw new InvalidOperationException("未找到应用私有的 FFmpeg 动态库。");
     }
 }
 

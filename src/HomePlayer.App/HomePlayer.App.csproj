@@ -34,14 +34,19 @@
     <Content Include="Assets\FileIcons\*.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\sbom.json" Link="sbom.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>
     <FfmpegRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-Ffmpeg.ps1'))</FfmpegRestoreScript>
+    <DependencyVerifyScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Verify-PrivateDependencies.ps1'))</DependencyVerifyScript>
   </PropertyGroup>
-  <Target Name="RestoreFfmpeg" BeforeTargets="BeforeBuild">
+  <Target Name="RestoreFfmpeg" BeforeTargets="VerifyPrivateDependencies">
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(FfmpegRestoreScript)&quot;" Condition="!Exists('$(FfmpegDir)\avcodec-63.dll')" />
+  </Target>
+  <Target Name="VerifyPrivateDependencies" BeforeTargets="BeforeBuild">
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(DependencyVerifyScript)&quot;" />
   </Target>
   <Target Name="CopyFfmpegDlls" AfterTargets="Build">
     <ItemGroup>

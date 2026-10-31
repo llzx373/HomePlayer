@@ -1,0 +1,1059 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "HomePlayer-0.2.0-1",
+  "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.2.0-1",
+  "creationInfo": {
+    "created": "2026-10-31T00:21:51Z",
+    "creators": [
+      "Tool: HomePlayer Verify-PrivateDependencies"
+    ]
+  },
+  "packages": [
+    {
+      "name": "HomePlayer",
+      "SPDXID": "SPDXRef-Package-HomePlayer",
+      "versionInfo": "0.2.0-1",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "Person: llzx373"
+    },
+    {
+      "name": "FFmpeg",
+      "SPDXID": "SPDXRef-Package-FFmpeg",
+      "versionInfo": "n9.0.2-28-g669f5ab083",
+      "downloadLocation": "https://github.com/BtbN/FFmpeg-Builds",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/ffmpeg/avcodec-63.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "9de0b9aab1aabac017f6af55179a287cd06708dd3c29ab19a2e2b8c93464a213"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/avdevice-63.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "23c934febbd246235a3188f388464caf8cb6cd3752436fc4dff14f16b39616df"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/avfilter-12.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "43eb56cd0aa2a900e10e2ff2b341cfb9fe6339ef7374327562efe680fb95e0d8"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/avformat-63.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "0df0277eb9800bec426fb3b3e9f386d25ce398d2d8e328f028c7e658f5818b98"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/avutil-61.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "f8739cd18caadd31cf72e58aab576fe1f8c619145b6a1f2e439dcb8acf66638a"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/swresample-7.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "d1d2957e5d7273ba0fd6e61ec5add76c22b40f13af9f2df0ab7a6bd2681a941c"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/swscale-10.dll",
+          "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "e8b1c508982d6a6b4fde4fbf00f72759b3e571e5a27d9856f6775075d3c7e586"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "libplacebo",
+      "SPDXID": "SPDXRef-Package-libplacebo",
+      "versionInfo": "7.360.1",
+      "downloadLocation": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libplacebo-7.360.1-1-any.pkg.tar.zst",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/libplacebo/libdovi.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libdovi.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libgcc_s_seh-1.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libgcc-s-seh-1.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/liblcms2_fast_float-2.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-liblcms2-fast-float-2.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/liblcms2-2.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-liblcms2-2.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libplacebo-360.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libplacebo-360.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libshaderc_shared.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libshaderc-shared.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libspirv-cross-c-shared.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libspirv-cross-c-shared.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libstdc++-6.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libstdc---6.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/libwinpthread-1.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-libwinpthread-1.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/libplacebo/vulkan-1.dll",
+          "SPDXID": "SPDXRef-File-libplacebo-vulkan-1.dll",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FFmpeg.AutoGen",
+      "SPDXID": "SPDXRef-Package-FFmpeg.AutoGen",
+      "versionInfo": "9.0.1.1",
+      "downloadLocation": "https://www.nuget.org/packages/FFmpeg.AutoGen/9.0.1.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "H.GeneratedIcons.System.Drawing",
+      "SPDXID": "SPDXRef-Package-H.GeneratedIcons.System.Drawing",
+      "versionInfo": "2.4.1",
+      "downloadLocation": "https://www.nuget.org/packages/H.GeneratedIcons.System.Drawing/2.4.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "H.NotifyIcon",
+      "SPDXID": "SPDXRef-Package-H.NotifyIcon",
+      "versionInfo": "2.4.1",
+      "downloadLocation": "https://www.nuget.org/packages/H.NotifyIcon/2.4.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "H.NotifyIcon.WinUI",
+      "SPDXID": "SPDXRef-Package-H.NotifyIcon.WinUI",
+      "versionInfo": "2.4.1",
+      "downloadLocation": "https://www.nuget.org/packages/H.NotifyIcon.WinUI/2.4.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Data.Sqlite",
+      "SPDXID": "SPDXRef-Package-Microsoft.Data.Sqlite",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Data.Sqlite/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Data.Sqlite.Core",
+      "SPDXID": "SPDXRef-Package-Microsoft.Data.Sqlite.Core",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Data.Sqlite.Core/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Web.WebView2",
+      "SPDXID": "SPDXRef-Package-Microsoft.Web.WebView2",
+      "versionInfo": "1.0.3719.77",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3719.77",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Win32.SystemEvents",
+      "SPDXID": "SPDXRef-Package-Microsoft.Win32.SystemEvents",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Win32.SystemEvents/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Windows.AI.MachineLearning",
+      "SPDXID": "SPDXRef-Package-Microsoft.Windows.AI.MachineLearning",
+      "versionInfo": "2.1.74",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Windows.AI.MachineLearning/2.1.74",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Windows.SDK.BuildTools",
+      "SPDXID": "SPDXRef-Package-Microsoft.Windows.SDK.BuildTools",
+      "versionInfo": "10.0.28000.2705",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Windows.SDK.BuildTools/10.0.28000.2705",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Windows.SDK.BuildTools.MSIX",
+      "SPDXID": "SPDXRef-Package-Microsoft.Windows.SDK.BuildTools.MSIX",
+      "versionInfo": "1.7.251221100",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Windows.SDK.BuildTools.MSIX/1.7.251221100",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK",
+      "versionInfo": "2.5.1",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK/2.5.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.AI",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.AI",
+      "versionInfo": "2.5.5",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.AI/2.5.5",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.Base",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.Base",
+      "versionInfo": "2.0.4",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Base/2.0.4",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.DWrite",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.DWrite",
+      "versionInfo": "2.1.0",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.DWrite/2.1.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.Foundation",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.Foundation",
+      "versionInfo": "2.3.12",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Foundation/2.3.12",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "versionInfo": "2.1.9",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.InteractiveExperiences/2.1.9",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.ML",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.ML",
+      "versionInfo": "2.1.94",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.ML/2.1.94",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.Runtime",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.Runtime",
+      "versionInfo": "2.5.1",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Runtime/2.5.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.Search",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.Search",
+      "versionInfo": "2.5.5",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Search/2.5.5",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.Widgets",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.Widgets",
+      "versionInfo": "2.0.5",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Widgets/2.0.5",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.WindowsAppSDK.WinUI",
+      "SPDXID": "SPDXRef-Package-Microsoft.WindowsAppSDK.WinUI",
+      "versionInfo": "2.3.9",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.WindowsAppSDK.WinUI/2.3.9",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio",
+      "SPDXID": "SPDXRef-Package-NAudio",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.Asio",
+      "SPDXID": "SPDXRef-Package-NAudio.Asio",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.Asio/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.Core",
+      "SPDXID": "SPDXRef-Package-NAudio.Core",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.Core/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.Midi",
+      "SPDXID": "SPDXRef-Package-NAudio.Midi",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.Midi/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.Wasapi",
+      "SPDXID": "SPDXRef-Package-NAudio.Wasapi",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.Wasapi/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.WinForms",
+      "SPDXID": "SPDXRef-Package-NAudio.WinForms",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.WinForms/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NAudio.WinMM",
+      "SPDXID": "SPDXRef-Package-NAudio.WinMM",
+      "versionInfo": "2.2.1",
+      "downloadLocation": "https://www.nuget.org/packages/NAudio.WinMM/2.2.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SharpGen.Runtime",
+      "SPDXID": "SPDXRef-Package-SharpGen.Runtime",
+      "versionInfo": "2.4.2-beta",
+      "downloadLocation": "https://www.nuget.org/packages/SharpGen.Runtime/2.4.2-beta",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SharpGen.Runtime.COM",
+      "SPDXID": "SPDXRef-Package-SharpGen.Runtime.COM",
+      "versionInfo": "2.4.2-beta",
+      "downloadLocation": "https://www.nuget.org/packages/SharpGen.Runtime.COM/2.4.2-beta",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SQLitePCLRaw.bundle_e_sqlite3",
+      "SPDXID": "SPDXRef-Package-SQLitePCLRaw.bundle-e-sqlite3",
+      "versionInfo": "2.1.13",
+      "downloadLocation": "https://www.nuget.org/packages/SQLitePCLRaw.bundle_e_sqlite3/2.1.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SQLitePCLRaw.core",
+      "SPDXID": "SPDXRef-Package-SQLitePCLRaw.core",
+      "versionInfo": "2.1.13",
+      "downloadLocation": "https://www.nuget.org/packages/SQLitePCLRaw.core/2.1.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SQLitePCLRaw.lib.e_sqlite3",
+      "SPDXID": "SPDXRef-Package-SQLitePCLRaw.lib.e-sqlite3",
+      "versionInfo": "2.1.13",
+      "downloadLocation": "https://www.nuget.org/packages/SQLitePCLRaw.lib.e_sqlite3/2.1.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "SQLitePCLRaw.provider.e_sqlite3",
+      "SPDXID": "SPDXRef-Package-SQLitePCLRaw.provider.e-sqlite3",
+      "versionInfo": "2.1.13",
+      "downloadLocation": "https://www.nuget.org/packages/SQLitePCLRaw.provider.e_sqlite3/2.1.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "System.Drawing.Common",
+      "SPDXID": "SPDXRef-Package-System.Drawing.Common",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/System.Drawing.Common/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "System.Numerics.Tensors",
+      "SPDXID": "SPDXRef-Package-System.Numerics.Tensors",
+      "versionInfo": "9.0.0",
+      "downloadLocation": "https://www.nuget.org/packages/System.Numerics.Tensors/9.0.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Vortice.Direct3D11",
+      "SPDXID": "SPDXRef-Package-Vortice.Direct3D11",
+      "versionInfo": "3.8.3",
+      "downloadLocation": "https://www.nuget.org/packages/Vortice.Direct3D11/3.8.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Vortice.DirectX",
+      "SPDXID": "SPDXRef-Package-Vortice.DirectX",
+      "versionInfo": "3.8.3",
+      "downloadLocation": "https://www.nuget.org/packages/Vortice.DirectX/3.8.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Vortice.DXGI",
+      "SPDXID": "SPDXRef-Package-Vortice.DXGI",
+      "versionInfo": "3.8.3",
+      "downloadLocation": "https://www.nuget.org/packages/Vortice.DXGI/3.8.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Vortice.Mathematics",
+      "SPDXID": "SPDXRef-Package-Vortice.Mathematics",
+      "versionInfo": "2.1.0",
+      "downloadLocation": "https://www.nuget.org/packages/Vortice.Mathematics/2.1.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    }
+  ],
+  "files": [
+    {
+      "fileName": "third_party/ffmpeg/avcodec-63.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "9de0b9aab1aabac017f6af55179a287cd06708dd3c29ab19a2e2b8c93464a213"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/avdevice-63.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "23c934febbd246235a3188f388464caf8cb6cd3752436fc4dff14f16b39616df"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/avfilter-12.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "43eb56cd0aa2a900e10e2ff2b341cfb9fe6339ef7374327562efe680fb95e0d8"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/avformat-63.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "0df0277eb9800bec426fb3b3e9f386d25ce398d2d8e328f028c7e658f5818b98"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/avutil-61.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f8739cd18caadd31cf72e58aab576fe1f8c619145b6a1f2e439dcb8acf66638a"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/swresample-7.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d1d2957e5d7273ba0fd6e61ec5add76c22b40f13af9f2df0ab7a6bd2681a941c"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/swscale-10.dll",
+      "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e8b1c508982d6a6b4fde4fbf00f72759b3e571e5a27d9856f6775075d3c7e586"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libdovi.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libdovi.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libgcc_s_seh-1.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libgcc-s-seh-1.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/liblcms2_fast_float-2.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-liblcms2-fast-float-2.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/liblcms2-2.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-liblcms2-2.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libplacebo-360.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libplacebo-360.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libshaderc_shared.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libshaderc-shared.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libspirv-cross-c-shared.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libspirv-cross-c-shared.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libstdc++-6.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libstdc---6.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/libwinpthread-1.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-libwinpthread-1.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/libplacebo/vulkan-1.dll",
+      "SPDXID": "SPDXRef-File-libplacebo-vulkan-1.dll",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-FFmpeg",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-libplacebo",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-FFmpeg.AutoGen",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-H.GeneratedIcons.System.Drawing",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-H.NotifyIcon",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-H.NotifyIcon.WinUI",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Data.Sqlite",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Data.Sqlite.Core",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Web.WebView2",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Win32.SystemEvents",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Windows.AI.MachineLearning",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Windows.SDK.BuildTools",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Windows.SDK.BuildTools.MSIX",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.AI",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.Base",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.DWrite",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.Foundation",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.InteractiveExperiences",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.ML",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.Runtime",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.Search",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.Widgets",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.WindowsAppSDK.WinUI",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.Asio",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.Core",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.Midi",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.Wasapi",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.WinForms",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NAudio.WinMM",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SharpGen.Runtime",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SharpGen.Runtime.COM",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SQLitePCLRaw.bundle-e-sqlite3",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SQLitePCLRaw.core",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SQLitePCLRaw.lib.e-sqlite3",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SQLitePCLRaw.provider.e-sqlite3",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-System.Drawing.Common",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-System.Numerics.Tensors",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Vortice.Direct3D11",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Vortice.DirectX",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Vortice.DXGI",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Vortice.Mathematics",
+      "relationshipType": "DEPENDS_ON"
+    }
+  ]
+}

@@ -16,6 +16,12 @@ public enum LibplaceboQuality
 public static unsafe class LibplaceboNative
 {
     private static readonly object Gate = new();
+    private static readonly string[] RequiredFiles =
+    [
+        "libplacebo-360.dll", "libdovi.dll", "libgcc_s_seh-1.dll", "liblcms2-2.dll",
+        "liblcms2_fast_float-2.dll", "libshaderc_shared.dll", "libspirv-cross-c-shared.dll",
+        "libstdc++-6.dll", "libwinpthread-1.dll", "vulkan-1.dll"
+    ];
     private static nint _library;
     private static string? _error;
 
@@ -140,6 +146,7 @@ public static unsafe class LibplaceboNative
                 _error = "未找到 libplacebo-360.dll 及其私有依赖目录。";
                 return false;
             }
+            NativeDependencyIntegrity.Verify(directory, "libplacebo", RequiredFiles);
             _library = NativeLibrary.Load(Path.Combine(directory, "libplacebo-360.dll"));
             NativeLibrary.SetDllImportResolver(typeof(LibplaceboNative).Assembly, (name, _, _) =>
                 string.Equals(name, "libplacebo-360.dll", StringComparison.OrdinalIgnoreCase) ? _library : 0);
