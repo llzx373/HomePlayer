@@ -6,7 +6,7 @@ namespace HomePlayer.Ffmpeg;
 public static unsafe class FfmpegTrackIdentity
 {
     public static string StableId(AVStream* stream, MediaTrackKind kind, string title, string? language) =>
-        MediaTrackIdentity.Create(kind, stream->id, title, language, Disposition(stream));
+        MediaTrackIdentity.Create(kind, stream->id > 0 ? stream->id : stream->index, title, language, Disposition(stream));
 
     public static MediaTrackDisposition Disposition(AVStream* stream)
     {
