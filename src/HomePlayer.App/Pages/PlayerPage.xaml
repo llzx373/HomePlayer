@@ -214,11 +214,19 @@
                     PointerEntered="Position_PointerEntered"
                     PointerMoved="Position_PointerMoved"
                     PointerExited="Position_PointerExited" />
-                <Border x:Name="SeekPreview" Grid.Column="1" Width="176" Padding="4" Margin="0,-112,0,0" VerticalAlignment="Top" HorizontalAlignment="Center" Background="#E6202020" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="4" Visibility="Collapsed" IsHitTestVisible="False" Canvas.ZIndex="10">
+                <Border x:Name="SeekPreview" Grid.Column="1" Width="176" Padding="4" Margin="0" VerticalAlignment="Top" HorizontalAlignment="Left" Background="#E6202020" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="4" Visibility="Collapsed" IsHitTestVisible="False" Canvas.ZIndex="10">
                     <Grid RowSpacing="4">
-                        <Grid.RowDefinitions><RowDefinition Height="90" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="90" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                        </Grid.RowDefinitions>
                         <Image x:Name="SeekPreviewImage" Stretch="UniformToFill" />
+                        <Border x:Name="SeekPreviewStatusHost" Grid.Row="0" Padding="8" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#99000000" CornerRadius="3">
+                            <TextBlock x:Name="SeekPreviewStatus" Text="正在获取…" Foreground="White" FontSize="12" />
+                        </Border>
                         <TextBlock x:Name="SeekPreviewTime" Grid.Row="1" Text="00:00" Foreground="White" FontFamily="Consolas" FontSize="12" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="SeekPreviewArrow" Grid.Row="2" Width="16" Text="▼" Foreground="#E6202020" FontSize="8" TextAlignment="Center" />
                     </Grid>
                 </Border>
                 <TextBlock

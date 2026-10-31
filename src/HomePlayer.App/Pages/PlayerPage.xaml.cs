@@ -76,6 +76,11 @@ public sealed partial class PlayerPage : Page
     public PlayerPage()
     {
         InitializeComponent();
+        _seekPreviewTimer = DispatcherQueue.CreateTimer();
+        _seekPreviewTimer.Interval = TimeSpan.FromMilliseconds(80);
+        _seekPreviewTimer.IsRepeating = false;
+        _seekPreviewTimer.Tick += SeekPreviewTimer_Tick;
+        SeekPreview.SizeChanged += (_, _) => RepositionSeekPreview();
         _controlsFade = new OverlayFade(ControlsBar);
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
@@ -102,6 +107,7 @@ public sealed partial class PlayerPage : Page
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         playback.Stopped += () => DispatcherQueue.TryEnqueue(() =>
         {
+            HideSeekPreview();
             _presenter.Clear();
             _assPresenter.Reset();
             SyncSnapshotButton();
@@ -112,7 +118,11 @@ public sealed partial class PlayerPage : Page
         _updatingVolume = true;
         VolumeSlider.Value = playback.Volume * 100;
         _updatingVolume = false;
-        PositionBar.SizeChanged += (_, _) => LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
+        PositionBar.SizeChanged += (_, _) =>
+        {
+            LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
+            RepositionSeekPreview();
+        };
         ControlsBar.SizeChanged += (_, _) => RememberControlsHeight();
         _saveSettingsTimer = DispatcherQueue.CreateTimer();
         _saveSettingsTimer.Interval = TimeSpan.FromMilliseconds(600);
@@ -161,6 +171,7 @@ public sealed partial class PlayerPage : Page
         };
         Unloaded += (_, _) =>
         {
+            HideSeekPreview();
             _timer.Stop();
             _presenter.Suspend();
             DetachWindowEvents();
@@ -169,6 +180,7 @@ public sealed partial class PlayerPage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        HideSeekPreview();
         _timer.Stop();
         _presenter.Suspend();
         DetachWindowEvents();
@@ -363,6 +375,7 @@ public sealed partial class PlayerPage : Page
 
     private void UpdateChrome()
     {
+        SyncSeekPreviewMedia();
         PlayIcon.Glyph = Playback.IsPlaying ? GlyphPause : GlyphPlay;
         if (Playback.UsesExternalVideoOutput)
         {
