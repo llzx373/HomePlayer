@@ -98,11 +98,11 @@ public static class CrashLog
         builder.AppendLine("Kind: " + kind);
         if (!string.IsNullOrWhiteSpace(context))
         {
-            builder.AppendLine(context.TrimEnd());
+            builder.AppendLine(DiagnosticText.Sanitize(context).TrimEnd());
             builder.AppendLine();
         }
 
-        builder.Append(details.TrimEnd());
+        builder.Append(DiagnosticText.Sanitize(details).TrimEnd());
         if (builder.Length == 0 || builder[^1] != '\n')
             builder.AppendLine();
         return builder.ToString();

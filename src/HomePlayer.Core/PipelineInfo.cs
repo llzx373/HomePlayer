@@ -38,16 +38,16 @@ public sealed class PipelineInfo
     {
         var text = new StringBuilder();
         text.AppendLine("来源");
-        text.AppendLine($"文件：{FilePath}");
+        text.AppendLine($"文件：{DiagnosticText.Sanitize(FilePath)}");
         text.AppendLine($"引擎：{Engine}");
         if (!string.IsNullOrWhiteSpace(EngineReason))
-            text.AppendLine($"说明：{EngineReason}");
+            text.AppendLine($"说明：{DiagnosticText.Sanitize(EngineReason)}");
         if (Usage.Count > 0)
         {
             text.AppendLine();
             text.AppendLine("实际使用");
             foreach (var line in Usage)
-                text.AppendLine(line);
+                text.AppendLine(DiagnosticText.Sanitize(line));
         }
 
         text.AppendLine();
@@ -101,7 +101,7 @@ public sealed class PipelineInfo
         else
         {
             for (var i = 0; i < Filters.Count; i++)
-                text.AppendLine($"{i + 1}. {Filters[i]}");
+                text.AppendLine($"{i + 1}. {DiagnosticText.Sanitize(Filters[i])}");
         }
 
         if (Connections.Count > 0)
@@ -109,7 +109,7 @@ public sealed class PipelineInfo
             text.AppendLine();
             text.AppendLine("连接的媒体类型");
             foreach (var connection in Connections)
-                text.AppendLine(connection);
+                text.AppendLine(DiagnosticText.Sanitize(connection));
         }
 
         return text.ToString().TrimEnd();

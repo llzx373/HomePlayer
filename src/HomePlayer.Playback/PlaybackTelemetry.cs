@@ -29,7 +29,7 @@ public static class PlaybackTelemetry
         PresentationObservation observation = PresentationObservation.Unknown,
         IReadOnlyDictionary<string, object?>? data = null)
     {
-        var item = new PlaybackTraceEvent(name, sessionId, epoch, commandId, Stopwatch.GetTimestamp(), observation, data);
+        var item = new PlaybackTraceEvent(name, sessionId, epoch, commandId, Stopwatch.GetTimestamp(), observation, SanitizeData(data));
         Events.Enqueue(item);
         while (Events.Count > MaxEvents && Events.TryDequeue(out _))
         {
@@ -90,6 +90,11 @@ public static class PlaybackTelemetry
                 });
         }
     }
+
+    private static IReadOnlyDictionary<string, object?>? SanitizeData(IReadOnlyDictionary<string, object?>? data) =>
+        data == null ? null : data.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value is string text ? DiagnosticText.Sanitize(text) : pair.Value);
 
     public static IReadOnlyList<PlaybackTraceEvent> Snapshot() => Events.ToArray();
 
