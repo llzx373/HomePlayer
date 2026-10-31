@@ -67,6 +67,14 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
             player.Ended += () => Ended?.Invoke();
             player.Faulted += error => Faulted?.Invoke(error);
             player.SeekPrerollReady += OnSeekPrerollReady;
+            player.MediaPacketRecovered += (stream, error, epoch, total, limit) =>
+                PlaybackTelemetry.Trace("MediaPacketRecovery", player.SessionId, epoch, null, data: new Dictionary<string, object?>
+                {
+                    ["stream"] = stream,
+                    ["error"] = error,
+                    ["total"] = total,
+                    ["limit"] = limit
+                });
             player.AudioPcm += OnPcm;
             player.Open(path);
             if (player.HasAudio)

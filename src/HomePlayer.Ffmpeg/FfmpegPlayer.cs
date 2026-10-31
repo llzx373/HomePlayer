@@ -98,6 +98,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     private int _droppedFrames;
     private int _videoQueueDepth;
     private int _readErrors;
+    private readonly MediaDecodeRecoveryPolicy _videoRecovery = new();
+    private readonly MediaDecodeRecoveryPolicy _audioRecovery = new();
     private bool _endedRaised;
     private bool _disposed;
     private double _rate = 1.0;
@@ -110,6 +112,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
     public event Action<Exception>? Faulted;
+    public event Action<string, int, long, int, int>? MediaPacketRecovered;
     public event Action<byte[], int, long>? AudioPcm;
     public Func<int>? UnplayedBytes { get; set; }
     public Func<bool>? AudioOutputDrained { get; set; }
@@ -190,7 +193,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             _videoIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
             if (_videoIndex < 0)
                 throw new InvalidOperationException("文件里没有可解码的视频流。");
-            OpenVideoDecoder(videoDecoder, 1);
+            OpenVideoDecoder(videoDecoder, 1, strictErrors: true);
             _videoTimeBase = _format->streams[_videoIndex]->time_base;
             _width = _videoCodec->width;
             _height = _videoCodec->height;
@@ -205,10 +208,12 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             AVCodec* audioDecoder = null;
             _audioIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_AUDIO, -1, _videoIndex, &audioDecoder, 0);
             if (_audioIndex >= 0 && audioDecoder != null)
-                OpenAudioDecoder(_audioIndex);
+                OpenAudioDecoder(_audioIndex, strictErrors: true);
             LoadAudioTracks();
             LoadSubtitleTracks();
 
+            _videoRecovery.ResetAll();
+            _audioRecovery.ResetAll();
             _videoPackets = new BoundedPipelineQueue<PacketLease>(96, 16 * 1024 * 1024);
             _audioPackets = new BoundedPipelineQueue<PacketLease>(192, 8 * 1024 * 1024);
             _videoFrames = new BoundedPipelineQueue<VideoQueueItem>(4, 96 * 1024 * 1024);
@@ -388,6 +393,24 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         return chapters;
     }
 
+    private void TraceRecovery(string stream, int error, long epoch)
+    {
+        var policy = stream == "video" ? _videoRecovery : _audioRecovery;
+        MediaPacketRecovered?.Invoke(stream, error, epoch, policy.Total, policy.Limit);
+    }
+
+    private IReadOnlyList<string> RecoveryUsage()
+    {
+        var lines = new List<string>();
+        if (TimelineInfo.EditionCount > 0 || TimelineInfo.HasTrackJoins)
+            lines.Add(TimelineInfo.Describe());
+        if (_videoRecovery.Total > 0)
+            lines.Add($"视频恢复：跳过 {_videoRecovery.Total} 个损坏包，最后错误 {_videoRecovery.LastError}；连续上限 {_videoRecovery.Limit}。");
+        if (_audioRecovery.Total > 0)
+            lines.Add($"音频恢复：跳过 {_audioRecovery.Total} 个损坏包，最后错误 {_audioRecovery.LastError}；连续上限 {_audioRecovery.Limit}。");
+        return lines;
+    }
+
     public PipelineInfo GetPipeline()
     {
         long? size = File.Exists(_path) ? new FileInfo(_path).Length : null;
@@ -416,7 +439,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             SubtitleTracks = FormatSubtitleTracks(),
             Filters = ["FFmpeg demuxer → bounded packet queues", VideoFilterDescription(), "HomePlayer video scheduler", HasAudio ? "FFmpeg audio decoder → bounded WASAPI output" : "无音频"],
             Connections = [$"视频 {_videoCodecName} {_width}×{_height} · {Volatile.Read(ref _outputZeroCopyLevel)}", HasAudio ? $"音频 {_audioCodecName} → 48000 Hz {OutputChannels}ch s16" : "无音频"],
-            Usage = TimelineInfo.EditionCount > 0 || TimelineInfo.HasTrackJoins ? [TimelineInfo.Describe()] : [],
+            Usage = RecoveryUsage(),
             DroppedFrames = DroppedFrames,
             VideoQueueDepth = VideoQueueDepth,
             ClockSource = AudioDevicePosition == null ? "Monotonic" : "WasapiDeviceWithMonotonicFallback",
@@ -653,7 +676,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                     {
                         var send = ffmpeg.avcodec_send_packet(_videoCodec, item.EndOfStream ? null : item.Packet);
                         if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
-                            throw new InvalidOperationException($"视频解码器接收压缩包失败，错误码 {send}。");
+                        {
+                            if (!_videoRecovery.TryRecover(send))
+                                throw new InvalidOperationException($"视频连续损坏包超过 {_videoRecovery.Limit} 个，最后错误码 {send}。");
+                            RebuildVideoDecoder();
+                            TraceRecovery("video", send, item.Epoch);
+                            continue;
+                        }
                         ReceiveFrameLeases(frame, item.Epoch);
                     }
                     if (item.EndOfStream)
@@ -682,7 +711,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             if (received == ffmpeg.AVERROR(ffmpeg.EAGAIN) || FfmpegError.IsEof(received))
                 return;
             if (received < 0)
-                throw new InvalidOperationException($"视频解码失败，FFmpeg 错误码 {received}。");
+            {
+                if (!_videoRecovery.TryRecover(received))
+                    throw new InvalidOperationException($"视频连续损坏包超过 {_videoRecovery.Limit} 个，最后错误码 {received}。");
+                RebuildVideoDecoder();
+                TraceRecovery("video", received, epoch);
+                return;
+            }
             EnsureD3D11DeviceCurrent();
             EnsureVideoFrameFormat(frame);
             if (epoch != Epoch)
@@ -704,6 +739,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 }
             }
             var decoded = ToFrame(frame, pts, duration, epoch);
+            _videoRecovery.Reset();
             ffmpeg.av_frame_unref(frame);
             try
             {
@@ -739,16 +775,31 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                             continue;
                         var send = ffmpeg.avcodec_send_packet(_audioCodec, item.EndOfStream ? null : item.Packet);
                         if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
-                            throw new InvalidOperationException($"音频解码器接收压缩包失败，错误码 {send}。");
+                        {
+                            if (!_audioRecovery.TryRecover(send))
+                                throw new InvalidOperationException($"音频连续损坏包超过 {_audioRecovery.Limit} 个，最后错误码 {send}。");
+                            OpenAudioDecoder(Volatile.Read(ref _audioIndex), strictErrors: false);
+                            TraceRecovery("audio", send, item.Epoch);
+                            continue;
+                        }
                         while (true)
                         {
                             var received = ffmpeg.avcodec_receive_frame(_audioCodec, frame);
                             if (received == ffmpeg.AVERROR(ffmpeg.EAGAIN) || FfmpegError.IsEof(received))
                                 break;
                             if (received < 0)
-                                throw new InvalidOperationException($"音频解码失败，FFmpeg 错误码 {received}。");
+                            {
+                                if (!_audioRecovery.TryRecover(received))
+                                    throw new InvalidOperationException($"音频连续损坏包超过 {_audioRecovery.Limit} 个，最后错误码 {received}。");
+                                OpenAudioDecoder(Volatile.Read(ref _audioIndex), strictErrors: false);
+                                TraceRecovery("audio", received, item.Epoch);
+                                break;
+                            }
                             if (item.Epoch == Epoch)
+                            {
                                 EmitAudio(frame, item.Epoch);
+                                _audioRecovery.Reset();
+                            }
                             ffmpeg.av_frame_unref(frame);
                         }
                         if (item.EndOfStream)
@@ -948,7 +999,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         }
     }
 
-    private void OpenVideoDecoder(AVCodec* decoder, int threadCount)
+    private void RebuildVideoDecoder()
+    {
+        var decoder = ffmpeg.avcodec_find_decoder(_format->streams[_videoIndex]->codecpar->codec_id);
+        OpenVideoDecoder(decoder, _videoDecoderThreads, strictErrors: false);
+    }
+
+    private void OpenVideoDecoder(AVCodec* decoder, int threadCount, bool strictErrors = false)
     {
         if (decoder == null)
             throw new InvalidOperationException("没有可解码的视频流。");
@@ -957,6 +1014,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         {
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
             context->thread_count = threadCount;
+            context->err_recognition = strictErrors ? 8 : 0;
             var hardware = TryConfigureD3D11(context);
             try
             {
@@ -968,6 +1026,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 context = ffmpeg.avcodec_alloc_context3(decoder);
                 FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
                 context->thread_count = threadCount;
+                context->err_recognition = strictErrors ? 8 : 0;
                 _usingD3D11 = false;
                 FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "回退软件视频解码器");
             }
@@ -985,7 +1044,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             ffmpeg.avcodec_free_context(&previous);
     }
 
-    private void OpenAudioDecoder(int streamIndex)
+    private void OpenAudioDecoder(int streamIndex, bool strictErrors = false)
     {
         CloseAudioDecoder();
         if (_format == null || streamIndex < 0 || streamIndex >= (int)_format->nb_streams)
@@ -1001,6 +1060,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             _audioCodec = ffmpeg.avcodec_alloc_context3(decoder);
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(_audioCodec, stream->codecpar), "复制音频参数");
             _audioCodec->pkt_timebase = stream->time_base;
+            _audioCodec->err_recognition = strictErrors ? 8 : 0;
             FfmpegError.Check(ffmpeg.avcodec_open2(_audioCodec, decoder, null), "打开音频解码器");
             _audioCodecName = ffmpeg.avcodec_get_name(decoder->id);
             _audioTimeBase = stream->time_base;
