@@ -404,6 +404,10 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         var lines = new List<string>();
         if (TimelineInfo.EditionCount > 0 || TimelineInfo.HasTrackJoins)
             lines.Add(TimelineInfo.Describe());
+        if (_dynamicHdr == VideoDynamicHdrFormat.Hdr10Plus)
+            lines.Add("HDR10+：未应用动态元数据，按静态 HDR10/SDR 降级，不宣称原生 HDR10+。");
+        else if (_dynamicHdr == VideoDynamicHdrFormat.DolbyVision)
+            lines.Add("Dolby Vision：未应用 RPU，仅基础层解码/转换，不宣称原生杜比视界。");
         if (_videoRecovery.Total > 0)
             lines.Add($"视频恢复：跳过 {_videoRecovery.Total} 个损坏包，最后错误 {_videoRecovery.LastError}；连续上限 {_videoRecovery.Limit}。");
         if (_audioRecovery.Total > 0)

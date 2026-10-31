@@ -59,6 +59,21 @@ public sealed unsafe partial class FfmpegPlayer
         return result;
     }
 
+    public static VideoDynamicHdrFormat DynamicHdrOf(AVFrame* source)
+    {
+        for (var i = 0; i < source->nb_side_data; i++)
+        {
+            var sideData = source->side_data[i];
+            if (sideData == null)
+                continue;
+            if (sideData->type is AVFrameSideDataType.AV_FRAME_DATA_DOVI_RPU_BUFFER or AVFrameSideDataType.AV_FRAME_DATA_DOVI_METADATA)
+                return VideoDynamicHdrFormat.DolbyVision;
+            if (sideData->type == AVFrameSideDataType.AV_FRAME_DATA_DYNAMIC_HDR_PLUS)
+                return VideoDynamicHdrFormat.Hdr10Plus;
+        }
+        return VideoDynamicHdrFormat.None;
+    }
+
     private static ushort Primary(AVRational value, ushort fallback) =>
         (ushort)Math.Clamp(Math.Round(Rational(value, 50_000, fallback), MidpointRounding.AwayFromZero), 0, ushort.MaxValue);
 

@@ -8,6 +8,7 @@ public sealed unsafe partial class FfmpegPlayer
 {
     private string _outputPixelFormat = "unknown";
     private string _outputZeroCopyLevel = "Unknown";
+    private VideoDynamicHdrFormat _dynamicHdr;
     private VideoFramePlane[]? _yuvPlanes;
     private int _yuvPlanesWidth;
     private int _yuvPlanesHeight;
@@ -198,7 +199,7 @@ public sealed unsafe partial class FfmpegPlayer
             sar.num > 0 && sar.den > 0 ? sar.den : 1);
     }
 
-    private static VideoColorMetadata ColorOf(AVFrame* source)
+    private VideoColorMetadata ColorOf(AVFrame* source)
     {
         var matrix = source->colorspace switch
         {
@@ -234,6 +235,11 @@ public sealed unsafe partial class FfmpegPlayer
             AVChromaLocation.AVCHROMA_LOC_TOPLEFT => VideoChromaLocation.TopLeft,
             _ => VideoChromaLocation.Unknown
         };
-        return new VideoColorMetadata(matrix, range, primaries, transfer, chroma) { Hdr10 = Hdr10Of(source) };
+        _dynamicHdr = DynamicHdrOf(source);
+        return new VideoColorMetadata(matrix, range, primaries, transfer, chroma)
+        {
+            Hdr10 = Hdr10Of(source),
+            DynamicHdr = _dynamicHdr
+        };
     }
 }

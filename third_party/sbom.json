@@ -5,10 +5,10 @@
   "name": "HomePlayer-0.2.0-1",
   "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.2.0-1",
   "creationInfo": {
-    "created": "2026-10-31T02:47:28Z",
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
-    ]
+    ],
+    "created": "2026-10-31T03:45:32Z"
   },
   "packages": [
     {

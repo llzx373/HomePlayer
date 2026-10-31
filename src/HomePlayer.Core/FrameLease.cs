@@ -53,6 +53,13 @@ public enum VideoChromaLocation
     TopLeft
 }
 
+public enum VideoDynamicHdrFormat
+{
+    None,
+    Hdr10Plus,
+    DolbyVision
+}
+
 public readonly record struct VideoFramePlane(int Offset, int Stride);
 
 public readonly record struct VideoColorMetadata(
@@ -63,6 +70,7 @@ public readonly record struct VideoColorMetadata(
     VideoChromaLocation ChromaLocation = VideoChromaLocation.Unknown)
 {
     public VideoHdr10Metadata? Hdr10 { get; init; }
+    public VideoDynamicHdrFormat DynamicHdr { get; init; }
 }
 
 public readonly record struct VideoFrameGeometry(
