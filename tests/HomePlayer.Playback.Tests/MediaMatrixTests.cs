@@ -19,4 +19,22 @@ public sealed class MediaMatrixTests
         Assert.Equal(1, player.AudioTrackIndex);
         player.Play();
     }
+
+    [Fact]
+    public void Pgs_subtitles_decode_to_real_bitmaps()
+    {
+        var media = Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_PGS_MEDIA");
+        if (string.IsNullOrWhiteSpace(media))
+            return;
+        var streams = FfmpegSubtitles.List(media);
+        var pgs = Assert.Single(streams);
+        Assert.Equal("hdmv_pgs_subtitle", pgs.Codec);
+        Assert.False(pgs.IsText);
+        var cues = FfmpegSubtitles.ReadCues(media, pgs.Index);
+        var bitmaps = cues.SelectMany(cue => cue.Bitmaps).ToArray();
+        Assert.NotEmpty(bitmaps);
+        var bitmap = bitmaps[0];
+        Assert.True(bitmap.Width > 0 && bitmap.Height > 0);
+        Assert.Contains(bitmap.Bgra, value => value != 0);
+    }
 }
