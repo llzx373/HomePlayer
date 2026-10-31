@@ -1,0 +1,762 @@
+{
+  "schema": "homeplayer.playback.performance.v1",
+  "recordedUtc": "2026-10-31T11:29:41.5535038Z",
+  "media": {
+    "fileName": "baseline-1080p30-h264-aac.mp4",
+    "bytes": 11552609,
+    "sha256": "3f761c3bf2ea394ebd8c6bc4b998e2f6a09daa5cc223dfd83f76ee97c59ccd81"
+  },
+  "environment": {
+    "os": "Microsoft Windows 10.0.26300",
+    "architecture": "X64",
+    "processorCount": 32,
+    "dotnet": ".NET 10.0.11",
+    "gpu": "Unknown",
+    "display": "Unknown",
+    "quality": "FFmpeg software decode; direct YUV planes with BGRA fallback; no renderer"
+  },
+  "protocol": {
+    "openIterations": 1,
+    "seekIterations": 1,
+    "steadyMilliseconds": 28800000,
+    "steadyWarmupMilliseconds": 500,
+    "openObservation": "Decoded",
+    "seekObservation": "TargetDecodedFrameAfterSeekCommand",
+    "presentationObservation": "Unknown",
+    "note": "The first open is process-cold only; OS storage-cache coldness is not claimed."
+  },
+  "open": {
+    "count": 1,
+    "failures": 0,
+    "cancelled": 0,
+    "unknown": 0,
+    "p50Milliseconds": 275.5894,
+    "p95Milliseconds": 275.5894,
+    "p99Milliseconds": 275.5894,
+    "maxMilliseconds": 275.5894
+  },
+  "firstDecodedFrame": {
+    "count": 1,
+    "failures": 0,
+    "cancelled": 0,
+    "unknown": 0,
+    "p50Milliseconds": 303.7884,
+    "p95Milliseconds": 303.7884,
+    "p99Milliseconds": 303.7884,
+    "maxMilliseconds": 303.7884
+  },
+  "seekToTargetDecodedFrame": {
+    "count": 1,
+    "failures": 0,
+    "cancelled": 0,
+    "unknown": 0,
+    "p50Milliseconds": 42.9564,
+    "p95Milliseconds": 42.9564,
+    "p99Milliseconds": 42.9564,
+    "maxMilliseconds": 42.9564
+  },
+  "seekFailureIndices": [],
+  "playbackFault": null,
+  "firstPresentReturned": {
+    "count": 0,
+    "failures": 0,
+    "cancelled": 0,
+    "unknown": 1,
+    "p50Milliseconds": null,
+    "p95Milliseconds": null,
+    "p99Milliseconds": null,
+    "maxMilliseconds": null
+  },
+  "steady": {
+    "loopPlayback": true,
+    "checkpoints": [
+      {
+        "elapsedMilliseconds": 300000,
+        "decodedFrames": 9012,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34167760
+      },
+      {
+        "elapsedMilliseconds": 600000,
+        "decodedFrames": 18028,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36250024
+      },
+      {
+        "elapsedMilliseconds": 900000,
+        "decodedFrames": 27045,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 38341696
+      },
+      {
+        "elapsedMilliseconds": 1200000,
+        "decodedFrames": 36062,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 32238576
+      },
+      {
+        "elapsedMilliseconds": 1500000,
+        "decodedFrames": 45078,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34341608
+      },
+      {
+        "elapsedMilliseconds": 1800000,
+        "decodedFrames": 54093,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36435360
+      },
+      {
+        "elapsedMilliseconds": 2100000,
+        "decodedFrames": 63110,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 38549656
+      },
+      {
+        "elapsedMilliseconds": 2400000,
+        "decodedFrames": 72128,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 32465240
+      },
+      {
+        "elapsedMilliseconds": 2700000,
+        "decodedFrames": 81145,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34542448
+      },
+      {
+        "elapsedMilliseconds": 3000000,
+        "decodedFrames": 90161,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36649056
+      },
+      {
+        "elapsedMilliseconds": 3300000,
+        "decodedFrames": 99178,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 30571240
+      },
+      {
+        "elapsedMilliseconds": 3600000,
+        "decodedFrames": 108194,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 32615992
+      },
+      {
+        "elapsedMilliseconds": 3900000,
+        "decodedFrames": 117208,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34749016
+      },
+      {
+        "elapsedMilliseconds": 4200000,
+        "decodedFrames": 126223,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36873312
+      },
+      {
+        "elapsedMilliseconds": 4500000,
+        "decodedFrames": 135238,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 30665912
+      },
+      {
+        "elapsedMilliseconds": 4800000,
+        "decodedFrames": 144253,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 32713000
+      },
+      {
+        "elapsedMilliseconds": 5100000,
+        "decodedFrames": 153268,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34722384
+      },
+      {
+        "elapsedMilliseconds": 5400000,
+        "decodedFrames": 162283,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36764360
+      },
+      {
+        "elapsedMilliseconds": 5700000,
+        "decodedFrames": 171297,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 30624896
+      },
+      {
+        "elapsedMilliseconds": 6000000,
+        "decodedFrames": 180311,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 32604544
+      },
+      {
+        "elapsedMilliseconds": 6300000,
+        "decodedFrames": 189326,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 34676976
+      },
+      {
+        "elapsedMilliseconds": 6600000,
+        "decodedFrames": 198340,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 36724016
+      },
+      {
+        "elapsedMilliseconds": 6900000,
+        "decodedFrames": 207356,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 30971656
+      },
+      {
+        "elapsedMilliseconds": 7200000,
+        "decodedFrames": 216371,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23606216
+      },
+      {
+        "elapsedMilliseconds": 7500000,
+        "decodedFrames": 225385,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25734544
+      },
+      {
+        "elapsedMilliseconds": 7800000,
+        "decodedFrames": 234400,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27830856
+      },
+      {
+        "elapsedMilliseconds": 8100000,
+        "decodedFrames": 243415,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21667168
+      },
+      {
+        "elapsedMilliseconds": 8400000,
+        "decodedFrames": 252430,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23786984
+      },
+      {
+        "elapsedMilliseconds": 8700000,
+        "decodedFrames": 261446,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25908800
+      },
+      {
+        "elapsedMilliseconds": 9000000,
+        "decodedFrames": 270464,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27954128
+      },
+      {
+        "elapsedMilliseconds": 9300000,
+        "decodedFrames": 279480,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21857840
+      },
+      {
+        "elapsedMilliseconds": 9600000,
+        "decodedFrames": 288497,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23971520
+      },
+      {
+        "elapsedMilliseconds": 9900000,
+        "decodedFrames": 297515,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26042344
+      },
+      {
+        "elapsedMilliseconds": 10200000,
+        "decodedFrames": 306532,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28166488
+      },
+      {
+        "elapsedMilliseconds": 10500000,
+        "decodedFrames": 315547,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22084312
+      },
+      {
+        "elapsedMilliseconds": 10800000,
+        "decodedFrames": 324564,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24153040
+      },
+      {
+        "elapsedMilliseconds": 11100000,
+        "decodedFrames": 333581,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26270272
+      },
+      {
+        "elapsedMilliseconds": 11400000,
+        "decodedFrames": 342597,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28344000
+      },
+      {
+        "elapsedMilliseconds": 11700000,
+        "decodedFrames": 351614,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22125320
+      },
+      {
+        "elapsedMilliseconds": 12000000,
+        "decodedFrames": 360631,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24195728
+      },
+      {
+        "elapsedMilliseconds": 12300000,
+        "decodedFrames": 369647,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26180288
+      },
+      {
+        "elapsedMilliseconds": 12600000,
+        "decodedFrames": 378664,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28227424
+      },
+      {
+        "elapsedMilliseconds": 12900000,
+        "decodedFrames": 387680,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22092912
+      },
+      {
+        "elapsedMilliseconds": 13200000,
+        "decodedFrames": 396696,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24117808
+      },
+      {
+        "elapsedMilliseconds": 13500000,
+        "decodedFrames": 405713,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26616912
+      },
+      {
+        "elapsedMilliseconds": 13800000,
+        "decodedFrames": 414730,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28731032
+      },
+      {
+        "elapsedMilliseconds": 14100000,
+        "decodedFrames": 423747,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22558712
+      },
+      {
+        "elapsedMilliseconds": 14400000,
+        "decodedFrames": 432763,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24602560
+      },
+      {
+        "elapsedMilliseconds": 14700000,
+        "decodedFrames": 441780,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26714464
+      },
+      {
+        "elapsedMilliseconds": 15000000,
+        "decodedFrames": 450796,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28863624
+      },
+      {
+        "elapsedMilliseconds": 15300000,
+        "decodedFrames": 459813,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22687856
+      },
+      {
+        "elapsedMilliseconds": 15600000,
+        "decodedFrames": 468830,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24823056
+      },
+      {
+        "elapsedMilliseconds": 15900000,
+        "decodedFrames": 477846,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26907848
+      },
+      {
+        "elapsedMilliseconds": 16200000,
+        "decodedFrames": 486863,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28964616
+      },
+      {
+        "elapsedMilliseconds": 16500000,
+        "decodedFrames": 495880,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22882136
+      },
+      {
+        "elapsedMilliseconds": 16800000,
+        "decodedFrames": 504895,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25021536
+      },
+      {
+        "elapsedMilliseconds": 17100000,
+        "decodedFrames": 513912,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27061320
+      },
+      {
+        "elapsedMilliseconds": 17400000,
+        "decodedFrames": 522928,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 20993568
+      },
+      {
+        "elapsedMilliseconds": 17700000,
+        "decodedFrames": 531945,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23097968
+      },
+      {
+        "elapsedMilliseconds": 18000000,
+        "decodedFrames": 540961,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25089600
+      },
+      {
+        "elapsedMilliseconds": 18300000,
+        "decodedFrames": 549978,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27138096
+      },
+      {
+        "elapsedMilliseconds": 18600000,
+        "decodedFrames": 558995,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 20952192
+      },
+      {
+        "elapsedMilliseconds": 18900000,
+        "decodedFrames": 568011,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23006560
+      },
+      {
+        "elapsedMilliseconds": 19200000,
+        "decodedFrames": 577028,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25076864
+      },
+      {
+        "elapsedMilliseconds": 19500000,
+        "decodedFrames": 586044,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27063808
+      },
+      {
+        "elapsedMilliseconds": 19800000,
+        "decodedFrames": 595061,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21333168
+      },
+      {
+        "elapsedMilliseconds": 20100000,
+        "decodedFrames": 604078,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23445888
+      },
+      {
+        "elapsedMilliseconds": 20400000,
+        "decodedFrames": 613095,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25489872
+      },
+      {
+        "elapsedMilliseconds": 20700000,
+        "decodedFrames": 622111,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27604000
+      },
+      {
+        "elapsedMilliseconds": 21000000,
+        "decodedFrames": 631127,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21519752
+      },
+      {
+        "elapsedMilliseconds": 21300000,
+        "decodedFrames": 640142,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23566000
+      },
+      {
+        "elapsedMilliseconds": 21600000,
+        "decodedFrames": 649159,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25680784
+      },
+      {
+        "elapsedMilliseconds": 21900000,
+        "decodedFrames": 658176,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27785536
+      },
+      {
+        "elapsedMilliseconds": 22200000,
+        "decodedFrames": 667194,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21696120
+      },
+      {
+        "elapsedMilliseconds": 22500000,
+        "decodedFrames": 676210,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23747056
+      },
+      {
+        "elapsedMilliseconds": 22800000,
+        "decodedFrames": 685227,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 25866848
+      },
+      {
+        "elapsedMilliseconds": 23100000,
+        "decodedFrames": 694242,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 27993080
+      },
+      {
+        "elapsedMilliseconds": 23400000,
+        "decodedFrames": 703258,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21829624
+      },
+      {
+        "elapsedMilliseconds": 23700000,
+        "decodedFrames": 712274,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23968160
+      },
+      {
+        "elapsedMilliseconds": 24000000,
+        "decodedFrames": 721291,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26072400
+      },
+      {
+        "elapsedMilliseconds": 24300000,
+        "decodedFrames": 730307,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28103176
+      },
+      {
+        "elapsedMilliseconds": 24600000,
+        "decodedFrames": 739324,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21952392
+      },
+      {
+        "elapsedMilliseconds": 24900000,
+        "decodedFrames": 748341,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24030680
+      },
+      {
+        "elapsedMilliseconds": 25200000,
+        "decodedFrames": 757357,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26009696
+      },
+      {
+        "elapsedMilliseconds": 25500000,
+        "decodedFrames": 766374,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28089504
+      },
+      {
+        "elapsedMilliseconds": 25800000,
+        "decodedFrames": 775390,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 21857808
+      },
+      {
+        "elapsedMilliseconds": 26100000,
+        "decodedFrames": 784407,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 23913152
+      },
+      {
+        "elapsedMilliseconds": 26400000,
+        "decodedFrames": 793423,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26376712
+      },
+      {
+        "elapsedMilliseconds": 26700000,
+        "decodedFrames": 802440,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28472184
+      },
+      {
+        "elapsedMilliseconds": 27000000,
+        "decodedFrames": 811457,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22368392
+      },
+      {
+        "elapsedMilliseconds": 27300000,
+        "decodedFrames": 820474,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24519104
+      },
+      {
+        "elapsedMilliseconds": 27600000,
+        "decodedFrames": 829490,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26542040
+      },
+      {
+        "elapsedMilliseconds": 27900000,
+        "decodedFrames": 838507,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 28674296
+      },
+      {
+        "elapsedMilliseconds": 28200000,
+        "decodedFrames": 847524,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 22586216
+      },
+      {
+        "elapsedMilliseconds": 28500000,
+        "decodedFrames": 856541,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 24627936
+      },
+      {
+        "elapsedMilliseconds": 28800000,
+        "decodedFrames": 865558,
+        "workingSetBytes": 152928256,
+        "privateMemoryBytes": 112873472,
+        "managedHeapBytes": 26711936
+      }
+    ],
+    "elapsedMilliseconds": 28800041.5693,
+    "decodedFrames": 865558,
+    "pixelFormat": "nv12",
+    "zeroCopyLevel": "Z2",
+    "processCpuMilliseconds": 5010375,
+    "cpuUtilizationPercent": 0.5436596970641303,
+    "allocatedBytes": 3343783840,
+    "managedHeapBytes": -3828792,
+    "workingSetBytes": 0,
+    "privateMemoryBytes": 0,
+    "droppedFrames": null,
+    "audioVideoOffset": null,
+    "audioUnderruns": null,
+    "gpuUtilizationPercent": null,
+    "gpuMemoryBytes": null
+  }
+}
