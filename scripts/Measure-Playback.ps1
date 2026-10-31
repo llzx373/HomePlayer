@@ -3,7 +3,7 @@ param(
     [string]$OutputPath = "artifacts/performance/playback-current.json",
     [ValidateRange(1, 10000)][int]$OpenIterations = 30,
     [ValidateRange(1, 10000)][int]$SeekIterations = 100,
-    [ValidateRange(1000, 3600000)][int]$SteadyMilliseconds = 5000,
+    [ValidateRange(1000, 28800000)][int]$SteadyMilliseconds = 5000,
     [switch]$SkipBuild
 )
 
@@ -34,10 +34,11 @@ try {
     $env:HOMEPLAYER_PERF_OPENS = $OpenIterations.ToString()
     $env:HOMEPLAYER_PERF_SEEKS = $SeekIterations.ToString()
     $env:HOMEPLAYER_PERF_STEADY_MS = $SteadyMilliseconds.ToString()
+    $env:HOMEPLAYER_PERF_LOOP = ($SteadyMilliseconds -gt 12000).ToString()
     $build = @()
     if ($SkipBuild) { $build += "--no-build" }
     & dotnet test "tests/HomePlayer.Playback.Tests/HomePlayer.Playback.Tests.csproj" `
-        -c Release --filter "FullyQualifiedName~PlaybackPerformanceTests" @build
+        -c Release --filter "FullyQualifiedName=HomePlayer.Playback.Tests.PlaybackPerformanceTests.Measure_native_playback_pipeline" @build
     if ($LASTEXITCODE -ne 0) { throw "Playback performance measurement failed." }
     Write-Host "Performance result: $OutputPath"
 }
@@ -47,5 +48,6 @@ finally {
     Remove-Item Env:HOMEPLAYER_PERF_OPENS -ErrorAction SilentlyContinue
     Remove-Item Env:HOMEPLAYER_PERF_SEEKS -ErrorAction SilentlyContinue
     Remove-Item Env:HOMEPLAYER_PERF_STEADY_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:HOMEPLAYER_PERF_LOOP -ErrorAction SilentlyContinue
     Pop-Location
 }

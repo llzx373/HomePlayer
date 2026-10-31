@@ -169,11 +169,19 @@ public sealed class PlaybackPerformanceTests
     private static async Task<object> MeasureSteadyAsync(string media, int milliseconds)
     {
         using var player = NewPlayer();
+        var loop = Environment.GetEnvironmentVariable("HOMEPLAYER_PERF_LOOP") == "True";
         var frames = 0;
         player.FrameArrived += frame =>
         {
             frame.ReturnBuffer();
             Interlocked.Increment(ref frames);
+        };
+        player.Ended += () =>
+        {
+            if (!loop)
+                return;
+            player.Seek(TimeSpan.Zero);
+            player.Play();
         };
         player.Open(media);
         player.Play();
@@ -187,13 +195,37 @@ public sealed class PlaybackPerformanceTests
         var managedStart = GC.GetTotalMemory(false);
         var started = Stopwatch.GetTimestamp();
         player.Play();
-        await Task.Delay(milliseconds);
+        var checkpoints = new List<object>();
+        if (loop)
+        {
+            var loopElapsed = TimeSpan.Zero;
+            while (loopElapsed < TimeSpan.FromMilliseconds(milliseconds))
+            {
+                var delay = TimeSpan.FromMilliseconds(Math.Min(300_000, milliseconds - loopElapsed.TotalMilliseconds));
+                await Task.Delay(delay);
+                loopElapsed += delay;
+                checkpoints.Add(new
+                {
+                    elapsedMilliseconds = loopElapsed.TotalMilliseconds,
+                    decodedFrames = Volatile.Read(ref frames),
+                    workingSetBytes = process.WorkingSet64,
+                    privateMemoryBytes = process.PrivateMemorySize64,
+                    managedHeapBytes = GC.GetTotalMemory(false)
+                });
+            }
+        }
+        else
+        {
+            await Task.Delay(milliseconds);
+        }
         player.Pause();
         var elapsed = Stopwatch.GetElapsedTime(started);
         var cpu = process.TotalProcessorTime - cpuStart;
         var pipeline = player.GetPipeline();
         return new
         {
+            loopPlayback = loop,
+            checkpoints,
             elapsedMilliseconds = elapsed.TotalMilliseconds,
             decodedFrames = Volatile.Read(ref frames),
             pixelFormat = pipeline.PixelFormat,
