@@ -209,6 +209,8 @@ public sealed class VideoPresenter : IDisposable
     private nint _gpuTexture;
     private ID3D11Texture2D? _gpuTextureResource;
     private int _gpuSubresource = -1;
+    private ID3D11Fence? _gpuDecodeFence;
+    private nint _gpuDecodeFenceHandle;
     private LibplaceboRenderer? _libplacebo;
     private bool _libplaceboFailed;
     private readonly uint[] _vertexStrides = [16];
@@ -452,6 +454,12 @@ public sealed class VideoPresenter : IDisposable
         }
 
         pending?.ReturnBuffer();
+        if (last is D3D11FrameLease gpu && gpu.Resource.Fence != 0)
+        {
+            _render.Post(() => ClearFrameAfterGpu(gpu));
+            return;
+        }
+
         last?.ReturnBuffer();
         _render.Post(ClearFrame);
     }
@@ -460,6 +468,16 @@ public sealed class VideoPresenter : IDisposable
     {
         lock (_deviceSync)
             ClearFrameCore();
+    }
+
+    private void ClearFrameAfterGpu(D3D11FrameLease frame)
+    {
+        lock (_deviceSync)
+        {
+            ClearFrameCore();
+            WaitForGpuCompletion();
+        }
+        frame.ReturnBuffer();
     }
 
     private void ClearFrameCore()
@@ -1248,6 +1266,7 @@ public sealed class VideoPresenter : IDisposable
         if (_device == null || resource.Texture == 0 || frame.DeviceGeneration != _deviceGeneration
             || resource.AdapterLuid != _adapterLuid)
             return false;
+        WaitForDecoder(resource);
         if (_gpuTexture == resource.Texture && _gpuSubresource == resource.Subresource && _framePixelFormat == frame.PixelFormat
             && _frameWidth == frame.Width && _frameHeight == frame.Height)
             return true;
@@ -1290,6 +1309,35 @@ public sealed class VideoPresenter : IDisposable
         return true;
     }
 
+    private void WaitForDecoder(D3D11FrameResource resource)
+    {
+        if (resource.Fence == 0 || resource.FenceValue == 0)
+            return;
+        if (_gpuDecodeFence == null || _gpuDecodeFenceHandle != resource.Fence)
+        {
+            _gpuDecodeFence?.Dispose();
+            using var device5 = _device!.QueryInterface<ID3D11Device5>();
+            _gpuDecodeFence = device5.OpenSharedFence(resource.Fence);
+            _gpuDecodeFenceHandle = resource.Fence;
+        }
+        using var context4 = _context!.QueryInterface<ID3D11DeviceContext4>();
+        context4.Wait(_gpuDecodeFence, resource.FenceValue);
+    }
+
+    private void WaitForGpuCompletion()
+    {
+        if (_device == null || _context == null)
+            return;
+        using var device5 = _device.QueryInterface<ID3D11Device5>();
+        using var fence = device5.CreateFence(0, FenceFlags.None);
+        using var context4 = _context.QueryInterface<ID3D11DeviceContext4>();
+        context4.Signal(fence, 1);
+        using var completed = new ManualResetEvent(false);
+        fence.SetEventOnCompletion(1, completed.SafeWaitHandle.DangerousGetHandle());
+        if (!completed.WaitOne(5000))
+            Trace("GPU completion wait timed out while clearing a cross-device frame");
+    }
+
     private ID3D11ShaderResourceView CreateGpuView(ID3D11Texture2D texture, int subresource, uint arraySize, Format format)
     {
         if (arraySize > 1 || subresource > 0)
@@ -1329,6 +1377,9 @@ public sealed class VideoPresenter : IDisposable
         _chromaTexture = null;
         _gpuTextureResource?.Dispose();
         _gpuTextureResource = null;
+        _gpuDecodeFence?.Dispose();
+        _gpuDecodeFence = null;
+        _gpuDecodeFenceHandle = 0;
         _gpuTexture = 0;
         _gpuSubresource = -1;
         _framePixelFormat = VideoPixelFormat.Unknown;

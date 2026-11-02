@@ -16,6 +16,8 @@ public sealed class D3D11SinkFilter : BgraSinkFilter
     public override string PixelFormat => _pin is D3D11SinkPin pin ? pin.PixelFormat : "Unknown";
     public nint DecoderDevice => ((D3D11SinkPin)_pin).Device;
     public nint DecoderContext => ((D3D11SinkPin)_pin).Context;
+    public long SharedTextureOpenCount => ((D3D11SinkPin)_pin).SharedTextureOpenCount;
+    public void ReleaseResources() => ((D3D11SinkPin)_pin).ReleaseResources();
 }
 
 [ComVisible(true)]
@@ -27,9 +29,18 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
     private VideoPixelFormat _pixelFormat = VideoPixelFormat.Nv12;
     private nint _device;
     private nint _context;
+    private nint _decoderMutex;
+    private ID3D11Fence? _decodeFence;
+    private nint _sharedDecodeFence;
+    private ulong _decodeFenceValue;
     private long _adapterLuid;
     private long _frameSequence;
     private long _droppedSamples;
+    private nint _cachedPresenterTexture;
+    private nint _cachedSourceTexture;
+    private nint _cachedSharedHandle;
+    private long _cachedDeviceGeneration = -1;
+    private long _sharedTextureOpenCount;
 
     public D3D11SinkPin(BgraSinkFilter filter, D3D11SharedDevice? outputDevice = null) : base(filter)
     {
@@ -39,6 +50,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
     public string PixelFormat => _pixelFormat == VideoPixelFormat.P010 ? "P010" : "NV12";
     public nint Device => _device;
     public nint Context => _context;
+    public long SharedTextureOpenCount => Interlocked.Read(ref _sharedTextureOpenCount);
 
     public override int QueryAccept(IntPtr mediaType)
     {
@@ -62,8 +74,16 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             return Hr.Fail;
         var previousDevice = _device;
         var previousContext = _context;
+        ReleaseDecodeFence();
         _device = AddRef(device);
         _context = AddRef(context);
+        _decoderMutex = mutex;
+        if (_outputDevice != null && device != _outputDevice.Device)
+        {
+            using var device5 = deviceWrapper.QueryInterface<ID3D11Device5>();
+            _decodeFence = device5.CreateFence(0, FenceFlags.Shared);
+            _sharedDecodeFence = _decodeFence.CreateSharedHandle(null, null!);
+        }
         if (previousDevice != 0)
             Marshal.Release(previousDevice);
         if (previousContext != 0)
@@ -71,7 +91,8 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
         PlaybackTelemetry.Trace("LavDecoderDeviceActivated", Guid.Empty, 0, data: new Dictionary<string, object?>
         {
             ["adapterLuid"] = _adapterLuid,
-            ["outputDeviceGeneration"] = _outputDevice?.DeviceGeneration ?? 0
+            ["outputDeviceGeneration"] = _outputDevice?.DeviceGeneration ?? 0,
+            ["crossDeviceFence"] = _sharedDecodeFence != 0
         });
         return Hr.Ok;
     }
@@ -116,16 +137,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                     return Hr.Fail;
                 }
                 if (_device != _outputDevice.Device)
-                {
-                    lock (_outputDevice.SyncRoot)
-                    {
-                        using var outputDevice = new ID3D11Device(_outputDevice.Device);
-                        outputDevice.AddRef();
-                        using var opened = outputDevice.OpenSharedResource<ID3D11Texture2D>(sharedHandle);
-                        presenterTexture = opened.NativePointer;
-                        opened.AddRef();
-                    }
-                }
+                    presenterTexture = GetPresenterTexture(texture, sharedHandle);
             }
             var hasTime = SampleTime(samplePointer, out var start, out var end) >= 0;
             var media = hasTime ? _filter.MediaTime(start) : -1;
@@ -144,6 +156,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             }
             if (Flushing)
                 return Hr.Ok;
+            var decodeFenceValue = SignalDecoderCompleted();
             if (hasTime)
                 _filter.NotePresented(media);
             AddRef(samplePointer);
@@ -167,6 +180,8 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                     (int)slice,
                     _adapterLuid,
                     presenterTexture != 0 ? 0 : sharedHandle,
+                    Fence: _sharedDecodeFence,
+                    FenceValue: decodeFenceValue,
                     SourceDevice: presenterTexture != 0 ? _outputDevice!.Device : _device),
                 ReleaseBuffer = () =>
                 {
@@ -206,6 +221,110 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             if (texture != 0)
                 Marshal.Release(texture);
         }
+    }
+
+    private ulong SignalDecoderCompleted()
+    {
+        if (_decodeFence == null)
+            return 0;
+        var locked = false;
+        if (_decoderMutex != 0)
+        {
+            var wait = WaitForSingleObject(_decoderMutex, 5000);
+            if (wait is not (0 or 0x80))
+                throw new InvalidOperationException($"等待 LAV D3D11 设备锁失败（0x{wait:X8}）。");
+            locked = true;
+        }
+        try
+        {
+            using var context = new ID3D11DeviceContext(_context);
+            context.AddRef();
+            using var context4 = context.QueryInterface<ID3D11DeviceContext4>();
+            var value = ++_decodeFenceValue;
+            context4.Signal(_decodeFence, value);
+            return value;
+        }
+        finally
+        {
+            if (locked)
+                ReleaseMutex(_decoderMutex);
+        }
+    }
+
+    private nint GetPresenterTexture(nint sourceTexture, nint sharedHandle)
+    {
+        lock (_outputDevice!.SyncRoot)
+        {
+            var generation = _outputDevice.DeviceGeneration;
+            if (_cachedPresenterTexture == 0
+                || _cachedSourceTexture != sourceTexture
+                || _cachedSharedHandle != sharedHandle
+                || _cachedDeviceGeneration != generation)
+            {
+                using var outputDevice = new ID3D11Device(_outputDevice.Device);
+                outputDevice.AddRef();
+                using var opened = outputDevice.OpenSharedResource<ID3D11Texture2D>(sharedHandle);
+                var previous = _cachedPresenterTexture;
+                _cachedPresenterTexture = opened.NativePointer;
+                opened.AddRef();
+                _cachedSourceTexture = sourceTexture;
+                _cachedSharedHandle = sharedHandle;
+                _cachedDeviceGeneration = generation;
+                Interlocked.Increment(ref _sharedTextureOpenCount);
+                if (previous != 0)
+                    Marshal.Release(previous);
+                PlaybackTelemetry.Trace("LavSharedTextureOpened", Guid.Empty, 0, data: new Dictionary<string, object?>
+                {
+                    ["openCount"] = _sharedTextureOpenCount,
+                    ["deviceGeneration"] = generation
+                });
+            }
+            return AddRef(_cachedPresenterTexture);
+        }
+    }
+
+    public void ReleaseResources()
+    {
+        if (_outputDevice != null)
+        {
+            lock (_outputDevice.SyncRoot)
+                ReleaseCachedPresenterTexture();
+        }
+        else
+        {
+            ReleaseCachedPresenterTexture();
+        }
+        var device = _device;
+        var context = _context;
+        _device = 0;
+        _context = 0;
+        _decoderMutex = 0;
+        ReleaseDecodeFence();
+        if (device != 0)
+            Marshal.Release(device);
+        if (context != 0)
+            Marshal.Release(context);
+    }
+
+    private void ReleaseDecodeFence()
+    {
+        _decodeFence?.Dispose();
+        _decodeFence = null;
+        _decodeFenceValue = 0;
+        if (_sharedDecodeFence != 0)
+            CloseHandle(_sharedDecodeFence);
+        _sharedDecodeFence = 0;
+    }
+
+    private void ReleaseCachedPresenterTexture()
+    {
+        var texture = _cachedPresenterTexture;
+        _cachedPresenterTexture = 0;
+        _cachedSourceTexture = 0;
+        _cachedSharedHandle = 0;
+        _cachedDeviceGeneration = -1;
+        if (texture != 0)
+            Marshal.Release(texture);
     }
 
     private int ReceiveCpu(nint samplePointer)
@@ -284,6 +403,15 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
     }
 
     private static long ToInt64(Vortice.Luid value) => (uint)value.LowPart | ((long)value.HighPart << 32);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(nint handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool ReleaseMutex(nint handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(nint handle);
 
     private static unsafe nint AddRef(nint pointer)
     {

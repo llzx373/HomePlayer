@@ -85,6 +85,15 @@ public sealed class LavPlaybackTests
             Assert.Equal(luid, gpu.Resource.AdapterLuid);
             Assert.Equal(outputDevice.NativePointer, gpu.Resource.SourceDevice);
             Assert.Equal(0, gpu.Resource.SharedHandle);
+            Assert.NotEqual(0, gpu.Resource.Fence);
+            Assert.NotEqual(0UL, gpu.Resource.FenceValue);
+            using var device5 = outputDevice.QueryInterface<ID3D11Device5>();
+            using var decodeFence = device5.OpenSharedFence(gpu.Resource.Fence);
+            using var outputContext4 = outputContext.QueryInterface<ID3D11DeviceContext4>();
+            outputContext4.Wait(decodeFence, gpu.Resource.FenceValue);
+            using var decodeCompleted = new ManualResetEvent(false);
+            decodeFence.SetEventOnCompletion(gpu.Resource.FenceValue, decodeCompleted.SafeWaitHandle.DangerousGetHandle());
+            Assert.True(decodeCompleted.WaitOne(5000), "LAV 跨设备解码 fence 未完成。");
             using var texture = new ID3D11Texture2D(gpu.Resource.Texture);
             texture.AddRef();
             var description = texture.Description;
@@ -129,6 +138,44 @@ public sealed class LavPlaybackTests
                     ViewDimension = ShaderResourceViewDimension.Texture2D,
                     Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
                 });
+            var received = 1;
+            var continuous = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Continuous(FrameLease next)
+            {
+                next.ReturnBuffer();
+                if (Interlocked.Increment(ref received) >= 120)
+                    continuous.TrySetResult();
+            }
+            engine.FrameArrived += Continuous;
+            await continuous.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            engine.FrameArrived -= Continuous;
+            Assert.Equal(1, engine.SharedTextureOpenCount);
+            var previousFenceValue = gpu.Resource.FenceValue;
+            for (var i = 0; i < 5; i++)
+            {
+                var seeked = new TaskCompletionSource<FrameLease>(TaskCreationOptions.RunContinuationsAsynchronously);
+                void AfterSeek(FrameLease next)
+                {
+                    if (!seeked.TrySetResult(next))
+                        next.ReturnBuffer();
+                }
+                engine.FrameArrived += AfterSeek;
+                engine.Seek(TimeSpan.FromSeconds(10 + i * 10));
+                var seekFrame = await seeked.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                engine.FrameArrived -= AfterSeek;
+                try
+                {
+                    var seekGpu = Assert.IsType<D3D11FrameLease>(seekFrame);
+                    Assert.Equal(gpu.Resource.Fence, seekGpu.Resource.Fence);
+                    Assert.True(seekGpu.Resource.FenceValue > previousFenceValue);
+                    previousFenceValue = seekGpu.Resource.FenceValue;
+                }
+                finally
+                {
+                    seekFrame.ReturnBuffer();
+                }
+            }
+            Assert.InRange(engine.SharedTextureOpenCount, 1, 6);
         }
         finally
         {

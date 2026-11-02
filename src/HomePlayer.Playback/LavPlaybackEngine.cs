@@ -63,6 +63,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, I
     public D3D11SharedDevice? D3D11Device { get; set; }
     public nint DecoderDevice => (_sink as D3D11SinkFilter)?.DecoderDevice ?? 0;
     public nint DecoderContext => (_sink as D3D11SinkFilter)?.DecoderContext ?? 0;
+    public long SharedTextureOpenCount => (_sink as D3D11SinkFilter)?.SharedTextureOpenCount ?? 0;
     public bool IsOpen => _open == 1;
     public bool IsPlaying => _isPlaying;
     public TimeSpan Duration => _duration;
@@ -683,6 +684,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, I
     private void CloseGraph()
     {
         StopGraph();
+        (_sink as D3D11SinkFilter)?.ReleaseResources();
         Volatile.Write(ref _seekedTicks, 0);
         foreach (var com in _com)
         {
