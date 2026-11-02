@@ -759,6 +759,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         }
     }
 
+    private int _audioEofStage;
+
     private void AudioDecodeLoop()
     {
         var frame = ffmpeg.av_frame_alloc();
@@ -773,11 +775,15 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 {
                     if (!item.EndOfStream && item.Epoch != Epoch)
                         continue;
+                    if (item.EndOfStream)
+                        Volatile.Write(ref _audioEofStage, 1);
                     lock (_audioCodecGate)
                     {
                         if (_audioCodec == null || _resampler == null)
                             continue;
                         var send = ffmpeg.avcodec_send_packet(_audioCodec, item.EndOfStream ? null : item.Packet);
+                        if (item.EndOfStream)
+                            Volatile.Write(ref _audioEofStage, 2);
                         if (send < 0 && send != ffmpeg.AVERROR(ffmpeg.EAGAIN))
                         {
                             if (!_audioRecovery.TryRecover(send))
@@ -808,14 +814,18 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                         }
                         if (item.EndOfStream)
                         {
+                            Volatile.Write(ref _audioEofStage, 3);
                             DrainResampler(item.Epoch);
+                            Volatile.Write(ref _audioEofStage, 4);
                             var tail = _timeStretcher.Flush(OutputChannels, Rate);
+                            Volatile.Write(ref _audioEofStage, 5);
                             if (tail.Length > 0)
                                 EmitPcm(tail, tail.Length, Interlocked.Read(ref _audioEpoch));
                         }
                     }
                     if (item.EndOfStream)
                     {
+                        Volatile.Write(ref _audioEofStage, 6);
                         Interlocked.Exchange(ref _audioDone, 1);
                         MarkSeekPrerollAudioReady(item.Epoch);
                     }
