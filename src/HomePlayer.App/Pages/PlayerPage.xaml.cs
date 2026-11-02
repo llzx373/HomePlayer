@@ -89,7 +89,13 @@ public sealed partial class PlayerPage : Page
         NativeFfmpegProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
         DirectShowProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
         _presenter.RenderQuality = App.Host.Settings.RenderQuality;
-        App.Host.SettingsChanged += () => _presenter.RenderQuality = App.Host.Settings.RenderQuality;
+        _presenter.OutputRange = App.Host.Settings.RgbOutputRange;
+        App.Host.SettingsChanged += () =>
+        {
+            _presenter.RenderQuality = App.Host.Settings.RenderQuality;
+            _presenter.OutputRange = App.Host.Settings.RgbOutputRange;
+            _presenter.Refresh();
+        };
         VideoHost.SizeChanged += (_, _) =>
         {
             _presenter.Refresh();

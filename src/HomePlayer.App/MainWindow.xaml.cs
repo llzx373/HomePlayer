@@ -142,6 +142,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded -= OnRootLoaded;
         ApplyTitleBar();
         SetAlwaysOnTop(App.Host.Settings.AlwaysOnTop);
+        DisplayRefreshRate.ApplySaved(WindowNative.GetWindowHandle(this), App.Host.Settings.DisplayRefreshRate);
         UpdateOverlayTimer();
         if (App.Host.SettingsWarning is string warning)
             _ = ShowSettingsWarning(warning);

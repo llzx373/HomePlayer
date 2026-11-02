@@ -69,7 +69,8 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
         float compositionScaleX,
         float compositionScaleY,
         bool hdrOutput,
-        LibplaceboQuality quality)
+        LibplaceboQuality quality,
+        VideoOutputRange outputRange = VideoOutputRange.Full)
     {
         if (!SupportsInput(pixelFormat, chroma != null && ReferenceEquals(source, chroma)))
             return false;
@@ -133,7 +134,7 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
             outputFrame.Planes[0] = hdrOutput
                 ? Plane(output, 4, false, 2, 1, 0, 3)
                 : Plane(output, 4, false, 0, 1, 2, 3);
-            outputFrame.Repr = RgbRepresentation(hdrOutput);
+            outputFrame.Repr = RgbRepresentation(hdrOutput, outputRange);
             outputFrame.Color = EmptyColorSpace();
             outputFrame.Color.Primaries = hdrOutput ? 6 : 3;
             outputFrame.Color.Transfer = hdrOutput ? 11 : 2;
@@ -228,10 +229,10 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
         return representation;
     }
 
-    private static PlColorRepr RgbRepresentation(bool hdrOutput) => new()
+    private static PlColorRepr RgbRepresentation(bool hdrOutput, VideoOutputRange outputRange) => new()
     {
         System = 12,
-        Levels = 2,
+        Levels = !hdrOutput && outputRange == VideoOutputRange.Limited ? 1 : 2,
         Alpha = 3,
         Bits = new PlBitEncoding { SampleDepth = hdrOutput ? 16 : 8, ColorDepth = hdrOutput ? 16 : 8 }
     };

@@ -52,10 +52,17 @@ public sealed unsafe class LibplaceboRendererTests
     [Fact]
     public void Hdr_output_preserves_display_contract()
     {
-        AssertSolidRed(VideoPixelFormat.Bgra32, LibplaceboQuality.Fast, ResourceUsage.Dynamic, hdrOutput: true);
+        AssertSolidRed(VideoPixelFormat.Bgra32, LibplaceboQuality.Fast, ResourceUsage.Dynamic, hdrOutput: true, VideoOutputRange.Limited);
     }
 
-    private static void AssertSolidRed(VideoPixelFormat format, LibplaceboQuality quality, ResourceUsage usage, bool hdrOutput)
+    [Fact]
+    public void Sdr_limited_output_maps_rgb_to_16_through_235()
+    {
+        AssertSolidRed(VideoPixelFormat.Bgra32, LibplaceboQuality.Fast, ResourceUsage.Dynamic, hdrOutput: false, VideoOutputRange.Limited);
+    }
+
+    private static void AssertSolidRed(VideoPixelFormat format, LibplaceboQuality quality, ResourceUsage usage, bool hdrOutput,
+        VideoOutputRange outputRange = VideoOutputRange.Full)
     {
         if (!LibplaceboRenderer.IsAvailable)
             Assert.Fail(LibplaceboRenderer.Version);
@@ -104,7 +111,7 @@ public sealed unsafe class LibplaceboRendererTests
         var geometry = VideoAspect.Quad(4, 4, 2, 2, AspectMode.Stretch, bottomUp: false);
 
         var rendered = renderer.Render(luma, chroma, 0, 0, format, false, color, target,
-            2, 2, 4, 4, geometry, 1, 1, hdrOutput, quality);
+            2, 2, 4, 4, geometry, 1, 1, hdrOutput, quality, outputRange);
 
         Assert.True(rendered);
         var captured = D3D11FrameCapture.CopyBgra(device, context, target, hdrOutput);
@@ -115,8 +122,17 @@ public sealed unsafe class LibplaceboRendererTests
             var b = captured.Data[pixel * 4];
             var g = captured.Data[pixel * 4 + 1];
             var r = captured.Data[pixel * 4 + 2];
-            Assert.True(b <= 30 && g <= 30 && r >= (hdrOutput ? 100 : 220),
-                $"{format} pixel {pixel}: B={b} G={g} R={r}");
+            if (!hdrOutput && outputRange == VideoOutputRange.Limited)
+            {
+                Assert.InRange(b, 12, 20);
+                Assert.InRange(g, 12, 20);
+                Assert.InRange(r, 230, 240);
+            }
+            else
+            {
+                Assert.True(b <= 30 && g <= 30 && r >= (hdrOutput ? 100 : 220),
+                    $"{format} pixel {pixel}: B={b} G={g} R={r}");
+            }
             Assert.Equal(255, captured.Data[pixel * 4 + 3]);
         }
     }

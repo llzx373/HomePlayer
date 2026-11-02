@@ -107,6 +107,13 @@
                                         <ComboBoxItem Content="高质量（libplacebo high_quality）" />
                                     </ComboBox>
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="libplacebo 只替换渲染后段；初始化或渲染失败时自动回退 Basic。" />
+                                    <ComboBox x:Name="RgbOutputRangeBox" Header="视频 RGB 输出范围" SelectedIndex="0">
+                                        <ComboBoxItem Content="全范围（0–255，PC 默认）" />
+                                        <ComboBoxItem Content="有限范围（16–235，电视兼容）" />
+                                    </ComboBox>
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="仅调整内置渲染器的视频输出；HDR 保持全范围，不修改显卡 HDMI 黑位设置。" TextWrapping="Wrap" />
+                                    <ComboBox x:Name="RefreshRateBox" Header="显示器刷新率" HorizontalAlignment="Stretch" DisplayMemberPath="Label" SelectionChanged="RefreshRate_Changed" />
+                                    <TextBlock x:Name="RefreshRateStatus" Style="{StaticResource SettingsDescriptionStyle}" Text="默认跟随系统；60 fps 内容可尝试手动选择 60 Hz。" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">

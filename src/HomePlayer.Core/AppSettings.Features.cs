@@ -8,6 +8,12 @@ public enum VideoRenderQuality
     HighQuality
 }
 
+public enum VideoOutputRange
+{
+    Full,
+    Limited
+}
+
 public sealed partial class AppSettings
 {
     public bool RestorePlaylist { get; set; } = true;
@@ -23,6 +29,8 @@ public sealed partial class AppSettings
     public bool AudioNightMode { get; set; }
     public bool HardwareAcceleration { get; set; } = true;
     public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
+    public VideoOutputRange RgbOutputRange { get; set; } = VideoOutputRange.Full;
+    public int DisplayRefreshRate { get; set; }
     public bool SnapshotIncludeSubtitles { get; set; }
     public string UpdateChannel { get; set; } = "stable";
 }

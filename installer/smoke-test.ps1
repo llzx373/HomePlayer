@@ -69,7 +69,9 @@ function Assert-Installation([string]$expectedVersion) {
         throw "安装后找不到 HomePlayer.exe。"
     }
     $productVersion = (Get-Item $script:exe).VersionInfo.ProductVersion
-    if ($productVersion -ne $expectedVersion) {
+    $isExpected = $productVersion -eq $expectedVersion -or
+        $productVersion.StartsWith("$expectedVersion+", [StringComparison]::Ordinal)
+    if (-not $isExpected) {
         throw "版本应为 $expectedVersion，实际为 $productVersion。"
     }
     $commandKey = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Classes\HomePlayer.mkv\shell\open\command"

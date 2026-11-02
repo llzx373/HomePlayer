@@ -46,6 +46,7 @@ public sealed class VideoPresenter : IDisposable
             float gU;
             float gV;
             float bU;
+            float outputLimited;
         };
         float3 hp_to2020(float3 rgb) {
             return float3(0.627403 * rgb.r + 0.329283 * rgb.g + 0.0433136 * rgb.b,
@@ -83,6 +84,12 @@ public sealed class VideoPresenter : IDisposable
                 return hp_sdr_encode(hp_to709(rgb / (1 + rgb)));
             return rgb;
         }
+        float3 hp_output(float3 rgb) {
+            rgb = hp_transform(rgb);
+            if (outputLimited == 1)
+                return rgb * (219.0 / 255.0) + (16.0 / 255.0);
+            return rgb;
+        }
         """;
 
     private const string PixelShaderCode = ColorTransformCode + """
@@ -94,7 +101,7 @@ public sealed class VideoPresenter : IDisposable
                 rgb = hp_pq_linear(rgb);
             else if (outputTransform == 3)
                 rgb = hp_hlg_linear(rgb);
-            return float4(hp_transform(rgb), 1);
+            return float4(hp_output(rgb), 1);
         }
         """;
 
@@ -110,7 +117,7 @@ public sealed class VideoPresenter : IDisposable
                 rgb = hp_pq_linear(rgb);
             else if (outputTransform == 3)
                 rgb = hp_hlg_linear(rgb);
-            return float4(hp_transform(rgb), 1);
+            return float4(hp_output(rgb), 1);
         }
         """;
 
@@ -222,6 +229,7 @@ public sealed class VideoPresenter : IDisposable
 
     public Func<bool>? CanRender { get; set; }
     public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
+    public VideoOutputRange OutputRange { get; set; } = VideoOutputRange.Full;
 
     public DisplayOutputInfo CurrentDisplayOutput
     {
@@ -829,7 +837,8 @@ public sealed class VideoPresenter : IDisposable
                 _scaleX,
                 _scaleY,
                 _hdrOutput,
-                quality);
+                quality,
+                OutputRange);
             if (!rendered)
                 throw new InvalidOperationException("libplacebo 渲染调用失败。");
             return true;
@@ -1392,13 +1401,14 @@ public sealed class VideoPresenter : IDisposable
         if (_context == null || _colorConstants == null)
             return;
         var value = YuvColorConversion.For(color, frameHeight);
-        var constants = stackalloc float[8]
+        var constants = stackalloc float[9]
         {
             value.YOffset, value.YScale, value.ChromaOffset, (float)transform,
-            value.RedV, value.GreenU, value.GreenV, value.BlueU
+            value.RedV, value.GreenU, value.GreenV, value.BlueU,
+            OutputRange == VideoOutputRange.Limited && !_hdrOutput ? 1f : 0f
         };
         var mapped = _context.Map(_colorConstants, 0, MapMode.WriteDiscard);
-        Buffer.MemoryCopy(constants, (void*)mapped.DataPointer, 32, 32);
+        Buffer.MemoryCopy(constants, (void*)mapped.DataPointer, 36, 36);
         _context.Unmap(_colorConstants, 0);
     }
 
@@ -1581,7 +1591,7 @@ public sealed class VideoPresenter : IDisposable
         });
         _colorConstants = _device.CreateBuffer(new BufferDescription
         {
-            ByteWidth = 32,
+            ByteWidth = 48,
             Usage = ResourceUsage.Dynamic,
             BindFlags = BindFlags.ConstantBuffer,
             CPUAccessFlags = CpuAccessFlags.Write
