@@ -75,8 +75,14 @@ public class FfmpegPlayerTests : IDisposable
         }
         catch (TimeoutException ex)
         {
-            var state = string.Join(", ", new[] { "_demuxEof", "_videoDone", "_audioDone", "_endedRaised" }.Select(name =>
-                $"{name}={typeof(FfmpegPlayer).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(player)}"));
+            string Field(string name)
+            {
+                var value = typeof(FfmpegPlayer).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(player);
+                if (name == "_audioPackets")
+                    return value?.GetType().GetProperty("Count")?.GetValue(value)?.ToString() ?? "null";
+                return value is Thread thread ? thread.ThreadState.ToString() : value?.ToString() ?? "null";
+            }
+            var state = string.Join(", ", new[] { "_demuxEof", "_videoDone", "_audioDone", "_endedRaised", "_audioWritten", "_audioIndex", "_audioPackets", "_audioThread" }.Select(name => $"{name}={Field(name)}"));
             throw new TimeoutException($"等待 EOF 超时：frames={Volatile.Read(ref frames)}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, {state}, fault={fault}", ex);
         }
         Assert.Null(fault);
