@@ -48,6 +48,8 @@ jobs:
         run: |
           $env:PATH = (Resolve-Path "third_party/ffmpeg").Path + ";" + $env:PATH
           Get-FileHash "third_party/ffmpeg/*.dll" | Select-Object Name, Hash | Format-Table -AutoSize
+          & "third_party/ffmpeg/ffmpeg.exe" -version
+          if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed with exit code $LASTEXITCODE" }
           dotnet build HomePlayer.slnx -c Release --nologo --verbosity minimal
           Get-FileHash "third_party/ffmpeg/avcodec-63.dll", "tests/HomePlayer.Playback.Tests/bin/Release/net10.0-windows/ffmpeg/avcodec-63.dll" | Select-Object Path, Hash | Format-List
           dotnet test HomePlayer.slnx -c Release --no-build --nologo --verbosity minimal

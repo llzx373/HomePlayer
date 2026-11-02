@@ -21,13 +21,13 @@ $dlls = @(
     "swscale-10.dll"
 )
 $dllHashes = @{
-    "avcodec-63.dll" = "9de0b9aab1aabac017f6af55179a287cd06708dd3c29ab19a2e2b8c93464a213"
-    "avdevice-63.dll" = "23c934febbd246235a3188f388464caf8cb6cd3752436fc4dff14f16b39616df"
-    "avfilter-12.dll" = "43eb56cd0aa2a900e10e2ff2b341cfb9fe6339ef7374327562efe680fb95e0d8"
-    "avformat-63.dll" = "0df0277eb9800bec426fb3b3e9f386d25ce398d2d8e328f028c7e658f5818b98"
-    "avutil-61.dll" = "f8739cd18caadd31cf72e58aab576fe1f8c619145b6a1f2e439dcb8acf66638a"
-    "swresample-7.dll" = "d1d2957e5d7273ba0fd6e61ec5add76c22b40f13af9f2df0ab7a6bd2681a941c"
-    "swscale-10.dll" = "e8b1c508982d6a6b4fde4fbf00f72759b3e571e5a27d9856f6775075d3c7e586"
+    "avcodec-63.dll" = "019258d4eddcdc7fb8ccd60309ee009defa7d7d58c19b908a16b2c9b9a1bc6c0"
+    "avdevice-63.dll" = "bf77d63039d610d3233dd48e9a9ea605a606732005200a7f966f3bae6e08fc60"
+    "avfilter-12.dll" = "133adacad607c84f9d21f3067c7caa95ea946229c8ccbe5e025b4a5cb1782440"
+    "avformat-63.dll" = "964e7cb4fc9453fc538ca4caba8647022c81f52054cade9e080ab8510cc740d3"
+    "avutil-61.dll" = "168d69268ea75a732c94c0ac35d74b0203da09e16250bd7626577dddc796fe5f"
+    "swresample-7.dll" = "e2e3ebae229519f20cb58d1f14744efcf779c3d74a4d104bd871ec9758d696ad"
+    "swscale-10.dll" = "f0923485e586b31465a6e4b73e889adb8dfa68602b8f745df0adf719009d527e"
 }
 $tools = @("ffmpeg.exe", "ffprobe.exe")
 
