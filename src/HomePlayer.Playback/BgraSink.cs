@@ -29,6 +29,7 @@ public class BgraSinkFilter : IBaseFilterSink
 
     public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
+    public event Action<Exception>? Faulted;
     public bool HasPresented => Interlocked.Read(ref _presentedTicks) >= 0;
     internal bool Paused => _state == RendererGate.Paused;
 
@@ -155,6 +156,8 @@ public class BgraSinkFilter : IBaseFilterSink
             throw;
         }
     }
+
+    internal void RaiseFaulted(Exception error) => Faulted?.Invoke(error);
 
     internal void NoteSegment(long start)
     {
@@ -474,6 +477,7 @@ public class BgraSinkPin : IPinSink, IMemInputPinSink
 
     public int BeginFlush()
     {
+        PlaybackTelemetry.Trace("SinkFlushStarted", Guid.Empty, 0);
         _flushing = true;
         FlushGate.Set();
         return Hr.Ok;
@@ -483,6 +487,7 @@ public class BgraSinkPin : IPinSink, IMemInputPinSink
     {
         _flushing = false;
         FlushGate.Reset();
+        PlaybackTelemetry.Trace("SinkFlushCompleted", Guid.Empty, 0);
         return Hr.Ok;
     }
 

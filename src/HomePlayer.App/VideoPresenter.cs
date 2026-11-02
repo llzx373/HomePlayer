@@ -155,6 +155,12 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
+    private void TraceState(string name, IReadOnlyDictionary<string, object?>? data = null)
+    {
+        var frame = _lastFrame;
+        PlaybackTelemetry.Trace(name, frame?.SessionId ?? Guid.Empty, frame?.Epoch ?? 0, frame?.SeekCommandId, data: data);
+    }
+
     // 以下字段只在渲染线程上读写。
     private ID3D11Device? _device;
     private ID3D11DeviceContext? _context;
@@ -301,6 +307,7 @@ public sealed class VideoPresenter : IDisposable
 
     public void Suspend()
     {
+        TraceState("SurfaceSuspended");
         _suspended = true;
         _allowed = false;
         DetachSwapChainOnUiThread();
@@ -311,6 +318,7 @@ public sealed class VideoPresenter : IDisposable
     {
         if (!_panel.IsLoaded || CanRender?.Invoke() == false)
             return;
+        TraceState("SurfaceResumeRequested");
         _suspended = false;
         _allowed = true;
         CaptureDesiredSize();
@@ -337,6 +345,17 @@ public sealed class VideoPresenter : IDisposable
         }
 
         replaced?.ReturnBuffer();
+        if (frame.FrameSequence % PlaybackTelemetry.FrameSampling == 0)
+        {
+            PlaybackTelemetry.Trace("FrameQueued", frame.SessionId, frame.Epoch, frame.SeekCommandId, data: new Dictionary<string, object?>
+            {
+                ["pts"] = frame.PresentationTimestamp,
+                ["deviceGeneration"] = frame.DeviceGeneration,
+                ["suspended"] = _suspended,
+                ["allowed"] = _allowed,
+                ["replacedPending"] = replaced != null
+            });
+        }
         if (!_suspended && _allowed)
             PostDraw();
     }
@@ -421,6 +440,7 @@ public sealed class VideoPresenter : IDisposable
 
     public void Clear()
     {
+        TraceState("FramesClearRequested");
         FrameLease? pending;
         FrameLease? last;
         lock (_gate)
@@ -537,10 +557,14 @@ public sealed class VideoPresenter : IDisposable
                 {
                     var native = Native;
                     if (!_suspended && native != null)
+                    {
                         native.SetSwapChain(pointer);
+                        TraceState("SurfaceAttached");
+                    }
                 }
                 catch (Exception ex)
                 {
+                    TraceState("SurfaceAttachFailed", new Dictionary<string, object?> { ["error"] = ex.Message });
                     Trace("attach error " + ex.Message);
                 }
                 finally
@@ -549,12 +573,16 @@ public sealed class VideoPresenter : IDisposable
                 }
             }))
         {
+            TraceState("SurfaceAttachFailed", new Dictionary<string, object?> { ["error"] = "UI enqueue failed" });
             Trace("attach enqueue failed");
             return;
         }
 
         if (!done.Task.Wait(1000))
+        {
+            TraceState("SurfaceAttachTimedOut");
             Trace("attach wait timed out");
+        }
     }
 
     /// <summary>
@@ -710,6 +738,13 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
+            TraceState("DrawFailed", new Dictionary<string, object?>
+            {
+                ["hresult"] = unchecked((uint)ex.HResult),
+                ["error"] = ex.Message,
+                ["pts"] = frame?.PresentationTimestamp,
+                ["deviceGeneration"] = _deviceGeneration
+            });
             var now = Environment.TickCount64;
             if (now - _lastDrawErrorMs >= 1000)
             {
@@ -809,6 +844,12 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
+            TraceState("ResizeFailed", new Dictionary<string, object?>
+            {
+                ["hresult"] = unchecked((uint)ex.HResult),
+                ["error"] = ex.Message,
+                ["deviceGeneration"] = _deviceGeneration
+            });
             var now = Environment.TickCount64;
             if (now - _lastResizeErrorMs >= 1000)
             {
@@ -841,6 +882,16 @@ public sealed class VideoPresenter : IDisposable
             && Math.Abs(scaleY - _scaleY) < 0.01f)
             return;
 
+        TraceState("ResizeStarted", new Dictionary<string, object?>
+        {
+            ["width"] = width,
+            ["height"] = height,
+            ["previousWidth"] = _width,
+            ["previousHeight"] = _height,
+            ["scaleX"] = scaleX,
+            ["scaleY"] = scaleY,
+            ["deviceGeneration"] = _deviceGeneration
+        });
         EnsureDevice();
         if (_device == null || _context == null)
             return;
@@ -896,6 +947,12 @@ public sealed class VideoPresenter : IDisposable
         {
             Trace("pipeline error " + ex);
         }
+        TraceState("ResizeCompleted", new Dictionary<string, object?>
+        {
+            ["width"] = _width,
+            ["height"] = _height,
+            ["deviceGeneration"] = _deviceGeneration
+        });
     }
 
     private VideoOutputTransform EnsureDisplayOutput(VideoTransferFunction input)
@@ -1075,6 +1132,7 @@ public sealed class VideoPresenter : IDisposable
         if (now - _lastRecoveryMs < 2000)
             return;
         _lastRecoveryMs = now;
+        TraceState("DeviceRecoveryQueued", new Dictionary<string, object?> { ["deviceGeneration"] = _deviceGeneration });
         try
         {
             DiscardFrameLeases();
@@ -1413,6 +1471,11 @@ public sealed class VideoPresenter : IDisposable
         using var adapter = dxgi.GetAdapter();
         _adapterLuid = ToInt64(adapter.Description.Luid);
         _sharedDevice?.Update(_device.NativePointer, _context.NativePointer, _deviceGeneration);
+        TraceState("DeviceCreated", new Dictionary<string, object?>
+        {
+            ["adapterLuid"] = _adapterLuid,
+            ["deviceGeneration"] = _deviceGeneration
+        });
     }
 
     private static long ToInt64(Vortice.Luid value) => (uint)value.LowPart | ((long)value.HighPart << 32);

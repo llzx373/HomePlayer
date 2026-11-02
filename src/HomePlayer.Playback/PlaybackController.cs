@@ -620,8 +620,21 @@ public sealed partial class PlaybackController : IDisposable
     {
         if (engine == null)
             return;
+        var session = engine as PlaybackSession;
+        var data = new Dictionary<string, object?> { ["positionTicks"] = position.Ticks };
+        PlaybackTelemetry.Trace("SeekStarted", session?.SessionId ?? Guid.Empty, session?.Epoch ?? 0, data: data);
         SeekStarted?.Invoke();
-        engine.Seek(position);
+        try
+        {
+            engine.Seek(position);
+            PlaybackTelemetry.Trace("SeekCompleted", session?.SessionId ?? Guid.Empty, session?.Epoch ?? 0, data: data);
+        }
+        catch (Exception ex)
+        {
+            PlaybackTelemetry.Trace("SeekFailed", session?.SessionId ?? Guid.Empty, session?.Epoch ?? 0,
+                data: new Dictionary<string, object?> { ["positionTicks"] = position.Ticks, ["error"] = ex.Message });
+            throw;
+        }
     }
 
     private void OnFaulted(Exception error)
@@ -633,7 +646,7 @@ public sealed partial class PlaybackController : IDisposable
                 return;
             _engine?.Pause();
             PersistProgress();
-            if (TryRecoverFromFault())
+            if (TryRecoverFromFault(error))
                 return;
             Status = "播放失败：" + error.Message + "（已停止自动恢复）";
             Notify();

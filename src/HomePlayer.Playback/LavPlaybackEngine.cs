@@ -4,7 +4,7 @@ using HomePlayer.Core;
 
 namespace HomePlayer.Playback;
 
-public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhancements, IExternalAudioTrack
+public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackAudioEnhancements, IExternalAudioTrack
 {
     private readonly StaThread _sta = new("LAV playback");
     private bool _normalize;
@@ -71,6 +71,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
     public event Action<FrameLease>? FrameArrived;
     public event Action? Ended;
+    public event Action<Exception>? Faulted;
 
     public void Open(string path)
     {
@@ -650,6 +651,7 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackAudioEnhanceme
 
             handler(frame);
         };
+        _sink.Faulted += error => Faulted?.Invoke(error);
         _sink.Ended += () =>
         {
             _isPlaying = false;

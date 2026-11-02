@@ -74,6 +74,32 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Lav_output_failure_recovers_with_native_ffmpeg()
+    {
+        var first = new FakeEngine();
+        var recovered = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, recovered]);
+        var nativeRoutes = new List<bool>();
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, nativeFfmpeg) =>
+            {
+                nativeRoutes.Add(nativeFfmpeg);
+                return (engines.Dequeue(), "测试引擎");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv"], 0);
+
+        first.RaiseFault(new LavVideoOutputException("output failed", new InvalidOperationException("gpu")));
+        await WaitFor(() => recovered.PlayCount > 0);
+
+        Assert.True(nativeRoutes[^1]);
+        Assert.Equal("one.mkv", controller.Playlist.Current?.Path);
+    }
+
+    [Fact]
     public async Task Recovery_open_failure_retries_the_same_item_with_auto_route()
     {
         var first = new FakeEngine();

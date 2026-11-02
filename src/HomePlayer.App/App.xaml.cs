@@ -1,5 +1,6 @@
 using System.Threading;
 using HomePlayer.Core;
+using HomePlayer.Playback;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
@@ -11,6 +12,7 @@ public partial class App : Application
 {
     private MainWindow? _window;
     private AppInstance? _instance;
+    private PlaybackFileTrace? _playbackTrace;
     private int _shellBatch;
 
     public static AppHost Host { get; private set; } = null!;
@@ -29,6 +31,8 @@ public partial class App : Application
 
         AppPaths.Ensure();
         CrashGuard.StartSession();
+        _playbackTrace = new PlaybackFileTrace(Path.Combine(AppPaths.Root, "traces"));
+        PlaybackTelemetry.Trace("ApplicationStarted", Guid.Empty, 0);
         var queue = DispatcherQueue.GetForCurrentThread();
         Host = AppHost.Create(action => queue.TryEnqueue(() => action()));
         var initial = IncomingPaths(AppInstance.GetCurrent().GetActivatedEventArgs(), true);

@@ -5,6 +5,8 @@ using Vortice.DXGI;
 
 namespace HomePlayer.Playback;
 
+public sealed class LavVideoOutputException(string message, Exception innerException) : Exception(message, innerException);
+
 [ComVisible(true)]
 [ClassInterface(ClassInterfaceType.None)]
 public sealed class D3D11SinkFilter : BgraSinkFilter
@@ -26,6 +28,8 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
     private nint _device;
     private nint _context;
     private long _adapterLuid;
+    private long _frameSequence;
+    private long _droppedSamples;
 
     public D3D11SinkPin(BgraSinkFilter filter, D3D11SharedDevice? outputDevice = null) : base(filter)
     {
@@ -64,6 +68,11 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             Marshal.Release(previousDevice);
         if (previousContext != 0)
             Marshal.Release(previousContext);
+        PlaybackTelemetry.Trace("LavDecoderDeviceActivated", Guid.Empty, 0, data: new Dictionary<string, object?>
+        {
+            ["adapterLuid"] = _adapterLuid,
+            ["outputDeviceGeneration"] = _outputDevice?.DeviceGeneration ?? 0
+        });
         return Hr.Ok;
     }
 
@@ -98,7 +107,14 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                 using var dxgiResource = textureWrapper.QueryInterface<IDXGIResource>();
                 sharedHandle = dxgiResource.SharedHandle;
                 if (sharedHandle == 0 && _device != _outputDevice.Device)
+                {
+                    PlaybackTelemetry.Trace("LavFrameRejected", Guid.Empty, 0,
+                        data: new Dictionary<string, object?> { ["reason"] = "Missing shared texture handle" });
+                    _filter.RaiseFaulted(new LavVideoOutputException(
+                        "LAV D3D11 视频帧缺少共享纹理句柄。",
+                        new InvalidOperationException("Missing shared texture handle.")));
                     return Hr.Fail;
+                }
                 if (_device != _outputDevice.Device)
                 {
                     lock (_outputDevice.SyncRoot)
@@ -114,7 +130,18 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             var hasTime = SampleTime(samplePointer, out var start, out var end) >= 0;
             var media = hasTime ? _filter.MediaTime(start) : -1;
             if (hasTime && !_filter.WaitUntil(start, media, end - start))
+            {
+                if (Interlocked.Increment(ref _droppedSamples) % PlaybackTelemetry.FrameSampling == 1)
+                {
+                    PlaybackTelemetry.Trace("LavSampleDropped", Guid.Empty, 0, data: new Dictionary<string, object?>
+                    {
+                        ["pts"] = media,
+                        ["flushing"] = Flushing,
+                        ["droppedSamples"] = _droppedSamples
+                    });
+                }
                 return Hr.Ok;
+            }
             if (Flushing)
                 return Hr.Ok;
             if (hasTime)
@@ -132,6 +159,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                 PresentationTimestamp = hasTime ? media : 0,
                 Duration = hasTime ? Math.Max(0, end - start) : 0,
                 TimeBase = MediaTimeBase.TimeSpanTicks,
+                FrameSequence = Interlocked.Increment(ref _frameSequence),
                 DeviceGeneration = _outputDevice?.DeviceGeneration ?? 0,
                 ZeroCopyLevel = ZeroCopyLevel.Z4,
                 Resource = new D3D11FrameResource(
@@ -156,8 +184,17 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                 _filter.NotePausedFrame(media);
             return Hr.Ok;
         }
-        catch
+        catch (Exception ex)
         {
+            PlaybackTelemetry.Trace("LavFrameReceiveFailed", Guid.Empty, 0, data: new Dictionary<string, object?>
+            {
+                ["hresult"] = unchecked((uint)ex.HResult),
+                ["error"] = ex.Message,
+                ["flushing"] = Flushing,
+                ["outputDeviceGeneration"] = _outputDevice?.DeviceGeneration ?? 0,
+                ["hasOutputTexture"] = presenterTexture != 0
+            });
+            _filter.RaiseFaulted(new LavVideoOutputException("LAV D3D11 视频输出失败。", ex));
             if (sampleAddRef)
                 Marshal.Release(samplePointer);
             return texture == 0 ? ReceiveCpu(samplePointer) : Hr.Fail;
