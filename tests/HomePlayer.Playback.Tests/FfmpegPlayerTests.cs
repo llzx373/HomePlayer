@@ -49,7 +49,7 @@ public class FfmpegPlayerTests : IDisposable
     [Fact]
     public async Task Real_media_raises_normal_end_of_file()
     {
-        using var player = new FfmpegPlayer { WatchdogTimeout = TimeSpan.FromSeconds(30) };
+        using var player = new FfmpegPlayer();
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var faulted = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? fault = null;
@@ -69,26 +69,36 @@ public class FfmpegPlayerTests : IDisposable
 
         player.Play();
 
-        try
-        {
-            await Task.WhenAny(ended.Task, faulted.Task).WaitAsync(TimeSpan.FromSeconds(15));
-        }
-        catch (TimeoutException ex)
-        {
-            string Field(string name)
-            {
-                var value = typeof(FfmpegPlayer).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(player);
-                if (name == "_audioPackets")
-                    return value?.GetType().GetProperty("Count")?.GetValue(value)?.ToString() ?? "null";
-                return value is Thread thread ? thread.ThreadState.ToString() : value?.ToString() ?? "null";
-            }
-            var state = string.Join(", ", new[] { "_demuxEof", "_videoDone", "_audioDone", "_endedRaised", "_audioWritten", "_audioIndex", "_audioPackets", "_audioThread", "_audioEofStage" }.Select(name => $"{name}={Field(name)}"));
-            throw new TimeoutException($"等待 EOF 超时：frames={Volatile.Read(ref frames)}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, {state}, fault={fault}", ex);
-        }
+        await Task.WhenAny(ended.Task, faulted.Task).WaitAsync(TimeSpan.FromSeconds(15));
         Assert.Null(fault);
         Assert.Equal(12, Volatile.Read(ref frames));
         Assert.True(Math.Abs((player.Duration - player.Position).TotalMilliseconds) <= 250,
             $"播完位置应接近总时长 {player.Duration}，实际为 {player.Position}。");
+    }
+
+    [Fact]
+    public async Task End_of_file_reached_before_play_is_not_reset()
+    {
+        using var player = new FfmpegPlayer();
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var faulted = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? fault = null;
+        player.Ended += () => ended.TrySetResult();
+        player.Faulted += error =>
+        {
+            fault = error;
+            faulted.TrySetResult(error);
+        };
+        player.Open(_mediaPath);
+        await WaitUntilAsync(() => (int)(typeof(FfmpegPlayer)
+            .GetField("_audioDone", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(player)!) == 1);
+
+        player.Play();
+
+        await Task.WhenAny(ended.Task, faulted.Task).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(fault);
+        Assert.True(ended.Task.IsCompleted);
     }
 
     [Fact]
