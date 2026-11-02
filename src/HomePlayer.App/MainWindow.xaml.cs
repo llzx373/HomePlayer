@@ -67,8 +67,8 @@ public sealed partial class MainWindow : Window
         _overlayFade = new OverlayFade(OverlayTitleBar);
         ApplyWindowChrome();
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        var width = Math.Clamp(work.Width * 3 / 4, 1100, work.Width);
-        var height = Math.Clamp(work.Height * 3 / 4, 720, work.Height);
+        var width = Math.Clamp(work.Width * 3 / 4, Math.Min(1100, work.Width), work.Width);
+        var height = Math.Clamp(work.Height * 3 / 4, Math.Min(720, work.Height), work.Height);
         AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(
             work.X + (work.Width - width) / 2,
             work.Y + (work.Height - height) / 2,
