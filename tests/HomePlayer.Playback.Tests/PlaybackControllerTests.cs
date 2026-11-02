@@ -22,19 +22,20 @@ public class PlaybackControllerTests
     }
 
     [Fact]
-    public async Task Seek_started_is_raised_for_manual_seek_and_replay()
+    public async Task Seek_started_precedes_manual_seek_and_is_raised_for_replay()
     {
         var engine = new FakeEngine();
         using var controller = Create(engine);
         await controller.PlayPathsAsync(["video.mkv"], 0);
-        var seekStarted = 0;
-        controller.SeekStarted += () => seekStarted++;
+        var order = new List<string>();
+        controller.SeekStarted += () => order.Add("notification");
+        engine.OnSeek = () => order.Add("engine");
 
         controller.Seek(TimeSpan.FromSeconds(30));
         engine.RaiseEnded();
         controller.TogglePlay();
 
-        Assert.Equal(2, seekStarted);
+        Assert.Equal(["notification", "engine", "notification", "engine"], order);
     }
 
     [Fact]
@@ -566,6 +567,7 @@ public class PlaybackControllerTests
         public int PlayCount { get; private set; }
         public int SeekCount { get; private set; }
         public TimeSpan LastSeek { get; private set; }
+        public Action? OnSeek { get; set; }
         public List<MediaTrack> AudioTracks { get; } = [];
 
         public event Action<FrameLease>? FrameArrived;
@@ -589,6 +591,7 @@ public class PlaybackControllerTests
 
         public void Seek(TimeSpan position)
         {
+            OnSeek?.Invoke();
             SeekCount++;
             LastSeek = position;
             Position = position;

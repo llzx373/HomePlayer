@@ -620,8 +620,8 @@ public sealed partial class PlaybackController : IDisposable
     {
         if (engine == null)
             return;
-        engine.Seek(position);
         SeekStarted?.Invoke();
+        engine.Seek(position);
     }
 
     private void OnFaulted(Exception error)

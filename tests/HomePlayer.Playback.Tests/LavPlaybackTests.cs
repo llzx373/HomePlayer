@@ -83,9 +83,10 @@ public sealed class LavPlaybackTests
             Assert.NotEqual(0, engine.DecoderDevice);
             Assert.Equal("Z4", engine.GetPipeline().ZeroCopyLevel);
             Assert.Equal(luid, gpu.Resource.AdapterLuid);
-            Assert.Equal(engine.DecoderDevice, gpu.Resource.SourceDevice);
-            Assert.NotEqual(0, gpu.Resource.SharedHandle);
-            using var texture = outputDevice.OpenSharedResource<ID3D11Texture2D>(gpu.Resource.SharedHandle);
+            Assert.Equal(outputDevice.NativePointer, gpu.Resource.SourceDevice);
+            Assert.Equal(0, gpu.Resource.SharedHandle);
+            using var texture = new ID3D11Texture2D(gpu.Resource.Texture);
+            texture.AddRef();
             var description = texture.Description;
             Assert.Equal(Format.NV12, description.Format);
             Assert.True((description.BindFlags & BindFlags.ShaderResource) != 0);
@@ -106,6 +107,25 @@ public sealed class LavPlaybackTests
                 : outputDevice.CreateShaderResourceView(texture, new ShaderResourceViewDescription
                 {
                     Format = Format.R8_UNorm,
+                    ViewDimension = ShaderResourceViewDimension.Texture2D,
+                    Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
+                });
+            using var chromaView = description.ArraySize > 1
+                ? outputDevice.CreateShaderResourceView(texture, new ShaderResourceViewDescription
+                {
+                    Format = Format.R8G8_UNorm,
+                    ViewDimension = ShaderResourceViewDimension.Texture2DArray,
+                    Texture2DArray = new Texture2DArrayShaderResourceView
+                    {
+                        MostDetailedMip = 0,
+                        MipLevels = 1,
+                        FirstArraySlice = (uint)gpu.Resource.Subresource,
+                        ArraySize = 1
+                    }
+                })
+                : outputDevice.CreateShaderResourceView(texture, new ShaderResourceViewDescription
+                {
+                    Format = Format.R8G8_UNorm,
                     ViewDimension = ShaderResourceViewDimension.Texture2D,
                     Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
                 });

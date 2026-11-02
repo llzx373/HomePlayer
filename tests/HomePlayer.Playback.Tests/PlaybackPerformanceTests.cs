@@ -236,7 +236,7 @@ public sealed class PlaybackPerformanceTests
             managedHeapBytes = GC.GetTotalMemory(false) - managedStart,
             workingSetBytes = process.WorkingSet64 - workingSetStart,
             privateMemoryBytes = process.PrivateMemorySize64 - privateStart,
-            droppedFrames = (int?)null,
+            droppedFrames = player.DroppedFrames,
             audioVideoOffset = (double?)null,
             audioUnderruns = (int?)null,
             gpuUtilizationPercent = (double?)null,

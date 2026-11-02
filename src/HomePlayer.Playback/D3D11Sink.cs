@@ -74,6 +74,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
         if (samplePointer == 0 || Flushing)
             return Hr.False;
         nint texture = 0;
+        nint presenterTexture = 0;
         var sampleAddRef = false;
         try
         {
@@ -98,6 +99,17 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                 sharedHandle = dxgiResource.SharedHandle;
                 if (sharedHandle == 0 && _device != _outputDevice.Device)
                     return Hr.Fail;
+                if (_device != _outputDevice.Device)
+                {
+                    lock (_outputDevice.SyncRoot)
+                    {
+                        using var outputDevice = new ID3D11Device(_outputDevice.Device);
+                        outputDevice.AddRef();
+                        using var opened = outputDevice.OpenSharedResource<ID3D11Texture2D>(sharedHandle);
+                        presenterTexture = opened.NativePointer;
+                        opened.AddRef();
+                    }
+                }
             }
             var hasTime = SampleTime(samplePointer, out var start, out var end) >= 0;
             var media = hasTime ? _filter.MediaTime(start) : -1;
@@ -110,6 +122,7 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
             AddRef(samplePointer);
             sampleAddRef = true;
             var textureReference = texture;
+            var presenterTextureReference = presenterTexture;
             var sampleReference = samplePointer;
             var frame = new D3D11FrameLease
             {
@@ -121,14 +134,22 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
                 TimeBase = MediaTimeBase.TimeSpanTicks,
                 DeviceGeneration = _outputDevice?.DeviceGeneration ?? 0,
                 ZeroCopyLevel = ZeroCopyLevel.Z4,
-                Resource = new D3D11FrameResource(texture, (int)slice, _adapterLuid, sharedHandle, SourceDevice: _device),
+                Resource = new D3D11FrameResource(
+                    presenterTexture != 0 ? presenterTexture : texture,
+                    (int)slice,
+                    _adapterLuid,
+                    presenterTexture != 0 ? 0 : sharedHandle,
+                    SourceDevice: presenterTexture != 0 ? _outputDevice!.Device : _device),
                 ReleaseBuffer = () =>
                 {
+                    if (presenterTextureReference != 0)
+                        Marshal.Release(presenterTextureReference);
                     Marshal.Release(textureReference);
                     Marshal.Release(sampleReference);
                 }
             };
             texture = 0;
+            presenterTexture = 0;
             sampleAddRef = false;
             _filter.Deliver(frame);
             if (hasTime)
@@ -137,11 +158,16 @@ public sealed class D3D11SinkPin : BgraSinkPin, ID3D11DecoderConfiguration
         }
         catch
         {
-            if (texture != 0)
-                Marshal.Release(texture);
             if (sampleAddRef)
                 Marshal.Release(samplePointer);
             return texture == 0 ? ReceiveCpu(samplePointer) : Hr.Fail;
+        }
+        finally
+        {
+            if (presenterTexture != 0)
+                Marshal.Release(presenterTexture);
+            if (texture != 0)
+                Marshal.Release(texture);
         }
     }
 

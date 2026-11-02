@@ -186,6 +186,8 @@ public sealed class VideoPresenter : IDisposable
     private float _scaleX = 1;
     private float _scaleY = 1;
     private long _lastRecoveryMs;
+    private long _lastDrawErrorMs;
+    private long _lastResizeErrorMs;
     private long _lastPipelineTryMs;
     private long _deviceGeneration;
     private long _adapterLuid;
@@ -456,7 +458,7 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
-            if (IsDeviceLost(ex) || DeviceIsLost())
+            if (IsRecoverableDeviceError(ex) || DeviceIsLost())
                 RecoverDevice();
         }
     }
@@ -708,14 +710,19 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
-            Trace("draw error " + ex);
+            var now = Environment.TickCount64;
+            if (now - _lastDrawErrorMs >= 1000)
+            {
+                _lastDrawErrorMs = now;
+                Trace("draw error " + ex);
+            }
             if (frame != null)
             {
                 frame.ReturnBuffer();
                 frame = null;
             }
 
-            if (IsDeviceLost(ex) || DeviceIsLost())
+            if (IsRecoverableDeviceError(ex) || DeviceIsLost())
                 RecoverDevice();
         }
         finally
@@ -802,8 +809,20 @@ public sealed class VideoPresenter : IDisposable
         }
         catch (Exception ex)
         {
-            if (IsDeviceLost(ex) || DeviceIsLost())
+            var now = Environment.TickCount64;
+            if (now - _lastResizeErrorMs >= 1000)
+            {
+                _lastResizeErrorMs = now;
+                Trace("resize error " + ex);
+            }
+            if (IsRecoverableDeviceError(ex) || DeviceIsLost())
                 RecoverDevice();
+            else
+            {
+                ReleaseSwapChain();
+                Interlocked.Exchange(ref _resizeRequested, 1);
+                PostDraw();
+            }
         }
     }
 
@@ -825,6 +844,8 @@ public sealed class VideoPresenter : IDisposable
         EnsureDevice();
         if (_device == null || _context == null)
             return;
+        _libplacebo?.Dispose();
+        _libplacebo = null;
         UnbindTarget();
         var swapChainFormat = _hdrOutput ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
         if (_swapChain == null)
@@ -1015,10 +1036,10 @@ public sealed class VideoPresenter : IDisposable
         }
     }
 
-    private static bool IsDeviceLost(Exception ex)
+    private static bool IsRecoverableDeviceError(Exception ex)
     {
         var code = unchecked((uint)ex.HResult);
-        return code is 0x887A0005 or 0x887A0006 or 0x887A0007;
+        return code is 0x8007000E or 0x887A0005 or 0x887A0006 or 0x887A0007;
     }
 
     private bool DeviceIsLost()
@@ -1328,8 +1349,18 @@ public sealed class VideoPresenter : IDisposable
 
     private void WaitForFrameLatency()
     {
-        if (_frameLatencyWaitable != IntPtr.Zero)
+        if (_frameLatencyWaitable == IntPtr.Zero)
+            return;
+
+        Monitor.Exit(_deviceSync);
+        try
+        {
             WaitForSingleObject(_frameLatencyWaitable, 100);
+        }
+        finally
+        {
+            Monitor.Enter(_deviceSync);
+        }
     }
 
     private void TracePresentStatistics(FrameLease frame)
@@ -1381,6 +1412,7 @@ public sealed class VideoPresenter : IDisposable
         using var dxgi = device.QueryInterface<IDXGIDevice>();
         using var adapter = dxgi.GetAdapter();
         _adapterLuid = ToInt64(adapter.Description.Luid);
+        _sharedDevice?.Update(_device.NativePointer, _context.NativePointer, _deviceGeneration);
     }
 
     private static long ToInt64(Vortice.Luid value) => (uint)value.LowPart | ((long)value.HighPart << 32);

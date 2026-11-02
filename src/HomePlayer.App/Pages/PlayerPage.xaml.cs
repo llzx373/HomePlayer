@@ -98,7 +98,11 @@ public sealed partial class PlayerPage : Page
         var playback = App.Host.Playback;
         _assPresenter.Changed += () => DispatcherQueue.TryEnqueue(UpdateSubtitleOverlay);
         playback.FrameArrived += OnVideoFrame;
-        playback.SeekStarted += () => DispatcherQueue.TryEnqueue(_assPresenter.Reset);
+        playback.SeekStarted += () =>
+        {
+            _presenter.Clear();
+            DispatcherQueue.TryEnqueue(_assPresenter.Reset);
+        };
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         playback.Stopped += () => DispatcherQueue.TryEnqueue(() =>
