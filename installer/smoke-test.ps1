@@ -60,6 +60,10 @@ function Start-InstalledApp {
     $script:started += $process
     Start-Sleep -Seconds 8
     if ($process.HasExited) {
+        foreach ($log in Get-ChildItem $script:data -Recurse -Filter "*.log" -ErrorAction SilentlyContinue) {
+            Write-Host "Crash log $($log.FullName):"
+            Get-Content $log.FullName | Write-Host
+        }
         throw "HomePlayer 启动后提前退出，退出码为 $($process.ExitCode)。"
     }
 }
