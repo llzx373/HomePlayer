@@ -36,19 +36,18 @@ jobs:
       - name: Cache FFmpeg
         uses: actions/cache@v4
         with:
-          path: |
-            third_party/ffmpeg/*.dll
-            third_party/ffmpeg/*.exe
+          path: third_party/ffmpeg/*.dll
           key: ffmpeg-n9.0.2-28-g669f5ab083-win64-lgpl-shared
 
       - name: Restore FFmpeg
         run: pwsh -NoProfile -File scripts/Restore-Ffmpeg.ps1
 
+      - name: Install FFmpeg test tools
+        run: choco install ffmpeg --no-progress -y
+
       - name: Test
         run: |
-          $env:PATH = (Resolve-Path "third_party/ffmpeg").Path + ";" + $env:PATH
-          Get-FileHash "third_party/ffmpeg/*.dll" | Select-Object Name, Hash | Format-Table -AutoSize
-          & "third_party/ffmpeg/ffmpeg.exe" -version
+          ffmpeg -version
           if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed with exit code $LASTEXITCODE" }
           dotnet build HomePlayer.slnx -c Release --nologo --verbosity minimal
           Get-FileHash "third_party/ffmpeg/avcodec-63.dll", "tests/HomePlayer.Playback.Tests/bin/Release/net10.0-windows/ffmpeg/avcodec-63.dll" | Select-Object Path, Hash | Format-List
