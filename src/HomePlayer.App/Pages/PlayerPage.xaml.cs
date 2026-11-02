@@ -77,7 +77,6 @@ public sealed partial class PlayerPage : Page
         _seekPreviewTimer.Interval = TimeSpan.FromMilliseconds(80);
         _seekPreviewTimer.IsRepeating = false;
         _seekPreviewTimer.Tick += SeekPreviewTimer_Tick;
-        SeekPreview.SizeChanged += (_, _) => RepositionSeekPreview();
         _controlsFade = new OverlayFade(ControlsBar);
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
@@ -120,7 +119,11 @@ public sealed partial class PlayerPage : Page
             LayoutProgress(_scrubbing ? _scrubSeconds : ShownSeconds());
             RepositionSeekPreview();
         };
-        ControlsBar.SizeChanged += (_, _) => RememberControlsHeight();
+        ControlsBar.SizeChanged += (_, _) =>
+        {
+            RememberControlsHeight();
+            RepositionSeekPreview();
+        };
         _saveSettingsTimer = DispatcherQueue.CreateTimer();
         _saveSettingsTimer.Interval = TimeSpan.FromMilliseconds(600);
         _saveSettingsTimer.IsRepeating = false;

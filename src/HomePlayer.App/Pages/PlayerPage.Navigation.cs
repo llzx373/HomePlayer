@@ -111,18 +111,22 @@ public sealed partial class PlayerPage
         var point = e.GetCurrentPoint(PositionBar).Position;
         _seekPreviewPointerX = Math.Clamp(point.X, 0, PositionBar.ActualWidth);
         var ratio = SeekPreviewLayout.TimelineRatio(_seekPreviewPointerX, PositionBar.ActualWidth);
-        _seekPreviewTarget = TimeSpan.FromTicks((long)(Playback.Duration.Ticks * ratio));
+        var target = TimeSpan.FromTicks((long)(Playback.Duration.Ticks * ratio));
+        var sameTarget = _seekPreviewHovered && target == _seekPreviewTarget;
+        _seekPreviewTarget = target;
         _seekPreviewHovered = true;
+        SeekPreviewTime.Text = ClockText.Format(target);
+        SeekPreview.Visibility = Visibility.Visible;
+        RepositionSeekPreview();
+        if (sameTarget)
+            return;
+
         _seekPreviewRequest++;
         _seekPreviewCancellation?.Cancel();
         _seekPreviewCancellation?.Dispose();
         _seekPreviewCancellation = new CancellationTokenSource();
-        SeekPreviewImage.Source = null;
         SeekPreviewStatus.Text = "正在获取…";
         SeekPreviewStatusHost.Visibility = Visibility.Visible;
-        SeekPreviewTime.Text = ClockText.Format(_seekPreviewTarget);
-        SeekPreview.Visibility = Visibility.Visible;
-        RepositionSeekPreview();
         _seekPreviewTimer.Stop();
         _seekPreviewTimer.Start();
     }
@@ -203,14 +207,15 @@ public sealed partial class PlayerPage
     {
         if (SeekPreview.Visibility != Visibility.Visible || PositionBar.ActualWidth <= 0)
             return;
+        var origin = PositionBar.TransformToVisual(PlayerRoot).TransformPoint(new Windows.Foundation.Point(0, 0));
         var placement = SeekPreviewLayout.Place(_seekPreviewPointerX, PositionBar.ActualWidth, SeekPreview.Width);
         if (SeekPreview.RenderTransform is not TranslateTransform transform)
         {
             transform = new TranslateTransform();
             SeekPreview.RenderTransform = transform;
         }
-        transform.X = placement.Left;
-        transform.Y = -(Math.Max(0, SeekPreview.ActualHeight) + 8);
+        transform.X = origin.X + placement.Left;
+        transform.Y = origin.Y - SeekPreview.Height - 8;
         if (SeekPreviewArrow.RenderTransform is not TranslateTransform arrow)
         {
             arrow = new TranslateTransform();
