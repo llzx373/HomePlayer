@@ -20,6 +20,16 @@ $dlls = @(
     "swresample-7.dll",
     "swscale-10.dll"
 )
+$dllHashes = @{
+    "avcodec-63.dll" = "9de0b9aab1aabac017f6af55179a287cd06708dd3c29ab19a2e2b8c93464a213"
+    "avdevice-63.dll" = "23c934febbd246235a3188f388464caf8cb6cd3752436fc4dff14f16b39616df"
+    "avfilter-12.dll" = "43eb56cd0aa2a900e10e2ff2b341cfb9fe6339ef7374327562efe680fb95e0d8"
+    "avformat-63.dll" = "0df0277eb9800bec426fb3b3e9f386d25ce398d2d8e328f028c7e658f5818b98"
+    "avutil-61.dll" = "f8739cd18caadd31cf72e58aab576fe1f8c619145b6a1f2e439dcb8acf66638a"
+    "swresample-7.dll" = "d1d2957e5d7273ba0fd6e61ec5add76c22b40f13af9f2df0ab7a6bd2681a941c"
+    "swscale-10.dll" = "e8b1c508982d6a6b4fde4fbf00f72759b3e571e5a27d9856f6775075d3c7e586"
+}
+$tools = @("ffmpeg.exe", "ffprobe.exe")
 
 function Test-FfmpegPresent {
     $avcodec = Join-Path $dest "avcodec-63.dll"
@@ -27,6 +37,16 @@ function Test-FfmpegPresent {
         return $false
     }
     foreach ($name in $dlls) {
+        $path = Join-Path $dest $name
+        if (-not (Test-Path $path)) {
+            return $false
+        }
+        $actual = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+        if ($actual -ne $dllHashes[$name]) {
+            return $false
+        }
+    }
+    foreach ($name in $tools) {
         if (-not (Test-Path (Join-Path $dest $name))) {
             return $false
         }
@@ -73,7 +93,7 @@ if (-not $avcodec) {
 }
 
 $binDir = $avcodec.DirectoryName
-foreach ($name in $dlls) {
+foreach ($name in $dlls + $tools) {
     $source = Join-Path $binDir $name
     if (-not (Test-Path $source)) {
         throw "Downloaded archive is missing $name."
