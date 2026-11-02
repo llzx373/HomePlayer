@@ -51,6 +51,7 @@ public class FfmpegPlayerTests : IDisposable
     {
         using var player = new FfmpegPlayer();
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var faulted = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? fault = null;
         var frames = 0;
         player.FrameArrived += frame =>
@@ -59,12 +60,23 @@ public class FfmpegPlayerTests : IDisposable
             Interlocked.Increment(ref frames);
         };
         player.Ended += () => ended.TrySetResult();
-        player.Faulted += error => fault = error;
+        player.Faulted += error =>
+        {
+            fault = error;
+            faulted.TrySetResult(error);
+        };
         player.Open(_mediaPath);
 
         player.Play();
 
-        await ended.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        try
+        {
+            await Task.WhenAny(ended.Task, faulted.Task).WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException($"等待 EOF 超时：frames={Volatile.Read(ref frames)}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, fault={fault}", ex);
+        }
         Assert.Null(fault);
         Assert.Equal(12, Volatile.Read(ref frames));
         Assert.True(Math.Abs((player.Duration - player.Position).TotalMilliseconds) <= 250,
