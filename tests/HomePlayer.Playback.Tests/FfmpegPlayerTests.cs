@@ -49,7 +49,7 @@ public class FfmpegPlayerTests : IDisposable
     [Fact]
     public async Task Real_media_raises_normal_end_of_file()
     {
-        using var player = new FfmpegPlayer();
+        using var player = new FfmpegPlayer { WatchdogTimeout = TimeSpan.FromSeconds(30) };
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var faulted = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? fault = null;
@@ -75,7 +75,9 @@ public class FfmpegPlayerTests : IDisposable
         }
         catch (TimeoutException ex)
         {
-            throw new TimeoutException($"等待 EOF 超时：frames={Volatile.Read(ref frames)}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, fault={fault}", ex);
+            var state = string.Join(", ", new[] { "_demuxEof", "_videoDone", "_audioDone", "_endedRaised" }.Select(name =>
+                $"{name}={typeof(FfmpegPlayer).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(player)}"));
+            throw new TimeoutException($"等待 EOF 超时：frames={Volatile.Read(ref frames)}, position={player.Position}, queue={player.VideoQueueDepth}, playing={player.IsPlaying}, {state}, fault={fault}", ex);
         }
         Assert.Null(fault);
         Assert.Equal(12, Volatile.Read(ref frames));
