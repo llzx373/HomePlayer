@@ -173,6 +173,37 @@
                     </ScrollViewer>
                 </TabViewItem>
 
+                <TabViewItem Header="AI 字幕" IsClosable="False">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="16" Margin="0,16,0,0">
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="本地 AI 字幕" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <ToggleSwitch x:Name="AiEnableSwitch" Header="启用 AI 字幕" OnContent="已启用" OffContent="已停用" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="识别和翻译均在本机完成，媒体与字幕不会上传。首次使用所选模型时需要联网下载。" />
+                                    <ComboBox x:Name="AiEngineBox" Header="后台识别引擎" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
+                                    <ComboBox x:Name="AiRecognitionModelBox" Header="Whisper 识别模型" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
+                                    <ComboBox x:Name="AiSourceLanguageBox" Header="源语言" HorizontalAlignment="Stretch" />
+                                    <ComboBox x:Name="AiTargetLanguageBox" Header="翻译目标语言" HorizontalAlignment="Stretch" />
+                                    <ToggleSwitch x:Name="AiTranslateAfterSwitch" Header="后台识别完成后继续翻译" OnContent="是" OffContent="否" />
+                                    <ComboBox x:Name="AiTranslationModelBox" Header="翻译模型" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
+                                    <CheckBox x:Name="AiBilingualCheck" Content="保留原文，生成双语字幕" />
+                                    <ComboBox x:Name="AiDeviceBox" Header="计算设备" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="播放器的实时字幕固定使用低延迟 SenseVoice，支持英语、日语和韩语；后台识别可选择 Sherpa 或 Whisper。" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="模型下载" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBox x:Name="AiMirrorBox" Header="模型下载镜像" HorizontalAlignment="Stretch" />
+                                    <TextBox x:Name="AiProxyBox" Header="下载代理（留空则直连）" HorizontalAlignment="Stretch" />
+                                    <TextBlock x:Name="AiModelStatusText" Style="{StaticResource SettingsDescriptionStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabViewItem>
+
                 <TabViewItem Header="快捷键" IsClosable="False">
                     <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
                         <Grid>

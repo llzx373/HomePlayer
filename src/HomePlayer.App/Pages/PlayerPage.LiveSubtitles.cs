@@ -1,5 +1,7 @@
 using HomePlayer.AI;
 using HomePlayer.Core;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace HomePlayer;
 
@@ -8,21 +10,33 @@ public sealed partial class PlayerPage
     private CancellationTokenSource? _liveSubtitles;
     private int _liveSubtitleGeneration;
     private readonly List<SubtitleCue> _liveCueList = [];
+    private CancellationTokenSource? _aiGeneration;
+    private AiGenerationMenuFlyoutItem? _aiGenerationMenuItem;
+    private string? _aiGenerationPath;
+    private string _aiGenerationStage = "";
+    private double _aiGenerationProgress;
+    private int _aiGenerationVersion;
 
-    private void MaybeStartLiveSubtitles()
+    private void SelectLiveSubtitles()
     {
         var path = Playback.Playlist.Current?.Path;
-        if (string.IsNullOrWhiteSpace(path) || _liveSubtitles != null)
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowStatusHold("请先打开一个媒体文件。");
             return;
-        if (!App.Host.Settings.AiSubtitlesEnabled || !App.Host.Settings.AiLiveSubtitles
-            || App.Host.Settings.AiRecognitionEngine != "sherpa"
-            || !App.Host.AiSubtitles.SenseVoiceInstalled
-            || _subtitles.Mode != SubtitleSession.Choice.Auto
-            || _subtitles.Sidecars.Count > 0 || _subtitles.Embedded.Any(track => track.IsText))
+        }
+        if (!App.Host.Settings.AiSubtitlesEnabled)
+        {
+            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
             return;
-        var tracks = Playback.GetAudioTracks();
-        if (tracks.Count == 0)
+        }
+        if (Playback.GetAudioTracks().Count == 0)
+        {
+            ShowStatusHold("当前视频没有可识别的音轨。");
             return;
+        }
+        _subtitles.UseLive();
+        FinishSubtitleChoice();
         StartLiveSubtitles(path);
     }
 
@@ -34,7 +48,7 @@ public sealed partial class PlayerPage
         _liveSubtitles = task;
         _liveCueList.Clear();
         _subtitles.UseLive();
-        ShowStatusHold("正在生成实时 AI 字幕（Sherpa）");
+        ShowStatusHold("正在生成实时 AI 字幕（SenseVoice）");
         var audioTrack = Playback.AudioTrackIndex;
         var startSeconds = Math.Max(0, Playback.Position.TotalSeconds - 0.25);
         _ = Task.Run(async () =>
@@ -45,7 +59,16 @@ public sealed partial class PlayerPage
                     path, audioTrack, AiComputeDeviceExtensions.Parse(App.Host.Settings.AiComputeDevice), startSeconds,
                     null, cue => DispatcherQueue.TryEnqueue(() => AddLiveCue(generation, path, cue)), task.Token);
                 if (generation == _liveSubtitleGeneration && cues.Count > 0)
-                    App.Host.AiSubtitles.Save(path, cues, "Sherpa 实时字幕");
+                {
+                    App.Host.AiSubtitles.SaveBesideMedia(path, cues, "SenseVoice 实时字幕");
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (generation != _liveSubtitleGeneration)
+                            return;
+                        RefreshGeneratedSubtitles(path);
+                        ShowStatusHold("实时字幕已生成并保存，可在字幕列表中选择外挂字幕。");
+                    });
+                }
             }
             catch (OperationCanceledException)
             {
@@ -100,5 +123,144 @@ public sealed partial class PlayerPage
             task.Cancel();
             task.Dispose();
         }
+    }
+
+    private MenuFlyoutItem CreateAiGenerationMenuItem()
+    {
+        if (_aiGeneration != null)
+        {
+            var active = new AiGenerationMenuFlyoutItem
+            {
+                Style = (Style)Resources["AiGenerationMenuItemStyle"],
+                IsEnabled = false,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+            };
+            _aiGenerationMenuItem = active;
+            UpdateAiGenerationMenuItem();
+            return active;
+        }
+        var item = new MenuFlyoutItem { Text = "后台生成字幕" };
+        item.Click += async (_, _) => await StartAiGeneration();
+        return item;
+    }
+
+    private async Task StartAiGeneration()
+    {
+        if (_aiGeneration != null)
+            return;
+        var path = Playback.Playlist.Current?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowStatusHold("请先打开一个媒体文件。");
+            return;
+        }
+        if (!App.Host.Settings.AiSubtitlesEnabled)
+        {
+            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
+            return;
+        }
+        var tracks = Playback.GetAudioTracks();
+        if (tracks.Count == 0)
+        {
+            ShowStatusHold("当前视频没有可识别的音轨。");
+            return;
+        }
+
+        var settings = App.Host.Settings;
+        var useSherpa = settings.AiRecognitionEngine != "whisper";
+        var translate = settings.AiTranslateAfterGeneration;
+        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
+        var sourceLanguage = settings.AiSourceLanguage;
+        var targetLanguage = settings.AiTargetLanguage;
+        var recognitionModel = settings.AiRecognitionModel;
+        var translationModel = settings.AiTranslationModel;
+        var bilingual = settings.AiBilingualSubtitles;
+        var task = new CancellationTokenSource();
+        var version = ++_aiGenerationVersion;
+        _aiGeneration = task;
+        _aiGenerationPath = path;
+        _aiGenerationStage = "准备识别";
+        _aiGenerationProgress = 0;
+        UpdateAiGenerationMenuItem();
+        ShowStatusHold("后台字幕任务已开始，可以继续播放。");
+        try
+        {
+            var recognitionProgress = AiGenerationProgress(version, path, translate ? 0.6 : 1, 0);
+            IReadOnlyList<SubtitleCue> cues = useSherpa
+                ? await App.Host.AiSubtitles.RecognizeWithSherpaAsync(path, Playback.AudioTrackIndex, device, 0,
+                    recognitionProgress, null, task.Token)
+                : await App.Host.AiSubtitles.RecognizeAsync(path, Playback.AudioTrackIndex, sourceLanguage,
+                    recognitionModel, device, recognitionProgress, task.Token);
+            if (cues.Count == 0)
+                throw new InvalidOperationException("没有识别到可用对白。");
+            if (translate)
+            {
+                cues = await App.Host.AiSubtitles.TranslateAsync(cues, sourceLanguage, targetLanguage, bilingual,
+                    translationModel, device, AiGenerationProgress(version, path, 0.4, 0.6), task.Token);
+            }
+            var description = (useSherpa ? "Sherpa 识别" : "Whisper 识别")
+                + (translate ? " · " + AiSubtitleCatalog.LanguageName(targetLanguage) : " · 原文");
+            var result = await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, cues, description), task.Token);
+            RefreshGeneratedSubtitles(path);
+            if (_aiGenerationMenuItem != null)
+            {
+                _aiGenerationMenuItem.StopProgress();
+                _aiGenerationMenuItem.Text = "后台字幕已生成，可在上方选择";
+            }
+            ShowStatusHold("字幕已保存到视频同目录，可在字幕列表中选择：" + System.IO.Path.GetFileName(result.Path));
+        }
+        catch (OperationCanceledException)
+        {
+            ShowStatusHold("后台字幕任务已取消。");
+        }
+        catch (Exception ex)
+        {
+            if (_aiGenerationMenuItem != null)
+            {
+                _aiGenerationMenuItem.StopProgress();
+                _aiGenerationMenuItem.Text = "后台生成失败，请重新打开菜单重试";
+            }
+            ShowStatusHold("后台字幕生成失败：" + ex.Message);
+            CrashLog.Write("AI 后台字幕任务失败", ex.GetType().Name + ": " + ex.Message);
+        }
+        finally
+        {
+            if (version == _aiGenerationVersion)
+            {
+                _aiGeneration = null;
+                _aiGenerationPath = null;
+                task.Dispose();
+            }
+        }
+    }
+
+    private Progress<AiSubtitleProgress> AiGenerationProgress(int version, string path, double scale, double offset) =>
+        new(value =>
+        {
+            if (version != _aiGenerationVersion || !string.Equals(path, _aiGenerationPath, StringComparison.OrdinalIgnoreCase))
+                return;
+            _aiGenerationStage = value.Stage;
+            _aiGenerationProgress = offset + value.Value * scale;
+            UpdateAiGenerationMenuItem();
+        });
+
+    private void UpdateAiGenerationMenuItem()
+    {
+        if (_aiGenerationMenuItem == null)
+            return;
+        var prefix = string.Equals(_aiGenerationPath, _subtitles.VideoPath, StringComparison.OrdinalIgnoreCase)
+            ? "后台生成字幕"
+            : "正在为其他视频生成字幕";
+        _aiGenerationMenuItem.Text = $"{prefix} · {_aiGenerationProgress:P0}";
+        ToolTipService.SetToolTip(_aiGenerationMenuItem, _aiGenerationStage);
+    }
+
+    private void RefreshGeneratedSubtitles(string mediaPath)
+    {
+        if (!string.Equals(_subtitles.VideoPath, mediaPath, StringComparison.OrdinalIgnoreCase))
+            return;
+        _subtitles.ReloadSidecars();
+        UpdateSubtitleChrome();
+        UpdateSubtitleOverlay();
     }
 }

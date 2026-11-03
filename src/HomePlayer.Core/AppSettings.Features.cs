@@ -38,9 +38,10 @@ public sealed partial class AppSettings
     public string AiDownloadProxy { get; set; } = "http://127.0.0.1:7890";
     public string AiComputeDevice { get; set; } = "auto";
     public string AiRecognitionEngine { get; set; } = "sherpa";
-    public bool AiLiveSubtitles { get; set; } = true;
     public string AiRecognitionModel { get; set; } = "whisper-small";
     public string AiTranslationModel { get; set; } = "qwen3-4b-q4";
+    public string AiSourceLanguage { get; set; } = "";
     public string AiTargetLanguage { get; set; } = "zh";
+    public bool AiTranslateAfterGeneration { get; set; }
     public bool AiBilingualSubtitles { get; set; } = true;
 }

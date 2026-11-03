@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using HomePlayer.Core;
 
 namespace HomePlayer.AI;
@@ -61,12 +59,23 @@ public sealed class AiSubtitleService
         CancellationToken cancellationToken) =>
         _sherpa.RecognizeAsync(mediaPath, audioTrackIndex, _mirror(), device, startSeconds, progress, cueReady, cancellationToken);
 
-    public AiSubtitleResult Save(string mediaPath, IReadOnlyList<SubtitleCue> cues, string description)
+    public AiSubtitleResult SaveBesideMedia(string mediaPath, IReadOnlyList<SubtitleCue> cues, string description)
     {
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(mediaPath).ToUpperInvariant())))[..16].ToLowerInvariant();
-        var directory = Path.Combine(AppPaths.AiSubtitles, hash);
-        var path = Path.Combine(directory, $"{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.srt");
-        SubtitleFileWriter.WriteSrt(path, cues);
+        var fullMediaPath = Path.GetFullPath(mediaPath);
+        var directory = Path.GetDirectoryName(fullMediaPath)
+            ?? throw new InvalidOperationException("无法确定视频所在目录。");
+        var path = Path.Combine(directory, Path.GetFileNameWithoutExtension(fullMediaPath) + ".ai.srt");
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            SubtitleFileWriter.WriteSrt(temporary, cues);
+            File.Move(temporary, path, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
         return new AiSubtitleResult(path, cues, description);
     }
 

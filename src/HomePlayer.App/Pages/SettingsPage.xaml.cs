@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using HomePlayer.AI;
 using HomePlayer.Core;
 using HomePlayer.Data;
 using HomePlayer.Playback;
@@ -55,9 +56,21 @@ public sealed partial class SettingsPage : Page
         SubtitleOpacitySlider.Value = settings.SubtitleBackgroundOpacity * 100;
         InitializePlaybackFeatureSettings();
         InitializeRefreshRateSettings();
+        InitializeAiSettings();
         TitleBarBox.SelectionChanged += TitleBar_Changed;
         FitWindowSwitch.Toggled += FitWindow_Toggled;
         AlwaysOnTopSwitch.Toggled += AlwaysOnTop_Toggled;
+        AiEnableSwitch.Toggled += AiSetting_Changed;
+        AiEngineBox.SelectionChanged += AiSetting_Changed;
+        AiRecognitionModelBox.SelectionChanged += AiSetting_Changed;
+        AiSourceLanguageBox.SelectionChanged += AiSetting_Changed;
+        AiTargetLanguageBox.SelectionChanged += AiSetting_Changed;
+        AiTranslateAfterSwitch.Toggled += AiSetting_Changed;
+        AiTranslationModelBox.SelectionChanged += AiSetting_Changed;
+        AiBilingualCheck.Click += AiSetting_Changed;
+        AiDeviceBox.SelectionChanged += AiSetting_Changed;
+        AiMirrorBox.TextChanged += AiNetworkSetting_Changed;
+        AiProxyBox.TextChanged += AiNetworkSetting_Changed;
         SplitterList.ItemsSource = _splitters;
         VideoList.ItemsSource = _videos;
         AudioList.ItemsSource = _audios;
@@ -95,6 +108,7 @@ public sealed partial class SettingsPage : Page
                 SubtitleOpacitySlider.Value = App.Host.Settings.SubtitleBackgroundOpacity * 100;
                 InitializePlaybackFeatureSettings();
                 InitializeRefreshRateSettings();
+                InitializeAiSettings();
             }
             finally
             {
@@ -107,6 +121,79 @@ public sealed partial class SettingsPage : Page
         _loading = false;
         CacheText.Text = "缓存占用计算中…";
         CrashSummary.Text = "正在读取崩溃日志…";
+    }
+
+    private void InitializeAiSettings()
+    {
+        var settings = App.Host.Settings;
+        AiEnableSwitch.IsOn = settings.AiSubtitlesEnabled;
+        AiEngineBox.ItemsSource = AiEngineOption.Items;
+        AiEngineBox.SelectedItem = settings.AiRecognitionEngine == "whisper" ? AiEngineOption.Items[1] : AiEngineOption.Items[0];
+        AiRecognitionModelBox.ItemsSource = AiSubtitleCatalog.Models.Where(model => model.Kind == AiModelKind.Recognition).ToArray();
+        AiRecognitionModelBox.SelectedItem = AiSubtitleCatalog.Models.FirstOrDefault(model => model.Id == settings.AiRecognitionModel)
+            ?? AiSubtitleCatalog.Models.First(model => model.Kind == AiModelKind.Recognition);
+        var sourceLanguages = new List<AiLanguage> { new("", "自动检测") };
+        sourceLanguages.AddRange(AiSubtitleCatalog.Languages);
+        AiSourceLanguageBox.ItemsSource = sourceLanguages;
+        AiSourceLanguageBox.SelectedItem = sourceLanguages.FirstOrDefault(language => language.Code == settings.AiSourceLanguage)
+            ?? sourceLanguages[0];
+        AiTargetLanguageBox.ItemsSource = AiSubtitleCatalog.Languages;
+        AiTargetLanguageBox.SelectedItem = AiSubtitleCatalog.Languages.FirstOrDefault(language => language.Code == settings.AiTargetLanguage)
+            ?? AiSubtitleCatalog.Languages[0];
+        AiTranslateAfterSwitch.IsOn = settings.AiTranslateAfterGeneration;
+        AiTranslationModelBox.ItemsSource = AiSubtitleCatalog.Models.Where(model => model.Kind == AiModelKind.Translation).ToArray();
+        AiTranslationModelBox.SelectedItem = AiSubtitleCatalog.Models.FirstOrDefault(model => model.Id == settings.AiTranslationModel)
+            ?? AiSubtitleCatalog.Models.First(model => model.Kind == AiModelKind.Translation);
+        AiBilingualCheck.IsChecked = settings.AiBilingualSubtitles;
+        AiDeviceBox.ItemsSource = AiDeviceOption.Items;
+        AiDeviceBox.SelectedItem = AiDeviceOption.Items.FirstOrDefault(item => item.Device == AiComputeDeviceExtensions.Parse(settings.AiComputeDevice))
+            ?? AiDeviceOption.Items[0];
+        AiMirrorBox.Text = settings.AiModelMirror;
+        AiProxyBox.Text = settings.AiDownloadProxy;
+        UpdateAiModelStatus();
+    }
+
+    private void AiSetting_Changed(object sender, RoutedEventArgs e) => SaveAiSettings();
+
+    private void AiSetting_Changed(object sender, SelectionChangedEventArgs e) => SaveAiSettings();
+
+    private void AiNetworkSetting_Changed(object sender, TextChangedEventArgs e) => SaveAiSettings();
+
+    private void SaveAiSettings()
+    {
+        if (_loading || AiEngineBox.SelectedItem is not AiEngineOption engine
+            || AiRecognitionModelBox.SelectedItem is not AiModelInfo recognition
+            || AiTranslationModelBox.SelectedItem is not AiModelInfo translation
+            || AiSourceLanguageBox.SelectedItem is not AiLanguage source
+            || AiTargetLanguageBox.SelectedItem is not AiLanguage target
+            || AiDeviceBox.SelectedItem is not AiDeviceOption device)
+            return;
+        var settings = App.Host.Settings;
+        settings.AiSubtitlesEnabled = AiEnableSwitch.IsOn;
+        settings.AiRecognitionEngine = engine.UseSherpa ? "sherpa" : "whisper";
+        settings.AiRecognitionModel = recognition.Id;
+        settings.AiTranslationModel = translation.Id;
+        settings.AiSourceLanguage = source.Code;
+        settings.AiTargetLanguage = target.Code;
+        settings.AiTranslateAfterGeneration = AiTranslateAfterSwitch.IsOn;
+        settings.AiBilingualSubtitles = AiBilingualCheck.IsChecked == true;
+        settings.AiComputeDevice = device.Device.ToString().ToLowerInvariant();
+        settings.AiModelMirror = AiMirrorBox.Text.Trim();
+        settings.AiDownloadProxy = AiProxyBox.Text.Trim();
+        AiRecognitionModelBox.IsEnabled = !engine.UseSherpa;
+        UpdateAiModelStatus();
+        SaveSettings();
+    }
+
+    private void UpdateAiModelStatus()
+    {
+        var useSherpa = (AiEngineBox.SelectedItem as AiEngineOption)?.UseSherpa != false;
+        var recognitionReady = useSherpa
+            ? App.Host.AiSubtitles.SenseVoiceInstalled
+            : AiRecognitionModelBox.SelectedItem is AiModelInfo recognition && App.Host.AiSubtitles.IsInstalled(recognition.Id);
+        var translationReady = AiTranslationModelBox.SelectedItem is AiModelInfo translation && App.Host.AiSubtitles.IsInstalled(translation.Id);
+        AiRecognitionModelBox.IsEnabled = !useSherpa;
+        AiModelStatusText.Text = $"识别模型：{(recognitionReady ? "已安装" : "待下载")}；翻译模型：{(translationReady ? "已安装" : "待下载")}。未安装的模型会在任务开始时自动下载。";
     }
 
     private void LoadHotkeysSafe(Dictionary<string, string> saved)
