@@ -2,33 +2,6 @@ using HomePlayer.AI;
 
 namespace HomePlayer.AI.Tests;
 
-public class AsrTextOverlapTests
-{
-    [Fact]
-    public void Removes_longest_duplicate_prefix_across_chunks()
-    {
-        var result = AsrTextOverlap.Remove(
-            "ask not what your country can do for you",
-            "your country can do for you. Ask what you can do");
-
-        Assert.Equal("Ask what you can do", result);
-    }
-
-    [Fact]
-    public void Removes_cjk_overlap_ignoring_punctuation_and_case()
-    {
-        var result = AsrTextOverlap.Remove("这是第一句，不要重复", "第一句, 不要重复。下一句");
-
-        Assert.Equal("下一句", result);
-    }
-
-    [Fact]
-    public void Keeps_text_when_no_overlap_exists()
-    {
-        Assert.Equal("new sentence", AsrTextOverlap.Remove("old sentence", "new sentence"));
-    }
-}
-
 public class SubtitleCueFormatterTests
 {
     [Fact]
@@ -66,6 +39,17 @@ public class SubtitleCueFormatterTests
             TimeSpan.Zero, TimeSpan.FromSeconds(4));
 
         Assert.DoesNotContain(cues, cue => cue.Text.Contains("th\ne", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Cjk_sentence_splits_at_token_boundary_without_losing_content()
+    {
+        const string text = "内部 進学 を する から 付き 合っ ている 彼氏 が 内部 進学 する こと に なった。";
+        var cues = SubtitleCueFormatter.Build(text, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+
+        Assert.True(cues.Count > 1);
+        Assert.Equal(text.Replace(" ", ""), string.Concat(cues.Select(cue => cue.Text.Replace("\n", "").Replace(" ", ""))));
+        Assert.DoesNotContain(cues, cue => cue.Text.EndsWith("じ", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -29,7 +29,7 @@ public sealed class LlamaTranslationService(AiModelManager models)
         var requests = batches.Select((batch, index) =>
         {
             var inputs = batch.Select((cue, offset) => new SubtitleTranslationInput(offset, cue.Text)).ToArray();
-            return new WorkerRequest(index, AiTranslationText.Prompt(inputs, sourceLanguage ?? "", targetLanguage));
+            return new WorkerRequest(index, AiTranslationText.Prompt(inputs, sourceLanguage ?? "", targetLanguage), inputs.Length);
         }).ToArray();
         var directory = Path.Combine(AppPaths.AiTemp, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -131,6 +131,6 @@ public sealed class LlamaTranslationService(AiModelManager models)
 
     private sealed record IndexedCue(int Index, string Text);
     private sealed record WorkerJob(string ModelPath, WorkerRequest[] Requests, bool UseGpu, bool AllowCpuFallback);
-    private sealed record WorkerRequest(int Id, string Prompt);
+    private sealed record WorkerRequest(int Id, string Prompt, int Count);
     private sealed record WorkerResponse(int Id, string Text);
 }

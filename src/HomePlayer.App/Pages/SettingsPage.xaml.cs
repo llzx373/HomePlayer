@@ -141,6 +141,7 @@ public sealed partial class SettingsPage : Page
         AiTargetLanguageBox.SelectedItem = AiSubtitleCatalog.Languages.FirstOrDefault(language => language.Code == settings.AiTargetLanguage)
             ?? AiSubtitleCatalog.Languages[0];
         AiTranslateAfterSwitch.IsOn = settings.AiTranslateAfterGeneration;
+        AiTranslateLiveSwitch.IsOn = settings.AiTranslateLiveSubtitles;
         AiTranslationModelBox.ItemsSource = AiSubtitleCatalog.Models.Where(model => model.Kind == AiModelKind.Translation).ToArray();
         AiTranslationModelBox.SelectedItem = AiSubtitleCatalog.Models.FirstOrDefault(model => model.Id == settings.AiTranslationModel)
             ?? AiSubtitleCatalog.Models.First(model => model.Kind == AiModelKind.Translation);
@@ -176,6 +177,7 @@ public sealed partial class SettingsPage : Page
         settings.AiSourceLanguage = source.Code;
         settings.AiTargetLanguage = target.Code;
         settings.AiTranslateAfterGeneration = AiTranslateAfterSwitch.IsOn;
+        settings.AiTranslateLiveSubtitles = AiTranslateLiveSwitch.IsOn;
         settings.AiBilingualSubtitles = AiBilingualCheck.IsChecked == true;
         settings.AiComputeDevice = device.Device.ToString().ToLowerInvariant();
         settings.AiModelMirror = AiMirrorBox.Text.Trim();

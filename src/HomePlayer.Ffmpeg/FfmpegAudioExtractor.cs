@@ -5,7 +5,7 @@ namespace HomePlayer.Ffmpeg;
 
 public static class FfmpegAudioExtractor
 {
-    public static void ExtractWav(string inputPath, int audioStreamIndex, string outputPath, CancellationToken cancellationToken)
+    public static void ExtractWav(string inputPath, int audioStreamIndex, string outputPath, CancellationToken cancellationToken, double startSeconds = 0)
     {
         cancellationToken.ThrowIfCancellationRequested();
         FfmpegNative.Ensure();
@@ -26,14 +26,17 @@ public static class FfmpegAudioExtractor
             RedirectStandardError = true,
             StandardErrorEncoding = Encoding.UTF8
         };
-        foreach (var argument in new[]
-                 {
-                     "-hide_banner", "-nostats", "-loglevel", "error", "-y",
-                     "-i", inputPath,
-                     "-map", $"0:{audioStreamIndex}",
-                     "-vn", "-ac", "1", "-ar", "16000",
-                     "-c:a", "pcm_s16le", "-f", "wav", outputPath
-                 })
+        var arguments = new List<string>
+        {
+            "-hide_banner", "-nostats", "-loglevel", "error", "-y"
+        };
+        if (startSeconds > 0)
+        {
+            arguments.Add("-ss");
+            arguments.Add(startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        arguments.AddRange(["-i", inputPath, "-map", $"0:{audioStreamIndex}", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-f", "wav", outputPath]);
+        foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = info };
         var errors = new StringBuilder();

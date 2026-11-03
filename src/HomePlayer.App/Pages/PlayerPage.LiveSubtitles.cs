@@ -9,7 +9,10 @@ public sealed partial class PlayerPage
 {
     private CancellationTokenSource? _liveSubtitles;
     private int _liveSubtitleGeneration;
-    private readonly List<SubtitleCue> _liveCueList = [];
+    private readonly List<LiveCueEntry> _liveEntries = [];
+    private readonly List<Task> _liveTranslationTasks = [];
+    private readonly object _liveTranslationLock = new();
+    private LiveTranslationService? _liveTranslation;
     private CancellationTokenSource? _aiGeneration;
     private AiGenerationMenuFlyoutItem? _aiGenerationMenuItem;
     private string? _aiGenerationPath;
@@ -46,9 +49,42 @@ public sealed partial class PlayerPage
         var generation = ++_liveSubtitleGeneration;
         var task = new CancellationTokenSource();
         _liveSubtitles = task;
-        _liveCueList.Clear();
+        _liveEntries.Clear();
+        lock (_liveTranslationLock)
+            _liveTranslationTasks.Clear();
         _subtitles.UseLive();
-        ShowStatusHold("正在生成实时 AI 字幕（SenseVoice）");
+        var settings = App.Host.Settings;
+        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
+        var translate = settings.AiTranslateLiveSubtitles;
+        var bilingual = settings.AiBilingualSubtitles;
+        var translation = translate
+            ? App.Host.AiSubtitles.CreateLiveTranslator(
+                settings.AiTranslationModel, settings.AiSourceLanguage, settings.AiTargetLanguage, device)
+            : null;
+        _liveTranslation = translation;
+        ShowStatusHold(translate ? "正在生成实时 AI 字幕与翻译（SenseVoice）" : "正在生成实时 AI 字幕（SenseVoice）");
+        if (translation != null)
+        {
+            var translationStart = translation.StartAsync(null, task.Token);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await translationStart;
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception ex)
+                {
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (generation == _liveSubtitleGeneration)
+                            ShowStatusHold("实时翻译不可用：" + ex.Message + "（继续显示原文字幕）");
+                    });
+                }
+            });
+        }
         var audioTrack = Playback.AudioTrackIndex;
         var startSeconds = Math.Max(0, Playback.Position.TotalSeconds - 0.25);
         _ = Task.Run(async () =>
@@ -56,19 +92,12 @@ public sealed partial class PlayerPage
             try
             {
                 var cues = await App.Host.AiSubtitles.RecognizeWithSherpaAsync(
-                    path, audioTrack, AiComputeDeviceExtensions.Parse(App.Host.Settings.AiComputeDevice), startSeconds,
-                    null, cue => DispatcherQueue.TryEnqueue(() => AddLiveCue(generation, path, cue)), task.Token);
+                    path, audioTrack, device, startSeconds,
+                    null,
+                    cue => DispatcherQueue.TryEnqueue(() => AddLiveCue(generation, path, cue, translation, bilingual, task.Token)),
+                    task.Token);
                 if (generation == _liveSubtitleGeneration && cues.Count > 0)
-                {
-                    App.Host.AiSubtitles.SaveBesideMedia(path, cues, "SenseVoice 实时字幕");
-                    DispatcherQueue.TryEnqueue(() =>
-                    {
-                        if (generation != _liveSubtitleGeneration)
-                            return;
-                        RefreshGeneratedSubtitles(path);
-                        ShowStatusHold("实时字幕已生成并保存，可在字幕列表中选择外挂字幕。");
-                    });
-                }
+                    await FinishLiveSubtitlesAsync(generation, path, translation, task.Token);
             }
             catch (OperationCanceledException)
             {
@@ -84,16 +113,146 @@ public sealed partial class PlayerPage
         });
     }
 
-    private void AddLiveCue(int generation, string path, SubtitleCue cue)
+    private void AddLiveCue(
+        int generation,
+        string path,
+        SubtitleCue cue,
+        LiveTranslationService? translation,
+        bool bilingual,
+        CancellationToken cancellationToken)
     {
         if (generation != _liveSubtitleGeneration || _liveSubtitles == null
             || !string.Equals(Playback.Playlist.Current?.Path, path, StringComparison.OrdinalIgnoreCase))
             return;
-        _liveCueList.Add(cue);
-        if (_liveCueList.Count == 1)
+        var entry = new LiveCueEntry(cue);
+        _liveEntries.Add(entry);
+        if (_liveEntries.Count == 1)
             ShowStatusHold($"实时字幕已就绪 · 当前 {Playback.Position:mm\\:ss}");
-        _liveCueList.Sort((left, right) => left.Start.CompareTo(right.Start));
-        _subtitles.SetCues(_liveCueList.ToArray(), null);
+        RefreshLiveCues();
+        if (translation == null || string.IsNullOrWhiteSpace(cue.Text))
+            return;
+        var translationTask = TranslateLiveCueAsync(generation, entry, translation, bilingual, cancellationToken);
+        lock (_liveTranslationLock)
+            _liveTranslationTasks.Add(translationTask);
+    }
+
+    private async Task TranslateLiveCueAsync(
+        int generation,
+        LiveCueEntry entry,
+        LiveTranslationService translation,
+        bool bilingual,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var translated = await translation.TranslateAsync(entry.OriginalText, cancellationToken);
+            if (string.IsNullOrWhiteSpace(translated))
+                return;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (generation != _liveSubtitleGeneration)
+                    return;
+                entry.Cue = entry.Cue with
+                {
+                    Text = bilingual ? entry.OriginalText + "\n" + translated : translated,
+                    Bitmaps = [],
+                    AssEvent = null
+                };
+                RefreshLiveCues();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+        }
+    }
+
+    private void RefreshLiveCues()
+    {
+        _liveEntries.Sort((left, right) => left.Cue.Start.CompareTo(right.Cue.Start));
+        _subtitles.SetCues(_liveEntries.Select(entry => entry.Cue).ToArray(), null);
+    }
+
+    private async Task FinishLiveSubtitlesAsync(
+        int generation,
+        string path,
+        LiveTranslationService? translation,
+        CancellationToken cancellationToken)
+    {
+        if (translation != null)
+        {
+            try
+            {
+                await translation.StartAsync(null, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+            }
+            await DrainDispatcherAsync();
+            Task[] tasks;
+            lock (_liveTranslationLock)
+                tasks = _liveTranslationTasks.ToArray();
+            if (tasks.Length > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(tasks).WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                }
+            }
+            await DrainDispatcherAsync();
+        }
+        if (generation != _liveSubtitleGeneration)
+            return;
+        var snapshot = await SnapshotLiveCuesAsync();
+        if (snapshot.Length == 0)
+            return;
+        var description = "SenseVoice 实时字幕" + (translation != null
+            ? " · " + AiSubtitleCatalog.LanguageName(App.Host.Settings.AiTargetLanguage)
+            : "");
+        await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, snapshot, description), cancellationToken);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (generation != _liveSubtitleGeneration)
+                return;
+            RefreshGeneratedSubtitles(path);
+            ShowStatusHold("实时字幕已生成并保存，可在字幕列表中选择外挂字幕。");
+        });
+    }
+
+    private Task DrainDispatcherAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(() => completion.TrySetResult()))
+            completion.TrySetResult();
+        return completion.Task;
+    }
+
+    private Task<SubtitleCue[]> SnapshotLiveCuesAsync()
+    {
+        var completion = new TaskCompletionSource<SubtitleCue[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(() =>
+                completion.TrySetResult(_liveEntries.Select(entry => entry.Cue).OrderBy(cue => cue.Start).ToArray())))
+            completion.TrySetResult([]);
+        return completion.Task;
+    }
+
+    private sealed class LiveCueEntry(SubtitleCue cue)
+    {
+        public string OriginalText { get; } = cue.Text;
+        public SubtitleCue Cue { get; set; } = cue;
     }
 
     private async void RestartLiveAfterSeek()
@@ -123,6 +282,10 @@ public sealed partial class PlayerPage
             task.Cancel();
             task.Dispose();
         }
+        var translation = _liveTranslation;
+        _liveTranslation = null;
+        if (translation != null)
+            _ = translation.DisposeAsync().AsTask();
     }
 
     private MenuFlyoutItem CreateAiGenerationMenuItem()

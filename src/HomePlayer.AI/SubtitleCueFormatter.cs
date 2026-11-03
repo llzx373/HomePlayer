@@ -11,8 +11,8 @@ public static class SubtitleCueFormatter
         if (text.Length == 0 || end <= start)
             return [];
         var cjk = IsCjk(text);
-        var maximum = cjk ? 32 : 76;
-        var pieces = SplitLongSentences(Sentences(text), maximum, cjk);
+        var maximum = cjk ? 40 : 76;
+        var pieces = SplitLongSentences(Sentences(text), maximum);
         var cues = Pack(pieces, maximum);
         var result = new List<SubtitleCue>(cues.Count);
         var totalCharacters = Math.Max(1, cues.Sum(cue => SignificantLength(cue)));
@@ -59,14 +59,14 @@ public static class SubtitleCueFormatter
         }
     }
 
-    private static IEnumerable<string> SplitLongSentences(IEnumerable<string> sentences, int maximum, bool cjk)
+    private static IEnumerable<string> SplitLongSentences(IEnumerable<string> sentences, int maximum)
     {
         foreach (var sentence in sentences)
         {
             var remaining = sentence;
             while (remaining.Length > maximum)
             {
-                var split = SplitPosition(remaining, maximum, cjk);
+                var split = SplitPosition(remaining, maximum);
                 yield return remaining[..split].Trim();
                 remaining = remaining[split..].TrimStart();
             }
@@ -95,23 +95,20 @@ public static class SubtitleCueFormatter
         return result;
     }
 
-    private static int SplitPosition(string text, int maximum, bool cjk)
+    private static int SplitPosition(string text, int maximum)
     {
-        if (!cjk)
-        {
-            var before = text.LastIndexOf(' ', maximum - 1, maximum);
-            if (before > 0)
-                return before;
-            var after = text.IndexOf(' ', maximum);
-            if (after > 0)
-                return after;
-        }
+        var before = text.LastIndexOf(' ', maximum - 1, maximum);
+        if (before > 0)
+            return before;
+        var after = text.IndexOf(' ', maximum);
+        if (after > 0)
+            return after;
         return maximum;
     }
 
     private static string Wrap(string text, bool cjk)
     {
-        var lineMaximum = cjk ? 16 : 42;
+        var lineMaximum = cjk ? 20 : 42;
         if (text.Length <= lineMaximum)
             return text;
         var midpoint = text.Length / 2;

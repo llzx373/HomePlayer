@@ -29,13 +29,13 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
         var jobPath = Path.Combine(directory, "sherpa.json");
         var useCuda = device == AiComputeDevice.Cuda || device == AiComputeDevice.Auto && AiRuntime.HasNvidiaGpu;
         File.WriteAllText(jobPath, JsonSerializer.Serialize(new SherpaJob(
-            Path.GetDirectoryName(models.PathFor(model))!, wav, startSeconds, 10, 2, useCuda)));
+            Path.GetDirectoryName(models.PathFor(model))!, wav, startSeconds, 4, 20, useCuda)));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var extract = Task.Run(() =>
         {
             try
             {
-                FfmpegAudioExtractor.ExtractWav(mediaPath, audioTrackIndex, wav, linked.Token);
+                FfmpegAudioExtractor.ExtractWav(mediaPath, audioTrackIndex, wav, linked.Token, startSeconds);
                 File.WriteAllText(wav + ".done", "");
             }
             catch
@@ -45,7 +45,6 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
             }
         }, linked.Token);
         var cues = new List<SubtitleCue>();
-        var previousText = "";
         try
         {
             Report(progress, useCuda ? "Sherpa CUDA 实时识别" : "Sherpa CPU 识别", 0.25);
@@ -56,20 +55,17 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                     var result = JsonSerializer.Deserialize<SherpaResult>(line);
                     if (result == null)
                         return;
-                    var rawText = MetadataTags().Replace(result.Text, "").Trim();
-                    var text = AsrTextOverlap.Remove(previousText, rawText);
-                    previousText = rawText;
+                    var text = MetadataTags().Replace(result.Text, "").Trim();
                     var start = TimeSpan.FromSeconds(result.StartSeconds);
                     var end = TimeSpan.FromSeconds(Math.Max(result.StartSeconds + 0.1, result.EndSeconds));
-                    if (cues.Count > 0 && start < cues[^1].End)
-                        start = cues[^1].End + TimeSpan.FromMilliseconds(20);
                     var formatted = end > start ? SubtitleCueFormatter.Build(text, start, end) : [];
                     foreach (var cue in formatted)
                     {
                         cues.Add(cue);
                         cueReady?.Invoke(cue);
                     }
-                    Report(progress, $"已识别至 {end:mm\\:ss}", Math.Min(0.95, 0.25 + cues.Count * 0.005));
+                    if (formatted.Count > 0)
+                        Report(progress, $"已识别至 {end:mm\\:ss}", Math.Min(0.95, 0.25 + cues.Count * 0.005));
                 }
                 catch (JsonException)
                 {
@@ -110,6 +106,6 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
     [GeneratedRegex(@"<\|[^|]+\|>", RegexOptions.CultureInvariant)]
     private static partial Regex MetadataTags();
 
-    private sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, int ChunkSeconds, int OverlapSeconds, bool UseCuda);
+    private sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda);
     private sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text);
 }

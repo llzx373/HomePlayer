@@ -186,10 +186,11 @@
                                     <ComboBox x:Name="AiSourceLanguageBox" Header="源语言" HorizontalAlignment="Stretch" />
                                     <ComboBox x:Name="AiTargetLanguageBox" Header="翻译目标语言" HorizontalAlignment="Stretch" />
                                     <ToggleSwitch x:Name="AiTranslateAfterSwitch" Header="后台识别完成后继续翻译" OnContent="是" OffContent="否" />
+                                    <ToggleSwitch x:Name="AiTranslateLiveSwitch" Header="实时字幕自动翻译" OnContent="是" OffContent="否" />
                                     <ComboBox x:Name="AiTranslationModelBox" Header="翻译模型" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
                                     <CheckBox x:Name="AiBilingualCheck" Content="保留原文，生成双语字幕" />
                                     <ComboBox x:Name="AiDeviceBox" Header="计算设备" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
-                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="播放器的实时字幕固定使用低延迟 SenseVoice，支持英语、日语和韩语；后台识别可选择 Sherpa 或 Whisper。" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="播放器的实时字幕固定使用低延迟 SenseVoice，支持英语、日语和韩语；后台识别可选择 Sherpa 或 Whisper。实时翻译使用下方所选翻译模型，首次启用时需要下载模型。" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">

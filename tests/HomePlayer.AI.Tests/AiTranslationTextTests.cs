@@ -23,6 +23,24 @@ public class AiTranslationTextTests
     }
 
     [Fact]
+    public void Prompt_omits_auto_source_and_requires_target_language_only()
+    {
+        var prompt = AiTranslationText.Prompt([new(0, "おはよう")], "", "zh");
+
+        Assert.DoesNotContain("自动检测", prompt);
+        Assert.Contains("只能使用中文普通话", prompt);
+    }
+
+    [Fact]
+    public void Prompt_strict_attempt_rejects_echoed_source()
+    {
+        var prompt = AiTranslationText.Prompt([new(0, "おはよう")], "ja", "zh", true);
+
+        Assert.Contains("保留了原文", prompt);
+        Assert.Contains("不得出现日文假名", prompt);
+    }
+
+    [Fact]
     public void Prompt_keeps_stable_ids_and_language_direction()
     {
         var prompt = AiTranslationText.Prompt([new(7, "おはよう")], "ja", "zh");

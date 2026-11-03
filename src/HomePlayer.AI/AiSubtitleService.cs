@@ -45,6 +45,13 @@ public sealed class AiSubtitleService
         CancellationToken cancellationToken) =>
         _translation.TranslateAsync(cues, sourceLanguage, targetLanguage, bilingual, modelId, _mirror(), device, progress, cancellationToken);
 
+    public LiveTranslationService CreateLiveTranslator(
+        string modelId,
+        string? sourceLanguage,
+        string targetLanguage,
+        AiComputeDevice device) =>
+        new(_models, modelId, sourceLanguage, targetLanguage, device, _mirror);
+
     public bool SenseVoiceInstalled =>
         IsInstalled("sensevoice-model") && IsInstalled("sensevoice-tokens")
         && File.Exists(Path.Combine(AppContext.BaseDirectory, "ai", "sherpa-worker", "HomePlayer.AI.SherpaWorker.exe"));
