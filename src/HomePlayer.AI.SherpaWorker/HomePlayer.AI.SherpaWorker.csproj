@@ -11,11 +11,9 @@
     <PackageReference Include="org.k2fsa.sherpa.onnx.runtime.win-x64" Version="2.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\third_party\ai\sherpa-cuda\**\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
-    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
     <Content Include="..\..\third_party\ai\sherpa-cuda\**\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
-    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
-    <Content Include="..\..\third_party\ai\cuda12.8\**\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
-    <Content Include="..\..\third_party\ai\cuda12.8\**\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cudart\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cublas\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cudnn\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

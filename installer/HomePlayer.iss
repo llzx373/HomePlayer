@@ -31,7 +31,8 @@ OutputBaseFilename=HomePlayer-Setup-{#AppVersion}
 SetupIconFile={#AppIcon}
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
-Compression=lzma2
+Compression=lzma2/normal
+LZMANumBlockThreads=8
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
@@ -77,6 +78,14 @@ Name: "context"; Description: "右键菜单添加「用 HomePlayer 播放」（�
 
 [Dirs]
 Name: "{localappdata}\HomePlayer\crashes"; Flags: uninsneveruninstall
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\ai\cuda-runtime"
+Type: filesandordirs; Name: "{app}\ai\sherpa-cuda"
+Type: filesandordirs; Name: "{app}\ai\cuda12.8-cudart"
+Type: filesandordirs; Name: "{app}\ai\cuda12.8-cublas"
+Type: filesandordirs; Name: "{app}\ai\cuda12.8-cudnn"
+Type: filesandordirs; Name: "{app}\ai\sherpa-worker\runtimes"
 
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"

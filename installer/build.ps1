@@ -41,6 +41,12 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 Write-Host "Restoring FFmpeg shared libraries ..."
 & (Join-Path $root "scripts\Restore-Ffmpeg.ps1")
 
+$distDir = Join-Path $root "dist"
+if (Test-Path $distDir) {
+    Write-Host "Cleaning dist\ ..."
+    Remove-Item -Recurse -Force $distDir
+}
+
 Write-Host "Publishing HomePlayer $Version to dist\ ..."
 dotnet publish $csproj -c Release -p:PublishProfile=FolderProfile -p:Version=$Version -p:InformationalVersion=$Version
 if ($LASTEXITCODE -ne 0) {

@@ -39,14 +39,6 @@
     <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper\**\*.*" Link="ai\whisper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper-cuda\**\*.*" Link="ai\whisper-cuda\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="ai\cuda-runtime\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda-runtime\NOTICE.txt" Link="ai\cuda-runtime\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\sherpa-cuda\*.dll" Link="ai\sherpa-cuda\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\sherpa-cuda\LICENSE.txt" Link="ai\sherpa-cuda\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda12.8-cudart\**\*.dll" Link="ai\cuda12.8-cudart\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda12.8-cudart\NOTICE.txt" Link="ai\cuda12.8-cudart\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda12.8-cublas\**\*.dll" Link="ai\cuda12.8-cublas\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda12.8-cudnn\**\*.dll" Link="ai\cuda12.8-cudnn\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>
