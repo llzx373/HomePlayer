@@ -1470,6 +1470,8 @@ public sealed class LavPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, I
         Hr.Throw(settings.SetHWAccel(5), "启用 LAV D3D11 Native");
         foreach (var codec in new[] { 0u, 5u, 8u })
             Hr.Throw(settings.SetHWAccelCodec(codec, 1), "启用 LAV 硬解格式");
+        const uint vc1 = 1;
+        _ = settings.SetHWAccelCodec(vc1, 0);
     }
 
     private static void ConfigureAudio(object filter)

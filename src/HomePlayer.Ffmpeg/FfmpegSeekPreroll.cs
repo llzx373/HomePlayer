@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HomePlayer.Core;
 
 namespace HomePlayer.Ffmpeg;
@@ -24,6 +25,7 @@ public sealed unsafe partial class FfmpegPlayer
         if (!targetFrame)
             return true;
         var epoch = frame.Epoch;
+        var started = Stopwatch.GetTimestamp();
         while (_cancel is { IsCancellationRequested: false })
         {
             var release = false;
@@ -42,8 +44,11 @@ public sealed unsafe partial class FfmpegPlayer
                 _prerollVideoReadyEpoch = epoch;
                 release = CanReleaseSeekPrerollLocked(epoch);
             }
-            if (release)
+            if (release || Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(2))
+            {
                 ReleaseSeekPreroll(epoch);
+                return true;
+            }
             Thread.Sleep(2);
         }
         return false;

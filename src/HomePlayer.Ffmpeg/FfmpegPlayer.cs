@@ -214,7 +214,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
 
             _videoRecovery.ResetAll();
             _audioRecovery.ResetAll();
-            _videoPackets = new BoundedPipelineQueue<PacketLease>(96, 16 * 1024 * 1024);
+            _videoPackets = new BoundedPipelineQueue<PacketLease>(512, 16 * 1024 * 1024);
             _audioPackets = new BoundedPipelineQueue<PacketLease>(192, 8 * 1024 * 1024);
             _videoFrames = new BoundedPipelineQueue<VideoQueueItem>(4, 96 * 1024 * 1024);
             IsOpen = true;
@@ -799,7 +799,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                             }
                             if (item.Epoch == Epoch)
                             {
-                                EmitAudio(frame, item.Epoch);
+                                var packetPts = item.EndOfStream ? ffmpeg.AV_NOPTS_VALUE : item.Packet->pts;
+                                EmitAudio(frame, item.Epoch, packetPts);
                                 _audioRecovery.Reset();
                             }
                             ffmpeg.av_frame_unref(frame);
@@ -1112,11 +1113,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         _timeStretcher.Reset();
     }
 
-    private void EmitAudio(AVFrame* frame, long epoch)
+    private void EmitAudio(AVFrame* frame, long epoch, long packetPts)
     {
         var source = frame->extended_data;
         var inputSamples = frame->nb_samples;
-        var pts = AudioTiming(frame, epoch).PresentationTimestamp;
+        var pts = AudioTiming(frame, epoch, packetPts).PresentationTimestamp;
         var seek = ActiveSeek(epoch);
         if (seek != null && frame->sample_rate > 0)
         {
@@ -1464,12 +1465,13 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         return _videoTimestamps.Next(epoch, TimestampOrNull(frame, _videoTimeBase), Math.Max(0, frame->duration), fallback, maxForwardGap);
     }
 
-    private RepairedMediaTimestamp AudioTiming(AVFrame* frame, long epoch)
+    private RepairedMediaTimestamp AudioTiming(AVFrame* frame, long epoch, long packetPts)
     {
         var fallback = frame->sample_rate > 0
             ? ffmpeg.av_rescale_q(frame->nb_samples, new AVRational { num = 1, den = frame->sample_rate }, _audioTimeBase)
             : 0;
-        return _audioTimestamps.Next(epoch, TimestampOrNull(frame, _audioTimeBase), Math.Max(0, frame->duration), fallback, MaxForwardGap(_audioTimeBase));
+        var timestamp = TimestampOrNull(frame, _audioTimeBase) ?? RelativeTimestamp(packetPts, _audioTimeBase);
+        return _audioTimestamps.Next(epoch, timestamp, Math.Max(0, frame->duration), fallback, MaxForwardGap(_audioTimeBase));
     }
 
     private long MaxForwardGap(AVRational timeBase) =>
@@ -1480,6 +1482,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         var timestamp = frame->best_effort_timestamp;
         if (timestamp == ffmpeg.AV_NOPTS_VALUE)
             timestamp = frame->pts;
+        return RelativeTimestamp(timestamp, timeBase);
+    }
+
+    private long? RelativeTimestamp(long timestamp, AVRational timeBase)
+    {
         if (timestamp == ffmpeg.AV_NOPTS_VALUE)
             return null;
         var origin = _format->start_time == ffmpeg.AV_NOPTS_VALUE

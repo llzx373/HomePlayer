@@ -65,7 +65,28 @@ public sealed class PlaybackProviderRegistry(IEnumerable<IPlaybackProvider> prov
                 : "madVR 使用独立原生窗口；WinUI 字幕、最终帧截图和内部呈现指标不可用。";
             return new OpenedPlaybackSession(session, reason);
         }
-        Exception? directShowError = null;
+
+        if (route == PlaybackRoute.Auto && PrefersNativeFfmpeg(path))
+        {
+            try
+            {
+                return new OpenedPlaybackSession(OpenNative(path, audioOutputId), WmvNativeReason);
+            }
+            catch (Exception nativeError)
+            {
+                try
+                {
+                    return OpenDirectShow(path, audioOutputId, codecs, nativeError);
+                }
+                catch (Exception directShowError)
+                {
+                    throw new InvalidOperationException(
+                        $"FFmpeg 无法播放：{nativeError.Message}；LAV 也失败：{directShowError.Message}", directShowError);
+                }
+            }
+        }
+
+        Exception? directShowFailure = null;
         if (route != PlaybackRoute.NativeFfmpeg)
         {
             var plan = codecs();
@@ -73,17 +94,11 @@ public sealed class PlaybackProviderRegistry(IEnumerable<IPlaybackProvider> prov
             {
                 try
                 {
-                    var provider = (DirectShowProvider)_policy.Select(_providers, PlaybackRoute.DirectShow, true);
-                    var session = provider.Open(path, audioOutputId, null);
-                    var engine = (LavPlaybackEngine)((PlaybackSession)session).InnerEngine;
-                    var reason = engine.AudioMissing
-                        ? "画面已打开，音频没有接上：" + engine.AudioWarning
-                        : string.IsNullOrWhiteSpace(engine.AudioWarning) ? "已按设置的顺序建立滤镜图。" : engine.AudioWarning;
-                    return new OpenedPlaybackSession(session, reason);
+                    return OpenDirectShow(path, audioOutputId, null);
                 }
                 catch (Exception ex)
                 {
-                    directShowError = ex;
+                    directShowFailure = ex;
                     if (route == PlaybackRoute.DirectShow)
                         throw;
                 }
@@ -96,17 +111,50 @@ public sealed class PlaybackProviderRegistry(IEnumerable<IPlaybackProvider> prov
 
         try
         {
-            var provider = (NativeFfmpegProvider)_policy.Select(_providers, PlaybackRoute.NativeFfmpeg, false);
-            var session = provider.Open(path, audioOutputId);
-            var reason = directShowError == null
+            var reason = directShowFailure == null
                 ? route == PlaybackRoute.NativeFfmpeg ? "已按指定改用 FFmpeg。" : "没有可用的 64 位分离器或视频解码器，已改用 FFmpeg。"
-                : "DirectShow 滤镜无法播放该文件，已改用 FFmpeg：" + directShowError.Message;
-            return new OpenedPlaybackSession(session, reason);
+                : "DirectShow 滤镜无法播放该文件，已改用 FFmpeg：" + directShowFailure.Message;
+            return new OpenedPlaybackSession(OpenNative(path, audioOutputId), reason);
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException(directShowError == null ? ex.Message : $"{directShowError.Message}；FFmpeg 也失败：{ex.Message}", ex);
+            throw new InvalidOperationException(directShowFailure == null ? ex.Message : $"{directShowFailure.Message}；FFmpeg 也失败：{ex.Message}", ex);
         }
+    }
+
+    public static bool PrefersNativeFfmpeg(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".wmv", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".asf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string WmvNativeReason = "WMV/ASF 默认使用 FFmpeg，避开 LAV 的 VC-1 硬解和长文件定位卡顿。";
+
+    private IPlaybackSession OpenNative(string path, string? audioOutputId)
+    {
+        var provider = (NativeFfmpegProvider)_policy.Select(_providers, PlaybackRoute.NativeFfmpeg, false);
+        return provider.Open(path, audioOutputId);
+    }
+
+    private OpenedPlaybackSession OpenDirectShow(string path, string? audioOutputId, Func<CodecPlan>? codecs, Exception? nativeError = null)
+    {
+        if (codecs != null)
+        {
+            var plan = codecs();
+            if (plan.Splitters.Count == 0 || plan.VideoDecoders.Count == 0)
+                throw new InvalidOperationException("没有可用的 64 位 DirectShow 分离器或视频解码器。");
+        }
+
+        var provider = (DirectShowProvider)_policy.Select(_providers, PlaybackRoute.DirectShow, true);
+        var session = provider.Open(path, audioOutputId, null);
+        var engine = (LavPlaybackEngine)((PlaybackSession)session).InnerEngine;
+        var reason = engine.AudioMissing
+            ? "画面已打开，音频没有接上：" + engine.AudioWarning
+            : nativeError != null
+                ? "FFmpeg 无法播放该文件，已改用 LAV：" + nativeError.Message
+                : string.IsNullOrWhiteSpace(engine.AudioWarning) ? "已按设置的顺序建立滤镜图。" : engine.AudioWarning;
+        return new OpenedPlaybackSession(session, reason);
     }
 }
 
