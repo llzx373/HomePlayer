@@ -6,7 +6,7 @@ HomePlayer 本身使用 [MIT License](LICENSE)。安装包和运行目录里还�
 
 播放回退、缩略图、字幕旁路读取使用 FFmpeg 共享库（LGPL 构建，动态加载）。
 
-- 来源：[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) 的 `n9.0.2-28-g669f5ab083` win64 LGPL shared
+- 来源：[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) 的 `n9.0.2-45-g1e65c6cd5d` win64 LGPL shared
 - 协议：[GNU Lesser General Public License v3.0](https://www.gnu.org/licenses/lgpl-3.0.html)
 - 完整文本见 `third_party/ffmpeg/LICENSE.txt`，安装后也在程序目录的 `ffmpeg\LICENSE.txt`
 - 源码：https://ffmpeg.org/ 以及上述构建仓库
@@ -39,6 +39,17 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 高级画质渲染使用未修改的 [libplacebo](https://code.videolan.org/videolan/libplacebo) 7.360.1 MinGW x64 动态库，按 GNU LGPL 2.1 或更高版本分发。完整许可、对应源码入口、构建方式、版本与 DLL 校验值见 `third_party/libplacebo/README.md` 和 `third_party/libplacebo/licenses`，安装后位于程序目录的 `libplacebo` 子目录。HomePlayer 不静态链接 libplacebo，可以替换该动态库。
 
 同目录还包含其 Little CMS、libdovi、shaderc、SPIRV-Cross、Vulkan Loader 和 MinGW 运行时依赖，各自许可证一并保留，不取代 HomePlayer 的 MIT 许可。
+
+## 本地 AI 运行时与模型
+
+本地语音识别和字幕翻译使用独立进程运行，不包含在 HomePlayer 主程序中：
+
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp) `v1.8.3`：MIT License；Windows CPU 运行时来自项目官方发布包，许可证保存在 `third_party/ai-licenses/whisper-LICENSE.txt`。
+- [LLamaSharp](https://github.com/SciSharp/LLamaSharp) `0.30.0` 及其 CPU/CUDA 12 后端：MIT License；翻译在独立 `HomePlayer.AI.Worker` 进程中使用 llama.cpp 本地推理，不需要 Python 或外部 llama-server。
+- [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) `v2.0.1`：Apache-2.0；在独立 `HomePlayer.AI.SherpaWorker` 进程中提供 SenseVoice 低延迟识别。许可证保存在 `third_party/ai-licenses/sherpa-LICENSE.txt`。
+- 可选 CUDA 路径包含 NVIDIA CUDA Runtime/cuBLAS/cuDNN。这些 NVIDIA 组件不适用 MIT，遵循 [NVIDIA CUDA EULA](https://docs.nvidia.com/cuda/eula/index.html)；来源与说明见 `third_party/ai-licenses/CUDA-NOTICE.txt`。
+
+Whisper 多语言模型、Silero VAD 和 Qwen3 GGUF 模型不随基础安装包分发。用户首次使用时从配置的镜像或 Hugging Face 下载，HomePlayer 按内置清单校验文件大小与 SHA-256。模型权重分别遵循其模型页面所列许可证；下载和本地推理不需要向 HomePlayer 提供云端密钥。
 
 ## 主要 NuGet 依赖
 

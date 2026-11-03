@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HomePlayer.AI.SherpaWorker</RootNamespace>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="2.0.1" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx.runtime.win-x64" Version="2.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\third_party\ai\sherpa-cuda\**\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\sherpa-cuda\**\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\cuda12.8\**\*.dll" Link="runtimes\win-x64\native\%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+    <Content Include="..\..\third_party\ai\cuda12.8\**\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+</Project>

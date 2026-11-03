@@ -20,6 +20,7 @@ Windows 上的本地视频播放器。面向自己的片库：扫描文件夹、
 - **续播**：跨重启记住进度、播放列表和当前条目，可标记已看/未看、从头播放、暂停历史记录或清空历史；恢复列表不自动播放
 - **两条引擎**：优先 DirectShow / LAV；分离器和解码都失败时回退 FFmpeg。设置里可以调整滤镜顺序
 - **字幕**：外挂和内嵌文本字幕、libass ASS/SSA 排版、PGS/VobSub 位图字幕；记住每文件选择，支持外观、延迟、编码、字体附件和截图包含字幕
+- **本地 AI 字幕（测试版）**：已有文本字幕可直接本地翻译；无文本字幕时可使用 Whisper 多语言识别，或 Sherpa-ONNX SenseVoice 英/日/韩低延迟识别。支持打开视频后自动生成实时字幕、双语、逐条校对和 SRT/VTT/TXT/JSON 导出。模型按需下载，识别与翻译不上传媒体或字幕；支持 CPU 与 NVIDIA CUDA 12 加速及回退
 - **播放**：记住每文件音轨和音频延迟，支持首选语言、多声道、保音调倍速、归一化、夜间模式、章节、书签、A-B 循环和悬停预览
 - **备份与诊断**：自动保留最近两代数据，可导入导出完整备份、迁移媒体库位置、清理孤立记录并导出脱敏诊断包
 - **画面**：适应、填充、拉伸、16:9 / 4:3；只改铺屏，不擅自改窗口（可另开「自适应窗口」）
@@ -32,10 +33,11 @@ Windows 上的本地视频播放器。面向自己的片库：扫描文件夹、
 
 ## 从源码构建
 
-需要 [.NET 10 SDK](https://dotnet.microsoft.com/download)。FFmpeg 动态库不在 Git 里，先还原再编译：
+需要 [.NET 10 SDK](https://dotnet.microsoft.com/download)。FFmpeg 动态库和 AI 运行时不在 Git 里，先还原再编译：
 
 ```powershell
 pwsh -File scripts/Restore-Ffmpeg.ps1
+pwsh -File scripts/Restore-AI.ps1
 dotnet test HomePlayer.slnx -c Release
 dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release
 ```

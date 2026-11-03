@@ -9,7 +9,7 @@ public static class FfmpegNative
     private static readonly string[] RequiredFiles =
     [
         "avcodec-63.dll", "avdevice-63.dll", "avfilter-12.dll", "avformat-63.dll",
-        "avutil-61.dll", "swresample-7.dll", "swscale-10.dll"
+        "avutil-61.dll", "swresample-7.dll", "swscale-10.dll", "ffmpeg.exe"
     ];
     private static bool _ready;
 

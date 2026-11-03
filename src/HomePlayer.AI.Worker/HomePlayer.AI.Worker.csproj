@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HomePlayer.AI.Worker</RootNamespace>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp" Version="0.30.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.30.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cuda12.Windows" Version="0.30.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="runtimes\win-x64\native\cuda12\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyCpuBackendForCuda" AfterTargets="Build;Publish">
+    <Copy SourceFiles="$(OutDir)runtimes\win-x64\native\avx2\ggml-cpu.dll" DestinationFolder="$(OutDir)runtimes\win-x64\native\cuda12" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

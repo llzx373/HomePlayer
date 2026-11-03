@@ -1,16 +1,17 @@
 [CmdletBinding()]
 param(
-    [switch]$Force
+    [switch]$Force,
+    [string]$Proxy = "http://127.0.0.1:7890"
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $dest = Join-Path $root "third_party\ffmpeg"
-$zipName = "ffmpeg-n9.0.2-28-g669f5ab083-win64-lgpl-shared-9.0.zip"
-$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-19-13-06/$zipName"
-$sha256 = "557513674c1628d82cad40515d75bc28d26c4730582b4029b018c4a1ff77a49c"
-$productMark = "n9.0.2-28-g669f5ab083"
+$zipName = "ffmpeg-n9.0.2-45-g1e65c6cd5d-win64-lgpl-shared-9.0.zip"
+$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-02-12-51/$zipName"
+$sha256 = "a05d78fcd027645a493a1397cd33b3195a182050912c51a69aa507a0ea465fa1"
+$productMark = "n9.0.2-45-g1e65c6cd5d"
 $dlls = @(
     "avcodec-63.dll",
     "avdevice-63.dll",
@@ -18,16 +19,18 @@ $dlls = @(
     "avformat-63.dll",
     "avutil-61.dll",
     "swresample-7.dll",
-    "swscale-10.dll"
+    "swscale-10.dll",
+    "ffmpeg.exe"
 )
 $dllHashes = @{
-    "avcodec-63.dll" = "019258d4eddcdc7fb8ccd60309ee009defa7d7d58c19b908a16b2c9b9a1bc6c0"
-    "avdevice-63.dll" = "bf77d63039d610d3233dd48e9a9ea605a606732005200a7f966f3bae6e08fc60"
-    "avfilter-12.dll" = "133adacad607c84f9d21f3067c7caa95ea946229c8ccbe5e025b4a5cb1782440"
-    "avformat-63.dll" = "964e7cb4fc9453fc538ca4caba8647022c81f52054cade9e080ab8510cc740d3"
-    "avutil-61.dll" = "168d69268ea75a732c94c0ac35d74b0203da09e16250bd7626577dddc796fe5f"
-    "swresample-7.dll" = "e2e3ebae229519f20cb58d1f14744efcf779c3d74a4d104bd871ec9758d696ad"
-    "swscale-10.dll" = "f0923485e586b31465a6e4b73e889adb8dfa68602b8f745df0adf719009d527e"
+    "avcodec-63.dll" = "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020"
+    "avdevice-63.dll" = "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a"
+    "avfilter-12.dll" = "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf"
+    "avformat-63.dll" = "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c"
+    "avutil-61.dll" = "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b"
+    "swresample-7.dll" = "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382"
+    "swscale-10.dll" = "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789"
+    "ffmpeg.exe" = "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946"
 }
 function Test-FfmpegPresent {
     $avcodec = Join-Path $dest "avcodec-63.dll"
@@ -55,18 +58,27 @@ if (-not $Force -and (Test-FfmpegPresent)) {
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 $zipPath = Join-Path $root "third_party\$zipName"
+$zipSize = 76576876
 
-if (Test-Path $zipPath) {
+if ((Test-Path $zipPath) -and (Get-Item -LiteralPath $zipPath).Length -eq $zipSize) {
     $existing = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLowerInvariant()
     if ($existing -ne $sha256) {
         Remove-Item -Force $zipPath
     }
 }
 
-if (-not (Test-Path $zipPath)) {
+if (-not (Test-Path $zipPath) -or (Get-Item -LiteralPath $zipPath).Length -ne $zipSize) {
     Write-Host "Downloading FFmpeg $productMark ..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        & curl.exe --proxy $Proxy --fail --location --silent --show-error --continue-at - --connect-timeout 20 --max-time 300 --output $zipPath $url
+        if ($LASTEXITCODE -eq 0) {
+            break
+        }
+        if ($attempt -eq 6) {
+            throw "FFmpeg download failed: $url"
+        }
+        Start-Sleep -Seconds (2 * $attempt)
+    }
 }
 
 $hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLowerInvariant()

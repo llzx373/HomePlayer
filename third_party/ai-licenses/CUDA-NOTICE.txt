@@ -1,0 +1,12 @@
+NVIDIA CUDA Runtime and cuBLAS notice
+
+HomePlayer's optional CUDA path includes cudart64_12.dll, cublas64_12.dll and cublasLt64_12.dll.
+These NVIDIA components are not covered by HomePlayer's MIT License or the MIT licenses of whisper.cpp/LLamaSharp.
+
+Source archive:
+https://github.com/ggml-org/llama.cpp/releases/download/b11960/cudart-llama-bin-win-cuda-12.4-x64.zip
+
+NVIDIA CUDA Toolkit End User License Agreement and redistribution terms:
+https://docs.nvidia.com/cuda/eula/index.html
+
+CUDA and NVIDIA are trademarks of NVIDIA Corporation. HomePlayer is not affiliated with or endorsed by NVIDIA.

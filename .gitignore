@@ -5,7 +5,11 @@ obj/
 TestResults/
 third_party/*.zip
 third_party/ffmpeg/*.dll
+third_party/ffmpeg/*.exe
 third_party/ffmpeg-extract/
+third_party/ai/
+third_party/ai-extract/
+third_party/llama.cpp-src/
 dist/
 artifacts/
 .commandcode/

@@ -33,4 +33,14 @@ public sealed partial class AppSettings
     public int DisplayRefreshRate { get; set; }
     public bool SnapshotIncludeSubtitles { get; set; }
     public string UpdateChannel { get; set; } = "stable";
+    public bool AiSubtitlesEnabled { get; set; }
+    public string AiModelMirror { get; set; } = "https://hf-mirror.com";
+    public string AiDownloadProxy { get; set; } = "http://127.0.0.1:7890";
+    public string AiComputeDevice { get; set; } = "auto";
+    public string AiRecognitionEngine { get; set; } = "sherpa";
+    public bool AiLiveSubtitles { get; set; } = true;
+    public string AiRecognitionModel { get; set; } = "whisper-small";
+    public string AiTranslationModel { get; set; } = "qwen3-4b-q4";
+    public string AiTargetLanguage { get; set; } = "zh";
+    public bool AiBilingualSubtitles { get; set; } = true;
 }

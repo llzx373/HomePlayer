@@ -22,7 +22,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/ffmpeg/*.dll
-          key: ffmpeg-n9.0.2-28-g669f5ab083-win64-lgpl-shared
+          key: ffmpeg-n9.0.2-45-g1e65c6cd5d-win64-lgpl-shared
 
       - name: Restore FFmpeg
         run: pwsh -NoProfile -File scripts/Restore-Ffmpeg.ps1

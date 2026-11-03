@@ -1,3 +1,4 @@
+using HomePlayer.AI;
 using HomePlayer.Core;
 using HomePlayer.Data;
 using HomePlayer.Library;
@@ -23,6 +24,7 @@ public sealed class AppHost : IAsyncDisposable
         Repository = repository;
         Libraries = libraries;
         Playback = playback;
+        AiSubtitles = new AiSubtitleService(AppPaths.AiModels, () => settings.AiModelMirror, () => settings.AiDownloadProxy);
         _codecPlans = codecPlans;
         _settingsStore = settingsStore;
         SettingsWarning = settingsWarning;
@@ -33,6 +35,7 @@ public sealed class AppHost : IAsyncDisposable
     public LibraryRepository Repository { get; }
     public LibraryCoordinator Libraries { get; }
     public PlaybackController Playback { get; }
+    public AiSubtitleService AiSubtitles { get; }
     public string? SettingsWarning { get; private set; }
     public bool Exiting { get; set; }
 

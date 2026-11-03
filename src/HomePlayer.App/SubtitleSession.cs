@@ -10,7 +10,8 @@ internal sealed class SubtitleSession
         Off,
         Auto,
         Sidecar,
-        Embedded
+        Embedded,
+        Live
     }
 
     private Choice _choice = Choice.Auto;
@@ -215,6 +216,15 @@ internal sealed class SubtitleSession
         return true;
     }
 
+    public void UseLive()
+    {
+        _choice = Choice.Live;
+        _sidecar = null;
+        _embedded = -1;
+        _track = SubtitleTrack.Empty;
+        Error = null;
+    }
+
     public void SetCues(IReadOnlyList<SubtitleCue> cues, string? error)
     {
         _track = new SubtitleTrack(cues);
@@ -247,6 +257,7 @@ internal sealed class SubtitleSession
 
     public bool OffChecked => _choice == Choice.Off;
     public bool AutoChecked => _choice == Choice.Auto;
+    public bool LiveChecked => _choice == Choice.Live;
 
     public bool SidecarChecked(string path) =>
         _choice == Choice.Sidecar && path.Equals(_sidecar, StringComparison.OrdinalIgnoreCase);

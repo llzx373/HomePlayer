@@ -23,6 +23,7 @@
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\HomePlayer.AI\HomePlayer.AI.csproj" />
     <ProjectReference Include="..\HomePlayer.Core\HomePlayer.Core.csproj" />
     <ProjectReference Include="..\HomePlayer.Data\HomePlayer.Data.csproj" />
     <ProjectReference Include="..\HomePlayer.Ffmpeg\HomePlayer.Ffmpeg.csproj" />
@@ -36,14 +37,51 @@
     <Content Include="..\..\NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\sbom.json" Link="sbom.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\whisper\**\*.*" Link="ai\whisper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\whisper-cuda\**\*.*" Link="ai\whisper-cuda\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda-runtime\*.dll" Link="ai\cuda-runtime\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda-runtime\NOTICE.txt" Link="ai\cuda-runtime\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\sherpa-cuda\*.dll" Link="ai\sherpa-cuda\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\sherpa-cuda\LICENSE.txt" Link="ai\sherpa-cuda\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cudart\**\*.dll" Link="ai\cuda12.8-cudart\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cudart\NOTICE.txt" Link="ai\cuda12.8-cudart\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cublas\**\*.dll" Link="ai\cuda12.8-cublas\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\ai\cuda12.8-cudnn\**\*.dll" Link="ai\cuda12.8-cudnn\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>
+    <AiRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-AI.ps1'))</AiRestoreScript>
+    <CudaRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-CudaRuntime.ps1'))</CudaRestoreScript>
+    <SherpaRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-Sherpa.ps1'))</SherpaRestoreScript>
     <FfmpegRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-Ffmpeg.ps1'))</FfmpegRestoreScript>
     <DependencyVerifyScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Verify-PrivateDependencies.ps1'))</DependencyVerifyScript>
   </PropertyGroup>
+  <Target Name="BuildAIWorkers" BeforeTargets="BeforeBuild;Publish">
+    <MSBuild Projects="..\HomePlayer.AI.Worker\HomePlayer.AI.Worker.csproj;..\HomePlayer.AI.SherpaWorker\HomePlayer.AI.SherpaWorker.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64" />
+  </Target>
+  <Target Name="CopyAIWorkers" AfterTargets="Build">
+    <ItemGroup>
+      <_AIWorkerFiles Include="..\HomePlayer.AI.Worker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
+      <_AISherpaWorkerFiles Include="..\HomePlayer.AI.SherpaWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AIWorkerFiles)" DestinationFolder="$(TargetDir)ai\worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_AISherpaWorkerFiles)" DestinationFolder="$(TargetDir)ai\sherpa-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishAIWorkers" AfterTargets="Publish">
+    <ItemGroup>
+      <_AIWorkerPublishFiles Include="..\HomePlayer.AI.Worker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
+      <_AISherpaWorkerPublishFiles Include="..\HomePlayer.AI.SherpaWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_AIWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_AISherpaWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\sherpa-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="RestoreFfmpeg" BeforeTargets="VerifyPrivateDependencies">
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(FfmpegRestoreScript)&quot;" Condition="!Exists('$(FfmpegDir)\avcodec-63.dll')" />
+  </Target>
+  <Target Name="RestoreAI" BeforeTargets="VerifyPrivateDependencies">
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(SherpaRestoreScript)&quot;" Condition="!Exists('$(MSBuildThisFileDirectory)..\..\third_party\ai\sherpa-cuda\.restored')" />
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(CudaRestoreScript)&quot;" Condition="!Exists('$(MSBuildThisFileDirectory)..\..\third_party\ai\cuda-runtime\cudart64_12.dll')" />
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(AiRestoreScript)&quot;" Condition="!Exists('$(MSBuildThisFileDirectory)..\..\third_party\ai\whisper\whisper-cli.exe') Or !Exists('$(MSBuildThisFileDirectory)..\..\third_party\ai\whisper-cuda\whisper-cli.exe') Or !Exists('$(MSBuildThisFileDirectory)..\..\third_party\ai\cuda-runtime\cudart64_12.dll')" />
   </Target>
   <Target Name="VerifyPrivateDependencies" BeforeTargets="BeforeBuild">
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(DependencyVerifyScript)&quot;" />
@@ -52,16 +90,20 @@
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
       <_FfmpegLicense Include="$(FfmpegDir)\*LICENSE*.txt" />
+      <_FfmpegExe Include="$(FfmpegDir)\ffmpeg.exe" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />
+    <Copy SourceFiles="@(_FfmpegExe)" DestinationFolder="$(TargetDir)ffmpeg" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="PublishFfmpegDlls" AfterTargets="Publish">
     <ItemGroup>
       <_FfmpegDll Include="$(FfmpegDir)\*.dll" />
       <_FfmpegLicense Include="$(FfmpegDir)\*LICENSE*.txt" />
+      <_FfmpegExe Include="$(FfmpegDir)\ffmpeg.exe" />
     </ItemGroup>
     <Copy SourceFiles="@(_FfmpegDll)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_FfmpegLicense)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" Condition="'@(_FfmpegLicense)' != ''" />
+    <Copy SourceFiles="@(_FfmpegExe)" DestinationFolder="$(PublishDir)ffmpeg" SkipUnchangedFiles="true" />
   </Target>
 </Project>

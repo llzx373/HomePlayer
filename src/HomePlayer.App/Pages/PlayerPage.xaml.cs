@@ -69,6 +69,7 @@ public sealed partial class PlayerPage : Page
     private (string? Path, string Engine)? _audioTracksKey;
     private bool _hasAudioTracks;
     private bool _windowEvents;
+    private AiSubtitleWindow? _aiSubtitleWindow;
 
     public PlayerPage()
     {
@@ -108,6 +109,7 @@ public sealed partial class PlayerPage : Page
         {
             _presenter.Clear();
             DispatcherQueue.TryEnqueue(_assPresenter.Reset);
+            RestartLiveAfterSeek();
         };
         playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
@@ -116,6 +118,7 @@ public sealed partial class PlayerPage : Page
             HideSeekPreview();
             _presenter.Clear();
             _assPresenter.Reset();
+            StopLiveSubtitles();
             SyncSnapshotButton();
         });
         PlaylistView.ItemsSource = playback.Playlist.Items;
@@ -924,6 +927,8 @@ public sealed partial class PlayerPage : Page
         foreach (var path in _subtitles.MenuSidecars)
         {
             var name = Path.GetFileName(path);
+            if (path.StartsWith(AppPaths.AiSubtitles + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                name = "AI · " + name;
             if (_subtitles.Unreadable(path))
                 name += "（无法读取）";
             SubtitleFlyout.Items.Add(SubtitleRadio(name, "sidecar|" + path, _subtitles.SidecarChecked(path)));
@@ -941,6 +946,9 @@ public sealed partial class PlayerPage : Page
         var open = new MenuFlyoutItem { Text = "打开字幕文件…" };
         open.Click += OpenSubtitleFile_Click;
         SubtitleFlyout.Items.Add(open);
+        var ai = new MenuFlyoutItem { Text = "AI 自动字幕 / 翻译…" };
+        ai.Click += OpenAiSubtitles_Click;
+        SubtitleFlyout.Items.Add(ai);
 
         SubtitleFlyout.Items.Add(new MenuFlyoutSeparator());
         SubtitleFlyout.Items.Add(new MenuFlyoutItem
@@ -1033,6 +1041,45 @@ public sealed partial class PlayerPage : Page
         FinishSubtitleChoice();
     }
 
+    private void OpenAiSubtitles_Click(object sender, RoutedEventArgs e)
+    {
+        var path = Playback.Playlist.Current?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowStatusHold("请先打开一个媒体文件。");
+            return;
+        }
+        try
+        {
+            _aiSubtitleWindow?.Close();
+            var window = new AiSubtitleWindow(path, Playback.GetAudioTracks(), Playback.AudioTrackIndex,
+                _subtitles.Sidecars, _subtitles.Embedded);
+            _aiSubtitleWindow = window;
+            Action<string> selected = subtitlePath => OnAiSubtitleSelected(path, subtitlePath);
+            window.SubtitleSelected += selected;
+            window.Closed += (_, _) =>
+            {
+                window.SubtitleSelected -= selected;
+                if (ReferenceEquals(_aiSubtitleWindow, window))
+                    _aiSubtitleWindow = null;
+            };
+            window.ShowOrActivate();
+        }
+        catch (Exception ex)
+        {
+            ShowStatusHold("无法打开 AI 字幕：" + ex.Message);
+        }
+    }
+
+    private void OnAiSubtitleSelected(string mediaPath, string path)
+    {
+        if (!string.Equals(_subtitles.VideoPath, mediaPath, StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+            return;
+        _subtitles.UseSidecar(path);
+        FinishSubtitleChoice();
+        ShowStatusHold("已启用 AI 字幕");
+    }
+
     private async void OpenSubtitleFile_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1067,6 +1114,8 @@ public sealed partial class PlayerPage : Page
 
     private void FinishSubtitleChoice()
     {
+        if (_subtitles.Mode != SubtitleSession.Choice.Live)
+            StopLiveSubtitles();
         SaveSubtitlePreference();
         if (!string.IsNullOrEmpty(_subtitles.Error) && !_subtitles.IsOff)
             ShowStatusHold(_subtitles.Error);
@@ -1161,6 +1210,7 @@ public sealed partial class PlayerPage : Page
             await LoadEmbeddedCues(_subtitles.AutoEmbedded.Index, token);
         UpdateSubtitleChrome();
         UpdateSubtitleOverlay();
+        MaybeStartLiveSubtitles();
     }
 
     private async Task LoadEmbeddedCues(int index, int? scanToken = null)

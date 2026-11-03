@@ -8,7 +8,7 @@
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
     ],
-    "created": "2026-11-02T10:25:17Z"
+    "created": "2026-11-03T04:12:15Z"
   },
   "packages": [
     {
@@ -24,7 +24,7 @@
     {
       "name": "FFmpeg",
       "SPDXID": "SPDXRef-Package-FFmpeg",
-      "versionInfo": "n9.0.2-28-g669f5ab083",
+      "versionInfo": "n9.0.2-45-g1e65c6cd5d",
       "downloadLocation": "https://github.com/BtbN/FFmpeg-Builds",
       "filesAnalyzed": true,
       "licenseConcluded": "LGPL-3.0-or-later",
@@ -36,7 +36,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
           "checksums": [
             {
-              "checksumValue": "019258d4eddcdc7fb8ccd60309ee009defa7d7d58c19b908a16b2c9b9a1bc6c0",
+              "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020",
               "algorithm": "SHA256"
             }
           ]
@@ -46,7 +46,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
           "checksums": [
             {
-              "checksumValue": "bf77d63039d610d3233dd48e9a9ea605a606732005200a7f966f3bae6e08fc60",
+              "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a",
               "algorithm": "SHA256"
             }
           ]
@@ -56,7 +56,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
           "checksums": [
             {
-              "checksumValue": "133adacad607c84f9d21f3067c7caa95ea946229c8ccbe5e025b4a5cb1782440",
+              "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf",
               "algorithm": "SHA256"
             }
           ]
@@ -66,7 +66,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
           "checksums": [
             {
-              "checksumValue": "964e7cb4fc9453fc538ca4caba8647022c81f52054cade9e080ab8510cc740d3",
+              "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c",
               "algorithm": "SHA256"
             }
           ]
@@ -76,7 +76,17 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
           "checksums": [
             {
-              "checksumValue": "168d69268ea75a732c94c0ac35d74b0203da09e16250bd7626577dddc796fe5f",
+              "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ffmpeg/ffmpeg.exe",
+          "SPDXID": "SPDXRef-File-ffmpeg-ffmpeg.exe",
+          "checksums": [
+            {
+              "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946",
               "algorithm": "SHA256"
             }
           ]
@@ -86,7 +96,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
           "checksums": [
             {
-              "checksumValue": "e2e3ebae229519f20cb58d1f14744efcf779c3d74a4d104bd871ec9758d696ad",
+              "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382",
               "algorithm": "SHA256"
             }
           ]
@@ -96,7 +106,7 @@
           "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
           "checksums": [
             {
-              "checksumValue": "f0923485e586b31465a6e4b73e889adb8dfa68602b8f745df0adf719009d527e",
+              "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789",
               "algorithm": "SHA256"
             }
           ]
@@ -216,6 +226,153 @@
       ]
     },
     {
+      "name": "whisper.cpp",
+      "SPDXID": "SPDXRef-Package-whisper.cpp",
+      "versionInfo": "v1.8.3",
+      "downloadLocation": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.8.3",
+      "filesAnalyzed": true,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/ai/whisper/ggml-base.dll",
+          "SPDXID": "SPDXRef-File-ai-whisper-ggml-base.dll",
+          "checksums": [
+            {
+              "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/whisper/ggml-cpu.dll",
+          "SPDXID": "SPDXRef-File-ai-whisper-ggml-cpu.dll",
+          "checksums": [
+            {
+              "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/whisper/ggml.dll",
+          "SPDXID": "SPDXRef-File-ai-whisper-ggml.dll",
+          "checksums": [
+            {
+              "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/whisper/SDL2.dll",
+          "SPDXID": "SPDXRef-File-ai-whisper-SDL2.dll",
+          "checksums": [
+            {
+              "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/whisper/whisper-cli.exe",
+          "SPDXID": "SPDXRef-File-ai-whisper-whisper-cli.exe",
+          "checksums": [
+            {
+              "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/whisper/whisper.dll",
+          "SPDXID": "SPDXRef-File-ai-whisper-whisper.dll",
+          "checksums": [
+            {
+              "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e",
+              "algorithm": "SHA256"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NVIDIA CUDA Runtime",
+      "SPDXID": "SPDXRef-Package-NVIDIA-CUDA-Runtime",
+      "versionInfo": "12.4",
+      "downloadLocation": "https://github.com/ggml-org/llama.cpp/releases/tag/b11960",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LicenseRef-NVIDIA-CUDA-EULA",
+      "licenseDeclared": "LicenseRef-NVIDIA-CUDA-EULA",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/ai/cuda-runtime/cublas64_12.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublas64-12.dll",
+          "checksums": [
+            {
+              "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cuda-runtime/cublasLt64_12.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublasLt64-12.dll",
+          "checksums": [
+            {
+              "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cuda-runtime/cudart64_12.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda-runtime-cudart64-12.dll",
+          "checksums": [
+            {
+              "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+              "algorithm": "SHA256"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sherpa-onnx",
+      "SPDXID": "SPDXRef-Package-sherpa-onnx",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "NVIDIA CUDA and cuDNN",
+      "SPDXID": "SPDXRef-Package-NVIDIA-CUDA-and-cuDNN",
+      "versionInfo": "12.8 / 9.8",
+      "downloadLocation": "https://developer.download.nvidia.com/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef-NVIDIA-CUDA-EULA",
+      "licenseDeclared": "LicenseRef-NVIDIA-CUDA-EULA",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "CommunityToolkit.HighPerformance",
+      "SPDXID": "SPDXRef-Package-CommunityToolkit.HighPerformance",
+      "versionInfo": "8.4.2",
+      "downloadLocation": "https://www.nuget.org/packages/CommunityToolkit.HighPerformance/8.4.2",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
       "name": "FFmpeg.AutoGen",
       "SPDXID": "SPDXRef-Package-FFmpeg.AutoGen",
       "versionInfo": "9.0.1.1",
@@ -260,6 +417,61 @@
       "files": []
     },
     {
+      "name": "LLamaSharp",
+      "SPDXID": "SPDXRef-Package-LLamaSharp",
+      "versionInfo": "0.30.0",
+      "downloadLocation": "https://www.nuget.org/packages/LLamaSharp/0.30.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "LLamaSharp.Backend.Cpu",
+      "SPDXID": "SPDXRef-Package-LLamaSharp.Backend.Cpu",
+      "versionInfo": "0.30.0",
+      "downloadLocation": "https://www.nuget.org/packages/LLamaSharp.Backend.Cpu/0.30.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "LLamaSharp.Backend.Cuda12.Windows",
+      "SPDXID": "SPDXRef-Package-LLamaSharp.Backend.Cuda12.Windows",
+      "versionInfo": "0.30.0",
+      "downloadLocation": "https://www.nuget.org/packages/LLamaSharp.Backend.Cuda12.Windows/0.30.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Bcl.AsyncInterfaces",
+      "SPDXID": "SPDXRef-Package-Microsoft.Bcl.AsyncInterfaces",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Bcl.AsyncInterfaces/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Bcl.Memory",
+      "SPDXID": "SPDXRef-Package-Microsoft.Bcl.Memory",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Bcl.Memory/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
       "name": "Microsoft.Data.Sqlite",
       "SPDXID": "SPDXRef-Package-Microsoft.Data.Sqlite",
       "versionInfo": "10.0.13",
@@ -275,6 +487,39 @@
       "SPDXID": "SPDXRef-Package-Microsoft.Data.Sqlite.Core",
       "versionInfo": "10.0.13",
       "downloadLocation": "https://www.nuget.org/packages/Microsoft.Data.Sqlite.Core/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Extensions.AI.Abstractions",
+      "SPDXID": "SPDXRef-Package-Microsoft.Extensions.AI.Abstractions",
+      "versionInfo": "10.11.0",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Extensions.AI.Abstractions/10.11.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "SPDXID": "SPDXRef-Package-Microsoft.Extensions.DependencyInjection.Abstractions",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Extensions.DependencyInjection.Abstractions/10.0.13",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "Microsoft.Extensions.Logging.Abstractions",
+      "SPDXID": "SPDXRef-Package-Microsoft.Extensions.Logging.Abstractions",
+      "versionInfo": "10.0.13",
+      "downloadLocation": "https://www.nuget.org/packages/Microsoft.Extensions.Logging.Abstractions/10.0.13",
       "filesAnalyzed": false,
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -535,6 +780,116 @@
       "files": []
     },
     {
+      "name": "org.k2fsa.sherpa.onnx",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.android-arm64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.android-arm64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.android-arm64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.android-x64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.android-x64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.android-x64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.linux-arm64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.linux-arm64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.linux-arm64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.linux-x64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.linux-x64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.linux-x64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.osx-arm64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.osx-arm64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.osx-arm64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.osx-x64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.osx-x64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.osx-x64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.win-arm64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-arm64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.win-arm64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.win-x64",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-x64",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.win-x64/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "org.k2fsa.sherpa.onnx.runtime.win-x86",
+      "SPDXID": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-x86",
+      "versionInfo": "2.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/org.k2fsa.sherpa.onnx.runtime.win-x86/2.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
       "name": "SharpGen.Runtime",
       "SPDXID": "SPDXRef-Package-SharpGen.Runtime",
       "versionInfo": "2.4.2-beta",
@@ -612,6 +967,28 @@
       "files": []
     },
     {
+      "name": "System.Interactive.Async",
+      "SPDXID": "SPDXRef-Package-System.Interactive.Async",
+      "versionInfo": "7.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/System.Interactive.Async/7.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
+      "name": "System.Linq.Async",
+      "SPDXID": "SPDXRef-Package-System.Linq.Async",
+      "versionInfo": "7.0.1",
+      "downloadLocation": "https://www.nuget.org/packages/System.Linq.Async/7.0.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
       "name": "System.Numerics.Tensors",
       "SPDXID": "SPDXRef-Package-System.Numerics.Tensors",
       "versionInfo": "9.0.0",
@@ -669,11 +1046,231 @@
   ],
   "files": [
     {
+      "fileName": "third_party/ai/cuda-runtime/cublas64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublas64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cuda-runtime/cublasLt64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublasLt64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cuda-runtime/cudart64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda-runtime-cudart64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/cublas64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-cublas64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/cublasLt64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-cublasLt64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/cudart64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-cudart64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/ggml-base.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-base.dll",
+      "checksums": [
+        {
+          "checksumValue": "fb3a4f12f90a3b44503914f2f8f1b0d89658a7b165dfbc424e157200ec4c6dd8",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/ggml-cpu.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-cpu.dll",
+      "checksums": [
+        {
+          "checksumValue": "087e9eb9d29245efd61a69190f0f56992a6b75337d837238b09ec4d84a77c29d",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/ggml-cuda.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-cuda.dll",
+      "checksums": [
+        {
+          "checksumValue": "214eecd0080f1db0d73ad0e750aa81de5c4eb22b191372bef6f3934decda5587",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/ggml.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml.dll",
+      "checksums": [
+        {
+          "checksumValue": "9679b00183036f667fdc097f7b5834852a11c654cef545c70f238285b1eca2e1",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/nvblas64_12.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvblas64-12.dll",
+      "checksums": [
+        {
+          "checksumValue": "e42a77405e6e4b1cc661dcfcddead35ec62dcf59c6f9be1a3b5fab73d1f4c616",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/nvrtc-builtins64_124.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvrtc-builtins64-124.dll",
+      "checksums": [
+        {
+          "checksumValue": "79888dba26c51475ea21fc7b47d2b9dd5b1ffaecc8e5ea22a49fa5f5a722eb43",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/nvrtc64_120_0.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvrtc64-120-0.dll",
+      "checksums": [
+        {
+          "checksumValue": "3aa3cd8aa10437e212760c0e1ed730807811ec3bc330216dbfde4b26211d2243",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/SDL2.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-SDL2.dll",
+      "checksums": [
+        {
+          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/whisper-cli.exe",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-whisper-cli.exe",
+      "checksums": [
+        {
+          "checksumValue": "bf826f8fe6f3586721952abc88ed58513feb0572544e39aeb6a303718500ba6a",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper-cuda/whisper.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-cuda-whisper.dll",
+      "checksums": [
+        {
+          "checksumValue": "532a900e74ebcc2fbc3a8bc986bd1052e7c5310e19338e6fa91d2f4c5023241e",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/ggml-base.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-ggml-base.dll",
+      "checksums": [
+        {
+          "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/ggml-cpu.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-ggml-cpu.dll",
+      "checksums": [
+        {
+          "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/ggml.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-ggml.dll",
+      "checksums": [
+        {
+          "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/SDL2.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-SDL2.dll",
+      "checksums": [
+        {
+          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/whisper-cli.exe",
+      "SPDXID": "SPDXRef-File-ai-whisper-whisper-cli.exe",
+      "checksums": [
+        {
+          "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/whisper/whisper.dll",
+      "SPDXID": "SPDXRef-File-ai-whisper-whisper.dll",
+      "checksums": [
+        {
+          "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
       "fileName": "third_party/ffmpeg/avcodec-63.dll",
       "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
       "checksums": [
         {
-          "checksumValue": "019258d4eddcdc7fb8ccd60309ee009defa7d7d58c19b908a16b2c9b9a1bc6c0",
+          "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020",
           "algorithm": "SHA256"
         }
       ]
@@ -683,7 +1280,7 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
       "checksums": [
         {
-          "checksumValue": "bf77d63039d610d3233dd48e9a9ea605a606732005200a7f966f3bae6e08fc60",
+          "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a",
           "algorithm": "SHA256"
         }
       ]
@@ -693,7 +1290,7 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
       "checksums": [
         {
-          "checksumValue": "133adacad607c84f9d21f3067c7caa95ea946229c8ccbe5e025b4a5cb1782440",
+          "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf",
           "algorithm": "SHA256"
         }
       ]
@@ -703,7 +1300,7 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
       "checksums": [
         {
-          "checksumValue": "964e7cb4fc9453fc538ca4caba8647022c81f52054cade9e080ab8510cc740d3",
+          "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c",
           "algorithm": "SHA256"
         }
       ]
@@ -713,7 +1310,17 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
       "checksums": [
         {
-          "checksumValue": "168d69268ea75a732c94c0ac35d74b0203da09e16250bd7626577dddc796fe5f",
+          "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ffmpeg/ffmpeg.exe",
+      "SPDXID": "SPDXRef-File-ffmpeg-ffmpeg.exe",
+      "checksums": [
+        {
+          "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946",
           "algorithm": "SHA256"
         }
       ]
@@ -723,7 +1330,7 @@
       "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
       "checksums": [
         {
-          "checksumValue": "e2e3ebae229519f20cb58d1f14744efcf779c3d74a4d104bd871ec9758d696ad",
+          "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382",
           "algorithm": "SHA256"
         }
       ]
@@ -733,7 +1340,7 @@
       "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
       "checksums": [
         {
-          "checksumValue": "f0923485e586b31465a6e4b73e889adb8dfa68602b8f745df0adf719009d527e",
+          "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789",
           "algorithm": "SHA256"
         }
       ]
@@ -852,6 +1459,31 @@
     },
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-whisper.cpp",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NVIDIA-CUDA-Runtime",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-sherpa-onnx",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NVIDIA-CUDA-and-cuDNN",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-CommunityToolkit.HighPerformance",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-FFmpeg.AutoGen",
       "relationshipType": "DEPENDS_ON"
     },
@@ -872,12 +1504,52 @@
     },
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-LLamaSharp",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-LLamaSharp.Backend.Cpu",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-LLamaSharp.Backend.Cuda12.Windows",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Bcl.AsyncInterfaces",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Bcl.Memory",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-Microsoft.Data.Sqlite",
       "relationshipType": "DEPENDS_ON"
     },
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-Microsoft.Data.Sqlite.Core",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Extensions.AI.Abstractions",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Extensions.DependencyInjection.Abstractions",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Microsoft.Extensions.Logging.Abstractions",
       "relationshipType": "DEPENDS_ON"
     },
     {
@@ -997,6 +1669,56 @@
     },
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.android-arm64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.android-x64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.linux-arm64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.linux-x64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.osx-arm64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.osx-x64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-arm64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-x64",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-org.k2fsa.sherpa.onnx.runtime.win-x86",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-SharpGen.Runtime",
       "relationshipType": "DEPENDS_ON"
     },
@@ -1028,6 +1750,16 @@
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-System.Drawing.Common",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-System.Interactive.Async",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-System.Linq.Async",
       "relationshipType": "DEPENDS_ON"
     },
     {

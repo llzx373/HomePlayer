@@ -255,6 +255,9 @@ public static class AppPaths
     public static string Posters => Path.Combine(Cache, "posters");
     public static string FolderThumbs => Path.Combine(Cache, "folder-thumbs");
     public static string Crashes => Path.Combine(Root, "crashes");
+    public static string AiModels => Path.Combine(Root, "ai-models");
+    public static string AiSubtitles => Path.Combine(Root, "ai-subtitles");
+    public static string AiTemp => Path.Combine(Cache, "ai-temp");
     public static string SessionLock => Path.Combine(Root, "session.lock");
     public static string LegacyCrashLog => Path.Combine(Root, "crash.log");
 
@@ -265,6 +268,7 @@ public static class AppPaths
         Directory.CreateDirectory(Posters);
         Directory.CreateDirectory(FolderThumbs);
         Directory.CreateDirectory(Crashes);
+        Directory.CreateDirectory(AiTemp);
     }
 }
 
