@@ -22,6 +22,43 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Pause_while_opening_does_not_autoplay_when_the_engine_opens()
+    {
+        var engine = new FakeEngine();
+        var opening = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        var posts = new Queue<Action>();
+        using var controller = new PlaybackController(
+            action => posts.Enqueue(action),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) =>
+            {
+                opening.Set();
+                release.Wait();
+                return (engine, "测试引擎");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+
+        var openTask = controller.PlayPathsAsync(["video.mkv"], 0);
+        Assert.True(opening.Wait(TimeSpan.FromSeconds(2)));
+        controller.Pause();
+        release.Set();
+        await openTask;
+        while (posts.Count > 0)
+            posts.Dequeue()();
+
+        Assert.False(engine.IsPlaying);
+        Assert.Equal(0, engine.PlayCount);
+        Assert.Equal("已暂停", controller.Status);
+
+        controller.TogglePlay();
+
+        Assert.True(engine.IsPlaying);
+        Assert.Equal(1, engine.PlayCount);
+    }
+
+    [Fact]
     public async Task Seek_started_precedes_manual_seek_and_is_raised_for_replay()
     {
         var engine = new FakeEngine();

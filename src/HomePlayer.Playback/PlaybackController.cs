@@ -26,6 +26,8 @@ public sealed partial class PlaybackController : IDisposable
     private int _videoHeight;
     private DateTime _openStartedUtc;
     private bool _firstFramePending;
+    // 关闭窗口/托盘时若正在异步打开，打开完成的回调不能再自动开播。
+    private bool _autoPlaySuppressed;
 
     public PlaybackController(
         Action<Action> post,
@@ -134,6 +136,7 @@ public sealed partial class PlaybackController : IDisposable
         PlaybackRoute? route = null)
     {
         var selectedRoute = route ?? (forceFfmpeg ? PlaybackRoute.NativeFfmpeg : PlaybackRoute.Auto);
+        _autoPlaySuppressed = false;
         RememberPosition();
         var playing = _playingPath;
         Playlist.Replace(paths, start);
@@ -167,6 +170,7 @@ public sealed partial class PlaybackController : IDisposable
         Notify();
         if (idle && Playlist.Items.Count > 0)
         {
+            _autoPlaySuppressed = false;
             Playlist.CurrentIndex = 0;
             _ = PlayCurrentAsync(PlaybackRoute.Auto);
         }
@@ -176,6 +180,7 @@ public sealed partial class PlaybackController : IDisposable
     {
         if (_engine == null)
         {
+            _autoPlaySuppressed = false;
             if (Playlist.Current != null)
                 _ = PlayCurrentAsync(PlaybackRoute.Auto);
             return;
@@ -183,20 +188,21 @@ public sealed partial class PlaybackController : IDisposable
 
         if (_engine.IsPlaying)
         {
-            _engine.Pause();
+            Pause();
+            return;
         }
-        else
-        {
-            if (Status == "播放结束")
-                SeekEngine(_engine, TimeSpan.Zero);
-            _engine.Play();
-        }
+
+        _autoPlaySuppressed = false;
+        if (Status == "播放结束")
+            SeekEngine(_engine, TimeSpan.Zero);
+        _engine.Play();
 
         Notify();
     }
 
     public void Pause()
     {
+        _autoPlaySuppressed = true;
         if (_engine?.IsPlaying != true)
             return;
         _engine.Pause();
@@ -206,6 +212,7 @@ public sealed partial class PlaybackController : IDisposable
 
     public void Stop()
     {
+        _autoPlaySuppressed = false;
         RememberPosition();
         _store?.Flush();
         _token++;
@@ -239,10 +246,15 @@ public sealed partial class PlaybackController : IDisposable
         return Task.Run(() => Discard(engine));
     }
 
-    public Task NextAsync() => MoveAsync(Playlist.NextIndex(false));
+    public Task NextAsync()
+    {
+        _autoPlaySuppressed = false;
+        return MoveAsync(Playlist.NextIndex(false));
+    }
 
     public Task PreviousAsync()
     {
+        _autoPlaySuppressed = false;
         if (Position.TotalSeconds > 3)
         {
             SeekEngine(_engine, TimeSpan.Zero);
@@ -257,6 +269,7 @@ public sealed partial class PlaybackController : IDisposable
     {
         if (index < 0 || index >= Playlist.Items.Count)
             return Task.CompletedTask;
+        _autoPlaySuppressed = false;
         Playlist.CurrentIndex = index;
         return PlayCurrentAsync(PlaybackRoute.Auto);
     }
@@ -482,12 +495,19 @@ public sealed partial class PlaybackController : IDisposable
                         ApplyPlaybackPreferences(engine, item.Path);
                         if (!restart)
                             ApplyResume(engine, item.Path);
-                        engine.Play();
-                        Status = recovery ? "播放已恢复" : _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
-                            ? "当前滤镜不支持倍速"
-                            : InnerEngine(engine) is LavPlaybackEngine { AudioMissing: true }
-                                ? "正在播放，音频没有接上"
-                                : "正在播放");
+                        if (_autoPlaySuppressed)
+                        {
+                            Status = "已暂停";
+                        }
+                        else
+                        {
+                            engine.Play();
+                            Status = recovery ? "播放已恢复" : _audioFallbackNotice ?? (Math.Abs(engine.Rate - _rate) > 0.01
+                                ? "当前滤镜不支持倍速"
+                                : InnerEngine(engine) is LavPlaybackEngine { AudioMissing: true }
+                                    ? "正在播放，音频没有接上"
+                                    : "正在播放");
+                        }
                         _audioFallbackNotice = null;
                         EngineLabel = engine.Name;
                         CaptureVideoSize(engine);
@@ -662,7 +682,7 @@ public sealed partial class PlaybackController : IDisposable
         {
             if (token != _token)
                 return;
-            var next = AutoAdvance ? Playlist.NextIndex(true) : null;
+            var next = AutoAdvance && !_autoPlaySuppressed ? Playlist.NextIndex(true) : null;
             if (next == null)
             {
                 if (path != null)
