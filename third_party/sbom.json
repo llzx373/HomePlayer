@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "HomePlayer-0.3.0-3",
-  "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-3",
+  "name": "HomePlayer-0.3.0-4",
+  "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-4",
   "creationInfo": {
-    "created": "2026-11-03T10:55:55Z",
+    "created": "2026-11-03T13:57:54Z",
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
     ]
@@ -14,7 +14,7 @@
     {
       "name": "HomePlayer",
       "SPDXID": "SPDXRef-Package-HomePlayer",
-      "versionInfo": "0.3.0-3",
+      "versionInfo": "0.3.0-4",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "MIT",
