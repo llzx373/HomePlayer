@@ -40,6 +40,7 @@ public sealed partial class AppSettings
     public string AiModelDirectory { get; set; } = "";
     public string DataDirectory { get; set; } = "";
     public string PendingDataMigrationSource { get; set; } = "";
+    public string PreviousDataDirectory { get; set; } = "";
     public string AiComputeDevice { get; set; } = "auto";
     public string AiRecognitionEngine { get; set; } = "sherpa";
     public string AiRecognitionModel { get; set; } = "whisper-small";

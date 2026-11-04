@@ -277,6 +277,7 @@ public static class AppPaths
         {
             DataDirectoryMigration.MoveData(source, Root, Path.GetFileName(SettingsFile));
             settings.PendingDataMigrationSource = "";
+            settings.PreviousDataDirectory = Path.GetFullPath(source);
             store.Save(settings);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)

@@ -2,7 +2,7 @@
 ; 先发布 dist\，再编译本文件。也可直接运行 installer\build.ps1。
 
 #ifndef AppVersion
-  #define AppVersion "0.3.0-10"
+  #define AppVersion "0.3.0-11"
 #endif
 
 #define AppName "HomePlayer"

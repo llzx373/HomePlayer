@@ -41,6 +41,33 @@ public sealed class AppHost : IAsyncDisposable
 
     public void InvalidateCodecPlan() => _codecPlans.Invalidate();
 
+    private static string? RewriteCachePaths(AppSettings settings, SettingsStore store, bool preserveBackup)
+    {
+        var previous = settings.PreviousDataDirectory;
+        if (string.IsNullOrWhiteSpace(previous)
+            && !string.Equals(
+                Path.GetFullPath(AppPaths.DefaultRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(AppPaths.Root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+            previous = AppPaths.DefaultRoot;
+        if (string.IsNullOrWhiteSpace(previous))
+            return null;
+        try
+        {
+            CachePathMigration.Rewrite(AppPaths.Database, previous, AppPaths.Root);
+            if (!string.IsNullOrWhiteSpace(settings.PreviousDataDirectory))
+            {
+                settings.PreviousDataDirectory = "";
+                store.Save(settings, preserveBackup);
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            return "缓存路径迁移未完成：" + ex.Message;
+        }
+    }
+
     public void SetAiModelDirectory(string? directory)
     {
         Settings.AiModelDirectory = string.IsNullOrWhiteSpace(directory) ? "" : Path.GetFullPath(directory);
@@ -73,6 +100,7 @@ public sealed class AppHost : IAsyncDisposable
             settings.SettingsVersion = 2;
             settingsStore.Save(settings, loaded.Warning != null);
         }
+        var cacheWarning = RewriteCachePaths(settings, settingsStore, loaded.Warning != null);
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
         var codecPlans = new CodecPlanCache(() => settings);
@@ -90,7 +118,7 @@ public sealed class AppHost : IAsyncDisposable
         playback.SetVolume(settings.Volume);
         if (settings.RestorePlaylist && settings.LastPlaylist.Count > 0)
             playback.RestorePlaylist(settings.LastPlaylist, settings.LastPlaylistIndex);
-        var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning, AppPaths.MigrationWarning }.Where(item => item != null));
+        var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning, cacheWarning, AppPaths.MigrationWarning }.Where(item => item != null));
         var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore,
             warning.Length > 0 ? warning : null);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;
