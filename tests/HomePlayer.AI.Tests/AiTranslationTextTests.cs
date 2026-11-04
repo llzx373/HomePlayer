@@ -23,6 +23,14 @@ public class AiTranslationTextTests
     }
 
     [Fact]
+    public void CleanModelOutput_strips_think_blocks_control_tokens_and_prefix()
+    {
+        var text = AiTranslationText.CleanModelOutput("<think>草稿</think><|extra_0|>翻译：你好<|eos|>");
+
+        Assert.Equal("你好", text);
+    }
+
+    [Fact]
     public void Prompt_omits_auto_source_and_requires_target_language_only()
     {
         var prompt = AiTranslationText.Prompt([new(0, "おはよう")], "", "zh");

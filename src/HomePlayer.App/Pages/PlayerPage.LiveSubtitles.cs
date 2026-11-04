@@ -95,7 +95,8 @@ public sealed partial class PlayerPage
                     path, audioTrack, device, startSeconds,
                     null,
                     cue => DispatcherQueue.TryEnqueue(() => AddLiveCue(generation, path, cue, translation, bilingual, task.Token)),
-                    task.Token);
+                    task.Token,
+                    realtime: true);
                 if (generation == _liveSubtitleGeneration && cues.Count > 0)
                     await FinishLiveSubtitlesAsync(generation, path, translation, task.Token);
             }

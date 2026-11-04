@@ -17,7 +17,8 @@ public sealed record AiModelInfo(
     string FileName,
     long Size,
     string Sha256,
-    string License)
+    string License,
+    string? DownloadUrl = null)
 {
     public string LocalFileName => FileName;
 }
@@ -39,12 +40,19 @@ public static class AiSubtitleCatalog
         new("whisper-large-v3-turbo-q5", AiModelKind.Recognition, "Whisper Large V3 Turbo Q5 · 更高质量（548 MB）",
             "ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-large-v3-turbo-q5_0.bin", 574_041_195,
             "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", "MIT"),
+        new("hy-mt2-7b-q4", AiModelKind.Translation, "Hy-MT2 7B Q4_K_M · 多语言本地翻译（4.3 GB）",
+            "tencent/Hy-MT2-7B-GGUF", "ab8472660ac61fac25f1af43fac2599d52a8a775", "Hy-MT2-7B-Q4_K_M.gguf", 4_624_648_896,
+            "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b", "Apache-2.0"),
         new("qwen3-4b-q4", AiModelKind.Translation, "Qwen3 4B Q4_K_M · 多语言本地翻译（2.33 GB）",
             "Qwen/Qwen3-4B-GGUF", "bc640142c66e1fdd12af0bd68f40445458f3869b", "Qwen3-4B-Q4_K_M.gguf", 2_497_280_256,
             "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5", "Apache-2.0"),
         new("silero-vad", AiModelKind.VoiceActivityDetection, "Silero VAD · 语音区间检测",
             "ggml-org/whisper-vad", "9ffd54a1e1ee413ddf265af9913beaf518d1639b", "ggml-silero-v6.2.0.bin", 885_098,
             "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987", "MIT"),
+        new("silero-vad-onnx", AiModelKind.VoiceActivityDetection, "Silero VAD ONNX · SenseVoice 语音区间检测",
+            "k2-fsa/sherpa-onnx", "asr-models", "silero_vad.onnx", 643_854,
+            "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6", "MIT",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"),
         new("sensevoice-model", AiModelKind.SenseVoiceComponent, "SenseVoice Int8 模型",
             "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", "2365baeacb507f821a0c8120fcee3d484dba7a07", "model.int8.onnx", 239_233_841,
             "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51", "MIT"),

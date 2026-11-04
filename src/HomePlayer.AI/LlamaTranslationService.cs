@@ -76,6 +76,12 @@ public sealed class LlamaTranslationService(AiModelManager models)
                 var batch = batches[batchIndex];
                 var inputs = batch.Select((cue, offset) => new SubtitleTranslationInput(offset, cue.Text)).ToArray();
                 var map = AiTranslationText.Parse(output, inputs.Select(input => input.Id));
+                if (map.Count != inputs.Length && inputs.Length == 1)
+                {
+                    var single = AiTranslationText.CleanModelOutput(output);
+                    if (!string.IsNullOrWhiteSpace(single))
+                        map = new Dictionary<int, string> { [inputs[0].Id] = single };
+                }
                 if (map.Count != inputs.Length)
                     throw new InvalidOperationException("翻译结果缺少条目或 ID 不匹配，已停止保存以避免字幕错位。");
                 for (var cueIndex = 0; cueIndex < batch.Count; cueIndex++)

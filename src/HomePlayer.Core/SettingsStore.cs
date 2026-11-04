@@ -66,8 +66,16 @@ public sealed class SettingsStore(string path)
         }
     }
 
+    private const int CurrentSettingsVersion = 1;
+
     private static AppSettings WithHotkeys(AppSettings settings)
     {
+        if (settings.SettingsVersion < CurrentSettingsVersion)
+        {
+            if (settings.AiTranslationModel == "qwen3-4b-q4")
+                settings.AiTranslationModel = "hy-mt2-7b-q4";
+            settings.SettingsVersion = CurrentSettingsVersion;
+        }
         settings.Hotkeys = HotkeyCatalog.Merge(settings.Hotkeys);
         return settings;
     }

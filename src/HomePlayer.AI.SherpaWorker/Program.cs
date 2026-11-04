@@ -16,6 +16,7 @@ config.ModelConfig.Provider = job.UseCuda ? "cuda" : "cpu";
 config.ModelConfig.NumThreads = 2;
 config.ModelConfig.Debug = 0;
 using var recognizer = new OfflineRecognizer(config);
+using var vad = CreateVad(job.ModelDirectory);
 while (!File.Exists(job.AudioPath))
 {
     if (File.Exists(job.AudioPath + ".error"))
@@ -38,7 +39,7 @@ while (true)
     audio.Position += length + length % 2;
 }
 
-var segmenter = new SilenceSegmenter(job.MinChunkSeconds, job.MaxChunkSeconds);
+var segmenter = new SilenceSegmenter(job.MinChunkSeconds, job.MaxChunkSeconds, vad, job.Realtime);
 var pending = new List<float>(16000 * 32);
 var pendingStart = 0L;
 var chunkIndex = 0;
@@ -80,17 +81,41 @@ void Emit(List<float> buffer, int count, long startSample)
     buffer.CopyTo(0, samples, 0, count);
     if (segmenter.SpeechBounds(samples) is not { } speech)
         return;
-    var audio = new float[speech.End - speech.Start];
-    Array.Copy(samples, speech.Start, audio, 0, audio.Length);
+    var audioChunk = new float[speech.End - speech.Start];
+    Array.Copy(samples, speech.Start, audioChunk, 0, audioChunk.Length);
     using var stream = recognizer.CreateStream();
-    stream.AcceptWaveform(16000, audio);
+    stream.AcceptWaveform(16000, audioChunk);
     recognizer.Decode(stream);
-    var text = Sanitize(stream.Result.Text);
     Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
         chunkIndex++,
         job.StartSeconds + (double)(startSample + speech.Start) / 16000,
         job.StartSeconds + (double)(startSample + speech.End) / 16000,
-        text)));
+        Sanitize(stream.Result.Text))));
+}
+
+static VoiceActivityDetector? CreateVad(string modelDirectory)
+{
+    var path = Path.Combine(modelDirectory, "silero_vad.onnx");
+    if (!File.Exists(path))
+        return null;
+    try
+    {
+        var config = new VadModelConfig();
+        config.SileroVad.Model = path;
+        config.SileroVad.Threshold = 0.5f;
+        config.SileroVad.MinSilenceDuration = 0.25f;
+        config.SileroVad.MinSpeechDuration = 0.25f;
+        config.SileroVad.MaxSpeechDuration = 20f;
+        config.SileroVad.WindowSize = 512;
+        config.SampleRate = 16000;
+        config.NumThreads = 1;
+        config.Provider = "cpu";
+        return new VoiceActivityDetector(config, 60f);
+    }
+    catch
+    {
+        return null;
+    }
 }
 
 static async Task<byte[]> ReadExactAsync(Stream audio, int count, string path)
@@ -144,10 +169,10 @@ static string Sanitize(string? text)
     return "";
 }
 
-public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda);
+public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime);
 public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text);
 
-internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSeconds)
+internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSeconds, VoiceActivityDetector? vad, bool realtime)
 {
     private const int SampleRate = 16000;
     private const int Hop = 160;
@@ -169,8 +194,7 @@ internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSe
         var noise = Math.Clamp(Percentile(frames, 0.15f), 0.006f, 0.025f);
         var silence = Math.Max(0.012f, noise * 1.05f);
 
-        var bestCut = -1;
-        var longest = 0;
+        var candidates = new List<(int Cut, int Run)>();
         var runStart = -1;
         for (var frame = 0; frame <= frames.Length; frame++)
         {
@@ -190,17 +214,26 @@ internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSe
             if (runLength >= MinimumSilenceFrames && middleSeconds >= minChunkSeconds
                 && middleSeconds <= maxChunkSeconds && (confirmed || endOfAudio))
             {
-                if (runLength > longest)
-                {
-                    longest = runLength;
-                    bestCut = middle * Hop;
-                }
+                candidates.Add((middle * Hop, runLength));
             }
             runStart = -1;
         }
 
-        if (bestCut > 0)
-            return Math.Min(bestCut, samples.Count);
+        candidates.Sort(realtime
+            ? (left, right) => left.Cut.CompareTo(right.Cut)
+            : (left, right) => right.Run.CompareTo(left.Run));
+        if (candidates.Count > 0)
+        {
+            if (vad == null)
+                return Math.Min(candidates[0].Cut, samples.Count);
+            foreach (var candidate in candidates.Take(2))
+            {
+                if (VadHasGapAround(samples, candidate.Cut))
+                    return Math.Min(candidate.Cut, samples.Count);
+            }
+            return Math.Min(candidates[0].Cut, samples.Count);
+        }
+
         if (endOfAudio || duration >= maxChunkSeconds)
             return Math.Min(samples.Count, (int)(maxChunkSeconds * SampleRate));
         return 0;
@@ -230,6 +263,74 @@ internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSe
         var start = Math.Max(0, first * Hop - 1600);
         var end = Math.Min(samples.Count, last * Hop + Window + 3200);
         return end > start ? (start, end) : null;
+    }
+
+    private bool VadHasGapAround(List<float> samples, int cutSample)
+    {
+        if (vad == null)
+            return true;
+        var from = Math.Max(0, cutSample - SampleRate * 6 / 5);
+        var to = Math.Min(samples.Count, cutSample + SampleRate * 4 / 5);
+        if (to - from < SampleRate / 2)
+            return true;
+        var window = new float[to - from];
+        for (var index = 0; index < window.Length; index++)
+            window[index] = samples[from + index];
+        var segments = VadSegments(window);
+        if (segments.Count == 0)
+            return true;
+        var cutSeconds = (cutSample - from) / (double)SampleRate;
+        var previousEnd = 0.0;
+        foreach (var (start, end) in segments)
+        {
+            if (cutSeconds >= previousEnd && cutSeconds <= start)
+                return true;
+            previousEnd = Math.Max(previousEnd, end);
+        }
+        return cutSeconds >= previousEnd;
+    }
+
+    private List<(double Start, double End)> VadSegments(IReadOnlyList<float> samples)
+    {
+        var result = new List<(double Start, double End)>();
+        if (vad == null)
+            return result;
+        try
+        {
+            vad.Reset();
+            var total = 0;
+            const int block = 8000;
+            while (total < samples.Count)
+            {
+                var count = Math.Min(block, samples.Count - total);
+                var part = new float[count];
+                for (var index = 0; index < count; index++)
+                    part[index] = samples[total + index];
+                vad.AcceptWaveform(part);
+                total += count;
+                Drain();
+            }
+            vad.Flush();
+            Drain();
+        }
+        catch (Exception)
+        {
+            result.Clear();
+        }
+        return result;
+
+        void Drain()
+        {
+            while (!vad.IsEmpty())
+            {
+                var segment = vad.Front();
+                vad.Pop();
+                var start = segment.Start / (double)SampleRate;
+                var end = (segment.Start + segment.Samples.Length) / (double)SampleRate;
+                if (end > start)
+                    result.Add((start, end));
+            }
+        }
     }
 
     private static float[] FrameRms(IReadOnlyList<float> samples)

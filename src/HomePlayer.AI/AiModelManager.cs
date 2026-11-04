@@ -48,19 +48,30 @@ public sealed class AiModelManager
         var temporary = path + ".download";
         if (string.IsNullOrWhiteSpace(mirror))
             mirror = AiSubtitleCatalog.DefaultMirror;
-        var bases = new[] { mirror.TrimEnd('/'), "https://huggingface.co" }
-            .Where(value => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (bases.Length == 0)
-            throw new InvalidOperationException("模型镜像地址无效。");
+        var urls = new List<string>();
+        if (!string.IsNullOrWhiteSpace(model.DownloadUrl))
+        {
+            if (!Uri.TryCreate(model.DownloadUrl, UriKind.Absolute, out var direct) || direct.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("模型下载地址无效。");
+            urls.Add(model.DownloadUrl);
+        }
+        else
+        {
+            var bases = new[] { mirror.TrimEnd('/'), "https://huggingface.co" }
+                .Where(value => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (bases.Length == 0)
+                throw new InvalidOperationException("模型镜像地址无效。");
+            foreach (var baseUrl in bases)
+                urls.Add($"{baseUrl}/{model.Repository}/resolve/{model.Revision}/{model.FileName}");
+        }
 
         Exception? last = null;
-        foreach (var baseUrl in bases)
+        foreach (var url in urls)
         {
             try
             {
-                var url = $"{baseUrl}/{model.Repository}/resolve/{model.Revision}/{model.FileName}";
                 await DownloadAsync(url, temporary, model.Size, progress, cancellationToken);
                 await VerifyAsync(model, temporary, cancellationToken);
                 File.Move(temporary, path, true);

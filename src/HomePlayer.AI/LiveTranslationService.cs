@@ -88,9 +88,12 @@ public sealed class LiveTranslationService : IAsyncDisposable
             });
             var output = await completion.Task.WaitAsync(cancellationToken);
             var parsed = AiTranslationText.Parse(output, [0]);
-            if (!parsed.TryGetValue(0, out var translated) || string.IsNullOrWhiteSpace(translated))
-                throw new InvalidOperationException("翻译结果无法解析。");
-            return translated.Trim();
+            if (parsed.TryGetValue(0, out var translated) && !string.IsNullOrWhiteSpace(translated))
+                return translated.Trim();
+            var cleaned = AiTranslationText.CleanModelOutput(output);
+            if (!string.IsNullOrWhiteSpace(cleaned))
+                return cleaned;
+            throw new InvalidOperationException("翻译结果无法解析。");
         }
         catch
         {
@@ -102,14 +105,57 @@ public sealed class LiveTranslationService : IAsyncDisposable
     private bool NeedsRetry(string translated, string source)
     {
         var target = _targetLanguage.Split('-', '_')[0];
-        if (target == "ja")
+        if (target != "ja" && ContainsForeignScript(translated, '\u3040', '\u30ff'))
+            return true;
+        if (target != "ko" && ContainsForeignScript(translated, '\uac00', '\ud7af'))
+            return true;
+        return !string.IsNullOrWhiteSpace(source)
+            && !LooksLikeTarget(source, target)
+            && Normalized(translated) == Normalized(source);
+    }
+
+    private static bool LooksLikeTarget(string text, string target)
+    {
+        var kana = CountRange(text, '\u3040', '\u30ff');
+        var hangul = CountRange(text, '\uac00', '\ud7af');
+        var han = CountRange(text, '\u3400', '\u9fff');
+        var latin = text.Count(character => character is >= 'A' and <= 'Z' || character is >= 'a' and <= 'z');
+        var letters = text.Count(char.IsLetterOrDigit);
+        if (letters == 0)
             return false;
-        foreach (var character in translated)
+        return target switch
         {
-            if (character is >= '\u3040' and <= '\u30ff')
-                return true;
+            "zh" => kana == 0 && hangul == 0 && han * 2 >= letters,
+            "ja" => kana > 0,
+            "ko" => hangul * 2 >= letters,
+            "en" => latin * 2 >= letters,
+            _ => false
+        };
+    }
+
+    private static int CountRange(string text, char first, char last)
+    {
+        var count = 0;
+        foreach (var character in text)
+        {
+            if (character >= first && character <= last)
+                count++;
         }
-        return !string.IsNullOrWhiteSpace(source) && Normalized(translated) == Normalized(source);
+        return count;
+    }
+
+    private static bool ContainsForeignScript(string text, char first, char last)
+    {
+        var foreign = 0;
+        var letters = 0;
+        foreach (var character in text)
+        {
+            if (character >= first && character <= last)
+                foreign++;
+            if (char.IsLetterOrDigit(character))
+                letters++;
+        }
+        return foreign >= 3 && letters > 0 && foreign * 10 >= letters * 3;
     }
 
     private static string Normalized(string text) =>

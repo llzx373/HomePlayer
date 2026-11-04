@@ -23,6 +23,21 @@ public static partial class AiTranslationText
         return builder.ToString();
     }
 
+    public static string CleanModelOutput(string output)
+    {
+        var text = ThinkBlock().Replace(output ?? "", "");
+        text = ControlToken().Replace(text, "").Trim();
+        foreach (var prefix in new[] { "翻译：", "翻译:", "译文：", "译文:", "Translation:", "Translation：" })
+        {
+            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                text = text[prefix.Length..].TrimStart();
+                break;
+            }
+        }
+        return text.Trim();
+    }
+
     public static IReadOnlyDictionary<int, string> Parse(string output, IEnumerable<int> expectedIds)
     {
         var expected = expectedIds.ToHashSet();
@@ -41,6 +56,12 @@ public static partial class AiTranslationText
 
     [GeneratedRegex(@"@@(\d+)@@(.*?)(?=^@@\d+@@|\z)", RegexOptions.CultureInvariant | RegexOptions.Singleline | RegexOptions.Multiline)]
     private static partial Regex Entry();
+
+    [GeneratedRegex(@"<think>.*?</think>", RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+    private static partial Regex ThinkBlock();
+
+    [GeneratedRegex(@"<\|[^|]*\|>", RegexOptions.CultureInvariant)]
+    private static partial Regex ControlToken();
 }
 
 public sealed record SubtitleTranslationInput(int Id, string Text);

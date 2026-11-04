@@ -16,6 +16,7 @@ public enum VideoOutputRange
 
 public sealed partial class AppSettings
 {
+    public int SettingsVersion { get; set; }
     public bool RestorePlaylist { get; set; } = true;
     public int ResumeRewindSeconds { get; set; } = 5;
     public bool RememberVolumePerFile { get; set; }
@@ -39,7 +40,7 @@ public sealed partial class AppSettings
     public string AiComputeDevice { get; set; } = "auto";
     public string AiRecognitionEngine { get; set; } = "sherpa";
     public string AiRecognitionModel { get; set; } = "whisper-small";
-    public string AiTranslationModel { get; set; } = "qwen3-4b-q4";
+    public string AiTranslationModel { get; set; } = "hy-mt2-7b-q4";
     public string AiSourceLanguage { get; set; } = "";
     public string AiTargetLanguage { get; set; } = "zh";
     public bool AiTranslateAfterGeneration { get; set; }

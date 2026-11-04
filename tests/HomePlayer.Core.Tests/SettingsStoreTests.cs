@@ -54,6 +54,33 @@ public class SettingsStoreTests
         }
     }
 
+    [Fact]
+    public void Legacy_settings_migrate_the_default_translation_model_once()
+    {
+        var directory = NewDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, "{\"AiTranslationModel\":\"qwen3-4b-q4\"}");
+            var store = new SettingsStore(path);
+
+            var loaded = store.Load();
+
+            Assert.Equal("hy-mt2-7b-q4", loaded.Settings.AiTranslationModel);
+            Assert.Equal(1, loaded.Settings.SettingsVersion);
+
+            store.Save(loaded.Settings);
+            loaded.Settings.AiTranslationModel = "qwen3-4b-q4";
+            store.Save(loaded.Settings);
+
+            Assert.Equal("qwen3-4b-q4", store.Load().Settings.AiTranslationModel);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static string NewDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "HomePlayer.Tests." + Guid.NewGuid().ToString("N"));
