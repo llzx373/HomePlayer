@@ -32,9 +32,7 @@ public sealed class LiveSubtitleBuffer
         {
             if (current.Final && !update.Final)
                 return false;
-            if (current.Final == update.Final
-                && current.Cues.Count == update.Cues.Count
-                && current.Cues.SequenceEqual(update.Cues))
+            if (current.Final == update.Final && SameCues(current.Cues, update.Cues))
                 return false;
         }
 
@@ -75,6 +73,20 @@ public sealed class LiveSubtitleBuffer
             foreach (var cue in segment.Cues)
                 _provisional.Add(cue);
         }
+    }
+
+    private static bool SameCues(IReadOnlyList<SubtitleCue> left, IReadOnlyList<SubtitleCue> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+        for (var index = 0; index < left.Count; index++)
+        {
+            if (left[index].Start != right[index].Start
+                || left[index].End != right[index].End
+                || !string.Equals(left[index].Text, right[index].Text, StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     private sealed record Segment(bool Final, IReadOnlyList<SubtitleCue> Cues);
