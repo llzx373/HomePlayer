@@ -12,10 +12,10 @@ public static class DataBackup
     private const string SettingsName = "settings.json";
     private const string ManifestName = "manifest.json";
 
-    public static void CreateAutomaticBackup(string root)
+    public static void CreateAutomaticBackup(string root, string? settingsPath = null)
     {
         var database = Path.Combine(root, DatabaseName);
-        var settings = Path.Combine(root, SettingsName);
+        var settings = settingsPath ?? Path.Combine(root, SettingsName);
         if (!File.Exists(database) && !File.Exists(settings))
             return;
         var backups = Path.Combine(root, "backups");
@@ -104,7 +104,7 @@ public static class DataBackup
         }
     }
 
-    public static bool ApplyPendingRestore(string root)
+    public static bool ApplyPendingRestore(string root, string? settingsPath = null)
     {
         var pending = Path.Combine(root, "pending-restore");
         var sourceDatabase = Path.Combine(pending, DatabaseName);
@@ -119,7 +119,7 @@ public static class DataBackup
         var safety = Path.Combine(root, "backups", "before-restore-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff"));
         Directory.CreateDirectory(safety);
         var database = Path.Combine(root, DatabaseName);
-        var settings = Path.Combine(root, SettingsName);
+        var settings = settingsPath ?? Path.Combine(root, SettingsName);
         if (File.Exists(database))
             SnapshotDatabase(database, Path.Combine(safety, DatabaseName));
         if (File.Exists(settings))
@@ -129,7 +129,22 @@ public static class DataBackup
         DeleteFile(database + "-shm");
         ReplaceFile(sourceDatabase, database);
         if (File.Exists(sourceSettings))
+        {
+            var restored = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(sourceSettings))
+                ?? throw new InvalidDataException("待恢复设置无效。");
+            if (File.Exists(settings))
+            {
+                var current = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(settings));
+                if (current != null)
+                {
+                    restored.AiModelDirectory = current.AiModelDirectory;
+                    restored.DataDirectory = current.DataDirectory;
+                    restored.PendingDataMigrationSource = current.PendingDataMigrationSource;
+                }
+            }
+            File.WriteAllText(sourceSettings, JsonSerializer.Serialize(restored, new JsonSerializerOptions { WriteIndented = true }));
             ReplaceFile(sourceSettings, settings);
+        }
         DeleteDirectory(pending);
         return true;
     }

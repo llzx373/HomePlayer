@@ -152,7 +152,7 @@ public sealed class VideoPresenter : IDisposable
     {
         try
         {
-            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
+            var directory = HomePlayer.Core.AppPaths.Root;
             Directory.CreateDirectory(directory);
             lock (TraceGate)
                 File.AppendAllText(Path.Combine(directory, "render.log"), $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");

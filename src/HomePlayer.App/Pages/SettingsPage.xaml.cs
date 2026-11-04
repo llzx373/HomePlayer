@@ -109,6 +109,7 @@ public sealed partial class SettingsPage : Page
                 InitializePlaybackFeatureSettings();
                 InitializeRefreshRateSettings();
                 InitializeAiSettings();
+                UpdateDataPathText();
             }
             finally
             {
@@ -261,6 +262,95 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex)
         {
             await Message("无法打开模型文件夹：" + ex.Message);
+        }
+    }
+
+    private void UpdateDataPathText()
+    {
+        var current = AppPaths.Root;
+        var configured = App.Host.Settings.DataDirectory;
+        var pending = App.Host.Settings.PendingDataMigrationSource;
+        var target = string.IsNullOrWhiteSpace(configured) ? AppPaths.DefaultRoot : configured;
+        DataPathText.Text = !string.IsNullOrWhiteSpace(pending)
+            ? $"当前：{current}\n下次启动迁移到：{target}"
+            : string.IsNullOrWhiteSpace(configured) ? $"{current}（默认）" : current;
+        ResetDataPathButton.IsEnabled = !string.IsNullOrWhiteSpace(configured) || !string.IsNullOrWhiteSpace(pending);
+    }
+
+    private async void ChangeDataPath_Click(object sender, RoutedEventArgs e)
+    {
+        string? folder;
+        try
+        {
+            folder = await FolderDialog.PickAsync("选择应用数据文件夹");
+        }
+        catch (Exception ex)
+        {
+            await Message("无法选择文件夹：" + ex.Message);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(folder))
+            return;
+        var current = AppPaths.Root;
+        var target = Path.GetFullPath(folder);
+        if (string.Equals(target, current, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (IsWithin(current, target) || IsWithin(target, current))
+        {
+            await Message("新位置不能和当前数据目录互相包含，请选择其他文件夹。");
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "更改数据存储位置",
+            Content = $"数据库、缓存、崩溃日志和备份会迁移到：\n{target}\n\n更改在下次启动时生效；迁移完成后旧位置的这些数据会被删除，设置文件仍保留在默认目录。",
+            PrimaryButtonText = "保存",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        App.Host.Settings.DataDirectory = target;
+        App.Host.Settings.PendingDataMigrationSource = current;
+        SaveSettings();
+        UpdateDataPathText();
+        await Message("已记录新的数据位置。请退出并重新打开 HomePlayer 完成迁移。");
+    }
+
+    private async void ResetDataPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(App.Host.Settings.DataDirectory)
+            && string.IsNullOrWhiteSpace(App.Host.Settings.PendingDataMigrationSource))
+            return;
+        var dialog = new ContentDialog
+        {
+            Title = "恢复默认位置",
+            Content = $"改回默认数据目录？下次启动会把数据库、缓存、日志和备份迁移到：\n{AppPaths.DefaultRoot}",
+            PrimaryButtonText = "恢复默认",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        App.Host.Settings.DataDirectory = "";
+        App.Host.Settings.PendingDataMigrationSource = AppPaths.Root;
+        SaveSettings();
+        UpdateDataPathText();
+        await Message("已记录恢复默认位置。请退出并重新打开 HomePlayer 完成迁移。");
+    }
+
+    private async void OpenDataFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.Root);
+            System.Diagnostics.Process.Start("explorer.exe", $"\"{AppPaths.Root}\"");
+        }
+        catch (Exception ex)
+        {
+            await Message("无法打开数据目录：" + ex.Message);
         }
     }
 

@@ -379,6 +379,14 @@
                         <Border Style="{StaticResource SettingsCardStyle}" Margin="0,16,0,0" HorizontalAlignment="Stretch">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="存储与诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="数据存储位置" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="DataPathText" Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="更改位置…" Click="ChangeDataPath_Click" />
+                                    <Button Content="打开数据目录" Click="OpenDataFolder_Click" />
+                                    <Button x:Name="ResetDataPathButton" Content="恢复默认位置" Click="ResetDataPath_Click" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="数据库、缓存、崩溃日志和备份会存放在这里；模型位置仍在 AI 字幕页单独设置。更改后需要退出并重新打开 HomePlayer，应用会在下次启动时迁移数据。" TextWrapping="Wrap" />
                                 <TextBlock Text="数据备份" Style="{ThemeResource SubtitleTextBlockStyle}" />
                                 <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="备份包包含媒体库、观看进度、播放偏好和设置；其中也会包含本机 TMDB API Key。每次启动还会自动保留最近两代备份。" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">

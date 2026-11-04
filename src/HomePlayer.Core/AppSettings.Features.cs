@@ -38,6 +38,8 @@ public sealed partial class AppSettings
     public string AiModelMirror { get; set; } = "https://hf-mirror.com";
     public string AiDownloadProxy { get; set; } = "";
     public string AiModelDirectory { get; set; } = "";
+    public string DataDirectory { get; set; } = "";
+    public string PendingDataMigrationSource { get; set; } = "";
     public string AiComputeDevice { get; set; } = "auto";
     public string AiRecognitionEngine { get; set; } = "sherpa";
     public string AiRecognitionModel { get; set; } = "whisper-small";

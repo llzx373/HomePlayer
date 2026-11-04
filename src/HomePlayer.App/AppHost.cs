@@ -53,8 +53,8 @@ public sealed class AppHost : IAsyncDisposable
         string? backupWarning = null;
         try
         {
-            DataBackup.ApplyPendingRestore(AppPaths.Root);
-            DataBackup.CreateAutomaticBackup(AppPaths.Root);
+            DataBackup.ApplyPendingRestore(AppPaths.Root, AppPaths.SettingsFile);
+            DataBackup.CreateAutomaticBackup(AppPaths.Root, AppPaths.SettingsFile);
         }
         catch (Exception ex)
         {
@@ -90,7 +90,7 @@ public sealed class AppHost : IAsyncDisposable
         playback.SetVolume(settings.Volume);
         if (settings.RestorePlaylist && settings.LastPlaylist.Count > 0)
             playback.RestorePlaylist(settings.LastPlaylist, settings.LastPlaylistIndex);
-        var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning }.Where(item => item != null));
+        var warning = string.Join(Environment.NewLine, new[] { loaded.Warning, backupWarning, AppPaths.MigrationWarning }.Where(item => item != null));
         var host = new AppHost(settings, repository, libraries, playback, codecPlans, settingsStore,
             warning.Length > 0 ? warning : null);
         playback.PlaybackActiveChanged += libraries.SetPlaybackActive;

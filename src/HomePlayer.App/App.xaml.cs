@@ -20,6 +20,7 @@ public partial class App : Application
 
     public App()
     {
+        AppPaths.Initialize();
         CrashGuard.Attach(this);
         InitializeComponent();
     }
@@ -29,6 +30,7 @@ public partial class App : Application
         if (!ClaimInstance())
             return;
 
+        AppPaths.MigratePendingData();
         AppPaths.Ensure();
         CrashGuard.StartSession();
         _playbackTrace = new PlaybackFileTrace(Path.Combine(AppPaths.Root, "traces"));

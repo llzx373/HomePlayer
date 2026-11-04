@@ -238,9 +238,12 @@ public sealed record TmdbHit(
 
 public static class AppPaths
 {
-    public static string Root { get; } = ResolveRoot();
+    public static string DefaultRoot { get; } = ResolveDefaultRoot();
+    public static string Root { get; private set; } = DefaultRoot;
+    public static string? MigrationWarning { get; private set; }
+    public static string SettingsFile => Path.Combine(DefaultRoot, "settings.json");
 
-    private static string ResolveRoot()
+    private static string ResolveDefaultRoot()
     {
         var custom = Environment.GetEnvironmentVariable("HOMEPLAYER_DATA_DIR");
         return !string.IsNullOrWhiteSpace(custom)
@@ -248,8 +251,58 @@ public static class AppPaths
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HomePlayer");
     }
 
+    public static void Initialize()
+    {
+        Root = ReadConfiguredDataDirectory() ?? DefaultRoot;
+    }
+
+    public static void MigratePendingData()
+    {
+        MigrationWarning = null;
+        var store = new SettingsStore(SettingsFile);
+        AppSettings settings;
+        try
+        {
+            settings = store.Load().Settings;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        var source = settings.PendingDataMigrationSource;
+        if (string.IsNullOrWhiteSpace(source))
+            return;
+        try
+        {
+            DataDirectoryMigration.MoveData(source, Root, Path.GetFileName(SettingsFile));
+            settings.PendingDataMigrationSource = "";
+            store.Save(settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Root = Path.GetFullPath(source);
+            MigrationWarning = "数据目录迁移未完成，继续使用 " + Root + "：" + ex.Message;
+        }
+    }
+
+    private static string? ReadConfiguredDataDirectory()
+    {
+        try
+        {
+            if (!File.Exists(SettingsFile))
+                return null;
+            var settings = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsFile));
+            var directory = settings?.DataDirectory;
+            return string.IsNullOrWhiteSpace(directory) ? null : Path.GetFullPath(directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     public static string Database => Path.Combine(Root, "library.db");
-    public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string Cache => Path.Combine(Root, "cache");
     public static string Thumbs => Path.Combine(Cache, "thumbs");
     public static string Posters => Path.Combine(Cache, "posters");

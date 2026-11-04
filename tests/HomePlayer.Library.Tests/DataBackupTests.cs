@@ -20,13 +20,25 @@ public class DataBackupTests
                 repository.Flush();
                 repository.SavePreference(MediaPreference.Empty(path) with { AudioTrackIndex = 2 });
             }
-            new SettingsStore(settings).Save(new AppSettings { CloseToTray = false, SubtitleFontSize = 36 });
+            new SettingsStore(settings).Save(new AppSettings
+            {
+                CloseToTray = false,
+                SubtitleFontSize = 36,
+                DataDirectory = @"D:\old-data",
+                AiModelDirectory = @"D:\old-models"
+            });
             var archive = Path.Combine(root, "backup.homeplayer");
             DataBackup.Export(database, settings, archive);
 
             using (var repository = new LibraryRepository(database))
                 repository.ClearPlaybackStates();
-            new SettingsStore(settings).Save(new AppSettings { CloseToTray = true, SubtitleFontSize = 20 });
+            new SettingsStore(settings).Save(new AppSettings
+            {
+                CloseToTray = true,
+                SubtitleFontSize = 20,
+                DataDirectory = @"E:\new-data",
+                AiModelDirectory = @"E:\new-models"
+            });
             DataBackup.StageRestore(archive, root);
 
             Assert.True(DataBackup.ApplyPendingRestore(root));
@@ -39,6 +51,8 @@ public class DataBackupTests
             var restoredSettings = new SettingsStore(settings).Load().Settings;
             Assert.False(restoredSettings.CloseToTray);
             Assert.Equal(36, restoredSettings.SubtitleFontSize);
+            Assert.Equal(@"E:\new-data", restoredSettings.DataDirectory);
+            Assert.Equal(@"E:\new-models", restoredSettings.AiModelDirectory);
             Assert.Contains(Directory.EnumerateDirectories(Path.Combine(root, "backups")),
                 directory => Path.GetFileName(directory).StartsWith("before-restore-", StringComparison.Ordinal));
         }
