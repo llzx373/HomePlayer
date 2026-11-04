@@ -23,7 +23,8 @@ dotnet build src/HomePlayer.App/HomePlayer.App.csproj -c Release
 版本写在 `Directory.Build.props` 的 `<Version>`。
 
 - **正式版**：`主.次.修订`，例如 `0.1.0`。GitHub 上打对应的 `v0.1.0` 标签后，Release 流水线会测试、编安装包并发布。
-- **开发版**：下一个正式版号加上序号 `n`，例如 `0.1.1-1`、`0.1.1-2`。开发版不打正式标签、不发 GitHub Release。
+- **开发版**：下一个正式版号加上序号 `n`，例如 `0.1.1-1`、`0.1.1-2`。普通推送只运行 CI；需要发给别人测试时，可以打 `v0.1.1-1` 这类标签，Release 流水线会按 GitHub Pre-release 发布安装包。
+- 发布前先在 `CHANGELOG.md` 写对应版本号的小节，Release 流水线会把它作为版本说明。
 
 ## 图标
 

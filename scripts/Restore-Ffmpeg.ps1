@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$Force,
-    [string]$Proxy = "http://127.0.0.1:7890"
+    [string]$Proxy = $env:HOMEPLAYER_DOWNLOAD_PROXY
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,7 +70,11 @@ if ((Test-Path $zipPath) -and (Get-Item -LiteralPath $zipPath).Length -eq $zipSi
 if (-not (Test-Path $zipPath) -or (Get-Item -LiteralPath $zipPath).Length -ne $zipSize) {
     Write-Host "Downloading FFmpeg $productMark ..."
     for ($attempt = 1; $attempt -le 6; $attempt++) {
-        & curl.exe --proxy $Proxy --fail --location --silent --show-error --continue-at - --connect-timeout 20 --max-time 300 --output $zipPath $url
+        $curlArgs = @("--fail", "--location", "--silent", "--show-error", "--continue-at", "-", "--connect-timeout", "20", "--max-time", "300", "--output", $zipPath, $url)
+        if (-not [string]::IsNullOrWhiteSpace($Proxy)) {
+            $curlArgs = @("--proxy", $Proxy) + $curlArgs
+        }
+        & curl.exe @curlArgs
         if ($LASTEXITCODE -eq 0) {
             break
         }

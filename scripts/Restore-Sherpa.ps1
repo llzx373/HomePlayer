@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$Force,
-    [string]$Proxy = "http://127.0.0.1:7890"
+    [string]$Proxy = $env:HOMEPLAYER_DOWNLOAD_PROXY
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,7 +45,11 @@ $packages = @(
 
 function Invoke-Download($url, $path, $expectedSize) {
     for ($attempt = 1; $attempt -le 6; $attempt++) {
-        & curl.exe --proxy $Proxy --fail --location --silent --show-error --continue-at - --connect-timeout 20 --max-time 300 --output $path $url
+        $curlArgs = @("--fail", "--location", "--silent", "--show-error", "--continue-at", "-", "--connect-timeout", "20", "--max-time", "300", "--output", $path, $url)
+        if (-not [string]::IsNullOrWhiteSpace($Proxy)) {
+            $curlArgs = @("--proxy", $Proxy) + $curlArgs
+        }
+        & curl.exe @curlArgs
         if ($LASTEXITCODE -eq 0) {
             return
         }

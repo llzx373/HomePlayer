@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$Force,
-    [string]$Proxy = "http://127.0.0.1:7890"
+    [string]$Proxy = $env:HOMEPLAYER_DOWNLOAD_PROXY
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +25,11 @@ if ((Test-Path $archive) -and (Get-Item -LiteralPath $archive).Length -eq $zipSi
 if (-not (Test-Path $archive) -or (Get-Item -LiteralPath $archive).Length -ne $zipSize) {
     Write-Host "Downloading CUDA 12.4 runtime ..."
     for ($attempt = 1; $attempt -le 6; $attempt++) {
-        & curl.exe --proxy $Proxy --fail --location --silent --show-error --continue-at - --connect-timeout 20 --max-time 300 --output $archive $url
+        $curlArgs = @("--fail", "--location", "--silent", "--show-error", "--continue-at", "-", "--connect-timeout", "20", "--max-time", "300", "--output", $archive, $url)
+        if (-not [string]::IsNullOrWhiteSpace($Proxy)) {
+            $curlArgs = @("--proxy", $Proxy) + $curlArgs
+        }
+        & curl.exe @curlArgs
         if ($LASTEXITCODE -eq 0) {
             break
         }
