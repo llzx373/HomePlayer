@@ -14,9 +14,10 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
         AiComputeDevice device,
         double startSeconds,
         IProgress<AiSubtitleProgress>? progress,
-        Action<SubtitleCue>? cueReady,
+        Action<SubtitleSegmentUpdate>? segmentReady,
         CancellationToken cancellationToken,
-        bool realtime = false)
+        bool realtime = false,
+        bool drafts = false)
     {
         var model = AiSubtitleCatalog.Model("sensevoice-model");
         var tokens = AiSubtitleCatalog.Model("sensevoice-tokens");
@@ -36,8 +37,10 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
         var wav = Path.Combine(directory, "audio.wav");
         var jobPath = Path.Combine(directory, "sherpa.json");
         var useCuda = device == AiComputeDevice.Cuda || device == AiComputeDevice.Auto && AiRuntime.HasNvidiaGpu;
+        var draftInterval = useCuda ? 1.5 : 3.0;
         File.WriteAllText(jobPath, JsonSerializer.Serialize(new SherpaJob(
-            Path.GetDirectoryName(models.PathFor(model))!, wav, startSeconds, 4, 20, useCuda, realtime)));
+            Path.GetDirectoryName(models.PathFor(model))!, wav, startSeconds, 4, 20, useCuda, realtime,
+            realtime && drafts, draftInterval)));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var extract = Task.Run(() =>
         {
@@ -52,7 +55,7 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                 throw;
             }
         }, linked.Token);
-        var cues = new List<SubtitleCue>();
+        var finalSegments = new SortedDictionary<int, IReadOnlyList<SubtitleCue>>();
         try
         {
             Report(progress, useCuda ? "Sherpa CUDA 实时识别" : "Sherpa CPU 识别", 0.25);
@@ -67,13 +70,19 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                     var start = TimeSpan.FromSeconds(result.StartSeconds);
                     var end = TimeSpan.FromSeconds(Math.Max(result.StartSeconds + 0.1, result.EndSeconds));
                     var formatted = end > start ? SubtitleCueFormatter.Build(text, start, end) : [];
-                    foreach (var cue in formatted)
+                    if (result.Final == false)
                     {
-                        cues.Add(cue);
-                        cueReady?.Invoke(cue);
+                        if (formatted.Count > 0)
+                            segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, false, formatted));
+                        return;
                     }
+                    finalSegments[result.Id] = formatted;
+                    segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, true, formatted));
                     if (formatted.Count > 0)
-                        Report(progress, $"已识别至 {end:mm\\:ss}", Math.Min(0.95, 0.25 + cues.Count * 0.005));
+                    {
+                        var count = finalSegments.Values.Sum(cues => cues.Count);
+                        Report(progress, $"已识别至 {end:mm\\:ss}", Math.Min(0.95, 0.25 + count * 0.005));
+                    }
                 }
                 catch (JsonException)
                 {
@@ -81,7 +90,7 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
             }, linked.Token);
             await extract;
             Report(progress, "Sherpa 识别完成", 0.99);
-            return cues;
+            return finalSegments.Values.SelectMany(cues => cues).ToArray();
         }
         catch
         {
@@ -114,6 +123,6 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
     [GeneratedRegex(@"<\|[^|]+\|>", RegexOptions.CultureInvariant)]
     private static partial Regex MetadataTags();
 
-    private sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime);
-    private sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text);
+    private sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime, bool Drafts, double DraftIntervalSeconds);
+    private sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool? Final);
 }

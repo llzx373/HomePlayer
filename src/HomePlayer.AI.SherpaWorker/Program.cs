@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using SherpaOnnx;
@@ -42,7 +43,13 @@ while (true)
 var segmenter = new SilenceSegmenter(job.MinChunkSeconds, job.MaxChunkSeconds, vad, job.Realtime);
 var pending = new List<float>(16000 * 32);
 var pendingStart = 0L;
-var chunkIndex = 0;
+var currentId = 0;
+var draftInterval = Math.Max(1.0, job.DraftIntervalSeconds);
+var lastDraftAt = 0L;
+var lastDraftPending = 0;
+var lastDraftText = "";
+var lastDraftEnd = 0;
+var draftStart = -1;
 
 while (true)
 {
@@ -54,12 +61,14 @@ while (true)
         pending.AddRange(block);
     var endOfAudio = complete && block.Length == 0;
 
+    MaybeDraft();
+
     while (true)
     {
         var cut = segmenter.FindCut(pending, endOfAudio);
         if (cut <= 0)
             break;
-        Emit(pending, cut, pendingStart);
+        EmitFinal(pending, cut, pendingStart);
         pending.RemoveRange(0, cut);
         pendingStart += cut;
     }
@@ -68,29 +77,107 @@ while (true)
     {
         if (complete)
             break;
+        MaybeDraft();
         await Task.Delay(100);
     }
 }
 
 if (pending.Count > 0)
-    Emit(pending, pending.Count, pendingStart);
+    EmitFinal(pending, pending.Count, pendingStart);
 
-void Emit(List<float> buffer, int count, long startSample)
+string Decode(float[] samples)
+{
+    using var stream = recognizer.CreateStream();
+    stream.AcceptWaveform(16000, samples);
+    recognizer.Decode(stream);
+    return Sanitize(stream.Result.Text);
+}
+
+void EmitFinal(List<float> buffer, int count, long startSample)
 {
     var samples = new float[count];
     buffer.CopyTo(0, samples, 0, count);
     if (segmenter.SpeechBounds(samples) is not { } speech)
+    {
+        if (draftStart >= 0)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
+                currentId++,
+                job.StartSeconds + (double)startSample / 16000,
+                job.StartSeconds + (double)(startSample + count) / 16000,
+                "",
+                true)));
+        }
+        ResetDraftState();
         return;
+    }
     var audioChunk = new float[speech.End - speech.Start];
     Array.Copy(samples, speech.Start, audioChunk, 0, audioChunk.Length);
-    using var stream = recognizer.CreateStream();
-    stream.AcceptWaveform(16000, audioChunk);
-    recognizer.Decode(stream);
     Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
-        chunkIndex++,
+        currentId++,
         job.StartSeconds + (double)(startSample + speech.Start) / 16000,
         job.StartSeconds + (double)(startSample + speech.End) / 16000,
-        Sanitize(stream.Result.Text))));
+        Decode(audioChunk),
+        true)));
+    ResetDraftState();
+}
+
+void MaybeDraft()
+{
+    if (!job.Realtime || !job.Drafts || pending.Count < 16000 * 3 / 2)
+        return;
+    var now = Environment.TickCount64;
+    if (lastDraftAt > 0 && now - lastDraftAt < draftInterval * 1000)
+        return;
+    if (lastDraftPending > 0 && pending.Count - lastDraftPending < 16000)
+        return;
+    if (segmenter.SpeechBounds(pending) is not { } speech)
+        return;
+    if (speech.End - speech.Start < 16000 * 4 / 5)
+        return;
+    var start = draftStart >= 0 ? draftStart : speech.Start;
+    var end = Math.Min(speech.End, start + (int)(16000 * job.MaxChunkSeconds));
+    if (lastDraftEnd > 0 && end < lastDraftEnd)
+        end = lastDraftEnd;
+    var audioChunk = new float[end - start];
+    for (var index = 0; index < audioChunk.Length; index++)
+        audioChunk[index] = pending[start + index];
+    var stopwatch = Stopwatch.StartNew();
+    var text = Decode(audioChunk);
+    stopwatch.Stop();
+    if (text.Length == 0)
+    {
+        lastDraftAt = now;
+        lastDraftPending = pending.Count;
+        return;
+    }
+    lastDraftAt = now;
+    lastDraftPending = pending.Count;
+    if (text == lastDraftText)
+    {
+        lastDraftEnd = end;
+        return;
+    }
+    draftStart = start;
+    lastDraftText = text;
+    lastDraftEnd = end;
+    Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
+        currentId,
+        job.StartSeconds + (double)(pendingStart + start) / 16000,
+        job.StartSeconds + (double)(pendingStart + end) / 16000,
+        text,
+        false)));
+    if (stopwatch.Elapsed.TotalSeconds * 2 > draftInterval)
+        draftInterval = Math.Min(5.0, draftInterval * 1.5);
+}
+
+void ResetDraftState()
+{
+    draftStart = -1;
+    lastDraftAt = 0;
+    lastDraftPending = 0;
+    lastDraftText = "";
+    lastDraftEnd = 0;
 }
 
 static VoiceActivityDetector? CreateVad(string modelDirectory)
@@ -169,8 +256,8 @@ static string Sanitize(string? text)
     return "";
 }
 
-public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime);
-public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text);
+public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime, bool Drafts, double DraftIntervalSeconds);
+public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool Final);
 
 internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSeconds, VoiceActivityDetector? vad, bool realtime)
 {

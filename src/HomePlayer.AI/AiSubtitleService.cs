@@ -73,10 +73,11 @@ public sealed class AiSubtitleService
         AiComputeDevice device,
         double startSeconds,
         IProgress<AiSubtitleProgress>? progress,
-        Action<SubtitleCue>? cueReady,
+        Action<SubtitleSegmentUpdate>? segmentReady,
         CancellationToken cancellationToken,
-        bool realtime = false) =>
-        _sherpa.RecognizeAsync(mediaPath, audioTrackIndex, _mirror(), device, startSeconds, progress, cueReady, cancellationToken, realtime);
+        bool realtime = false,
+        bool drafts = false) =>
+        _sherpa.RecognizeAsync(mediaPath, audioTrackIndex, _mirror(), device, startSeconds, progress, segmentReady, cancellationToken, realtime, drafts);
 
     public AiSubtitleResult SaveBesideMedia(string mediaPath, IReadOnlyList<SubtitleCue> cues, string description)
     {

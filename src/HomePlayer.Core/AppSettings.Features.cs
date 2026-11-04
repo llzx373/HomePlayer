@@ -45,5 +45,6 @@ public sealed partial class AppSettings
     public string AiTargetLanguage { get; set; } = "zh";
     public bool AiTranslateAfterGeneration { get; set; }
     public bool AiTranslateLiveSubtitles { get; set; } = true;
+    public bool AiLiveDraftSubtitles { get; set; } = true;
     public bool AiBilingualSubtitles { get; set; } = true;
 }

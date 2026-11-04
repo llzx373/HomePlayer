@@ -10,6 +10,8 @@ public sealed partial class PlayerPage
     private CancellationTokenSource? _liveSubtitles;
     private int _liveSubtitleGeneration;
     private readonly List<LiveCueEntry> _liveEntries = [];
+    private readonly LiveSubtitleBuffer _liveBuffer = new();
+    private bool _liveReadyShown;
     private readonly List<Task> _liveTranslationTasks = [];
     private readonly object _liveTranslationLock = new();
     private LiveTranslationService? _liveTranslation;
@@ -50,6 +52,8 @@ public sealed partial class PlayerPage
         var task = new CancellationTokenSource();
         _liveSubtitles = task;
         _liveEntries.Clear();
+        _liveBuffer.Clear();
+        _liveReadyShown = false;
         lock (_liveTranslationLock)
             _liveTranslationTasks.Clear();
         _subtitles.UseLive();
@@ -57,6 +61,7 @@ public sealed partial class PlayerPage
         var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
         var translate = settings.AiTranslateLiveSubtitles;
         var bilingual = settings.AiBilingualSubtitles;
+        var drafts = settings.AiLiveDraftSubtitles;
         var translation = translate
             ? App.Host.AiSubtitles.CreateLiveTranslator(
                 settings.AiTranslationModel, settings.AiSourceLanguage, settings.AiTargetLanguage, device)
@@ -94,9 +99,10 @@ public sealed partial class PlayerPage
                 var cues = await App.Host.AiSubtitles.RecognizeWithSherpaAsync(
                     path, audioTrack, device, startSeconds,
                     null,
-                    cue => DispatcherQueue.TryEnqueue(() => AddLiveCue(generation, path, cue, translation, bilingual, task.Token)),
+                    update => DispatcherQueue.TryEnqueue(() => ApplyLiveSegment(generation, path, update, translation, bilingual, task.Token)),
                     task.Token,
-                    realtime: true);
+                    realtime: true,
+                    drafts: drafts);
                 if (generation == _liveSubtitleGeneration && cues.Count > 0)
                     await FinishLiveSubtitlesAsync(generation, path, translation, task.Token);
             }
@@ -114,10 +120,10 @@ public sealed partial class PlayerPage
         });
     }
 
-    private void AddLiveCue(
+    private void ApplyLiveSegment(
         int generation,
         string path,
-        SubtitleCue cue,
+        SubtitleSegmentUpdate update,
         LiveTranslationService? translation,
         bool bilingual,
         CancellationToken cancellationToken)
@@ -125,16 +131,29 @@ public sealed partial class PlayerPage
         if (generation != _liveSubtitleGeneration || _liveSubtitles == null
             || !string.Equals(Playback.Playlist.Current?.Path, path, StringComparison.OrdinalIgnoreCase))
             return;
-        var entry = new LiveCueEntry(cue);
-        _liveEntries.Add(entry);
-        if (_liveEntries.Count == 1)
-            ShowStatusHold($"实时字幕已就绪 · 当前 {Playback.Position:mm\\:ss}");
-        RefreshLiveCues();
-        if (translation == null || string.IsNullOrWhiteSpace(cue.Text))
+        if (!_liveBuffer.Apply(update))
             return;
-        var translationTask = TranslateLiveCueAsync(generation, entry, translation, bilingual, cancellationToken);
-        lock (_liveTranslationLock)
-            _liveTranslationTasks.Add(translationTask);
+        foreach (var old in _liveEntries.Where(entry => entry.SegmentId == update.SegmentId).ToArray())
+            old.Superseded = true;
+        _liveEntries.RemoveAll(entry => entry.SegmentId == update.SegmentId);
+        var entries = update.Cues.Select(cue => new LiveCueEntry(update.SegmentId, update.Final, cue)).ToList();
+        _liveEntries.AddRange(entries);
+        if (!_liveReadyShown && _liveEntries.Count > 0)
+        {
+            _liveReadyShown = true;
+            ShowStatusHold($"实时字幕已就绪 · 当前 {Playback.Position:mm\\:ss}");
+        }
+        RefreshLiveCues();
+        if (!update.Final || translation == null)
+            return;
+        foreach (var entry in entries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.OriginalText))
+                continue;
+            var translationTask = TranslateLiveCueAsync(generation, entry, translation, bilingual, cancellationToken);
+            lock (_liveTranslationLock)
+                _liveTranslationTasks.Add(translationTask);
+        }
     }
 
     private async Task TranslateLiveCueAsync(
@@ -151,7 +170,7 @@ public sealed partial class PlayerPage
                 return;
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (generation != _liveSubtitleGeneration)
+                if (generation != _liveSubtitleGeneration || entry.Superseded)
                     return;
                 entry.Cue = entry.Cue with
                 {
@@ -245,13 +264,20 @@ public sealed partial class PlayerPage
     {
         var completion = new TaskCompletionSource<SubtitleCue[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!DispatcherQueue.TryEnqueue(() =>
-                completion.TrySetResult(_liveEntries.Select(entry => entry.Cue).OrderBy(cue => cue.Start).ToArray())))
+                completion.TrySetResult(_liveEntries
+                    .Where(entry => entry.Final && !entry.Superseded)
+                    .Select(entry => entry.Cue)
+                    .OrderBy(cue => cue.Start)
+                    .ToArray())))
             completion.TrySetResult([]);
         return completion.Task;
     }
 
-    private sealed class LiveCueEntry(SubtitleCue cue)
+    private sealed class LiveCueEntry(int segmentId, bool final, SubtitleCue cue)
     {
+        public int SegmentId { get; } = segmentId;
+        public bool Final { get; } = final;
+        public bool Superseded { get; set; }
         public string OriginalText { get; } = cue.Text;
         public SubtitleCue Cue { get; set; } = cue;
     }
@@ -283,6 +309,9 @@ public sealed partial class PlayerPage
             task.Cancel();
             task.Dispose();
         }
+        _liveBuffer.Clear();
+        _liveEntries.Clear();
+        _liveReadyShown = false;
         var translation = _liveTranslation;
         _liveTranslation = null;
         if (translation != null)

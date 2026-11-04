@@ -1296,6 +1296,7 @@ public sealed partial class PlayerPage : Page
         }
         if (!_subtitles.CurrentIsAss)
             ApplyAssStyle(cue?.AssEvent);
+        SubtitleText.Opacity = cue != null && _liveBuffer.IsProvisional(cue) ? 0.72 : 1;
         var text = cue?.Text;
         var hasText = !string.IsNullOrEmpty(text);
         if (!hasText && cue?.Bitmaps.Count is not > 0)
@@ -1304,6 +1305,7 @@ public sealed partial class PlayerPage : Page
                 SubtitleLayer.Visibility = Visibility.Collapsed;
             if (SubtitleText.Text.Length > 0)
                 SubtitleText.Text = "";
+            SubtitleText.Opacity = 1;
             _shownSubtitle = null;
             UpdateBitmapSubtitle(null);
             return;
