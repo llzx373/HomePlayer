@@ -19,7 +19,19 @@ public sealed class AiModelManager
     public bool IsInstalled(AiModelInfo model)
     {
         var path = PathFor(model);
-        return File.Exists(path) && new FileInfo(path).Length == model.Size && File.Exists(path + ".verified");
+        if (!File.Exists(path) || new FileInfo(path).Length != model.Size)
+            return false;
+        var marker = path + ".verified";
+        if (!File.Exists(marker))
+            return false;
+        try
+        {
+            return string.Equals(File.ReadAllText(marker).Trim(), model.Sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     public async Task<string> EnsureAsync(
@@ -29,6 +41,8 @@ public sealed class AiModelManager
         CancellationToken cancellationToken)
     {
         var path = PathFor(model);
+        if (IsInstalled(model))
+            return path;
         if (File.Exists(path))
         {
             try

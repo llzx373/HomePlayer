@@ -5,6 +5,34 @@ namespace HomePlayer.AI.Tests;
 public class AiSubtitleServiceTests
 {
     [Fact]
+    public void Installed_model_requires_matching_size_and_verified_marker()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "HomePlayer-model-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var content = new byte[] { 1, 2, 3, 4 };
+            var model = new AiModelInfo("test", AiModelKind.Translation, "test", "repo", "rev", "test.gguf",
+                content.Length, "ABC123", "MIT");
+            var manager = new AiModelManager(root, () => "");
+            var path = manager.PathFor(model);
+            File.WriteAllBytes(path, content);
+
+            Assert.False(manager.IsInstalled(model));
+            File.WriteAllText(path + ".verified", "wrong");
+            Assert.False(manager.IsInstalled(model));
+            File.WriteAllText(path + ".verified", "abc123");
+            Assert.True(manager.IsInstalled(model));
+            File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
+            Assert.False(manager.IsInstalled(model));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void SaveBesideMedia_replaces_complete_sidecar_without_leaving_temporary_files()
     {
         var root = Path.Combine(Path.GetTempPath(), "HomePlayer-ai-subtitles-" + Guid.NewGuid().ToString("N"));
