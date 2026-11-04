@@ -40,6 +40,14 @@ public class AiTranslationTextTests
     }
 
     [Fact]
+    public void Prompt_requires_simplified_chinese_for_zh_target()
+    {
+        var prompt = AiTranslationText.Prompt([new(0, "おはよう")], "ja", "zh");
+
+        Assert.Contains("简体中文", prompt);
+    }
+
+    [Fact]
     public void Prompt_strict_attempt_rejects_echoed_source()
     {
         var prompt = AiTranslationText.Prompt([new(0, "おはよう")], "ja", "zh", true);

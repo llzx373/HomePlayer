@@ -190,7 +190,7 @@
                                     <ComboBox x:Name="AiTranslationModelBox" Header="翻译模型" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
                                     <CheckBox x:Name="AiBilingualCheck" Content="保留原文，生成双语字幕" />
                                     <ComboBox x:Name="AiDeviceBox" Header="计算设备" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" />
-                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="播放器的实时字幕固定使用低延迟 SenseVoice，支持英语、日语和韩语；后台识别可选择 Sherpa 或 Whisper。实时翻译使用下方所选翻译模型，首次启用时需要下载模型。" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="播放器的实时字幕固定使用低延迟 SenseVoice，支持英语、日语和韩语；后台识别可选择 Sherpa 或 Whisper。实时翻译使用下方所选翻译模型，首次启用时需要下载模型。只有 CPU 或显存小于 8 GB 的显卡建议选择 1.8B 模型。" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsCardStyle}">

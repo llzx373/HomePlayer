@@ -45,6 +45,17 @@ public sealed class AiSubtitleService
         CancellationToken cancellationToken) =>
         _translation.TranslateAsync(cues, sourceLanguage, targetLanguage, bilingual, modelId, _mirror(), device, progress, cancellationToken);
 
+    public static bool LightweightTranslationRecommended(string? computeDevice) =>
+        RecommendLightweightTranslation(computeDevice, AiRuntime.HasNvidiaGpu, AiRuntime.NvidiaMemoryMiB);
+
+    public static bool RecommendLightweightTranslation(string? computeDevice, bool hasNvidiaGpu, int nvidiaMemoryMiB)
+    {
+        var device = AiComputeDeviceExtensions.Parse(computeDevice);
+        if (device == AiComputeDevice.Cpu || !hasNvidiaGpu)
+            return true;
+        return nvidiaMemoryMiB > 0 && nvidiaMemoryMiB < 8192;
+    }
+
     public LiveTranslationService CreateLiveTranslator(
         string modelId,
         string? sourceLanguage,

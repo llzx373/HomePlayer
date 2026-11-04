@@ -58,6 +58,14 @@ public sealed class AppHost : IAsyncDisposable
         var settingsStore = new SettingsStore(AppPaths.SettingsFile);
         var loaded = settingsStore.Load();
         var settings = loaded.Settings;
+        if (settings.SettingsVersion < 2)
+        {
+            if (settings.AiTranslationModel == "hy-mt2-7b-q4"
+                && AiSubtitleService.LightweightTranslationRecommended(settings.AiComputeDevice))
+                settings.AiTranslationModel = "hy-mt2-1.8b-q4";
+            settings.SettingsVersion = 2;
+            settingsStore.Save(settings, loaded.Warning != null);
+        }
         var repository = new LibraryRepository(AppPaths.Database);
         var libraries = new LibraryCoordinator(repository, () => App.Host?.Settings.TmdbApiKey ?? settings.TmdbApiKey);
         var codecPlans = new CodecPlanCache(() => settings);

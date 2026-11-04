@@ -4,6 +4,19 @@ namespace HomePlayer.AI.Tests;
 
 public class AiSubtitleServiceTests
 {
+    [Theory]
+    [InlineData("cpu", true, 24576, true)]
+    [InlineData("auto", false, 0, true)]
+    [InlineData("auto", true, 6144, true)]
+    [InlineData("auto", true, 8192, false)]
+    [InlineData("auto", true, 24576, false)]
+    [InlineData("cuda", true, 0, false)]
+    public void RecommendLightweightTranslation_selects_by_device_and_vram(
+        string device, bool hasNvidiaGpu, int memoryMiB, bool expected)
+    {
+        Assert.Equal(expected, AiSubtitleService.RecommendLightweightTranslation(device, hasNvidiaGpu, memoryMiB));
+    }
+
     [Fact]
     public void Installed_model_requires_matching_size_and_verified_marker()
     {
