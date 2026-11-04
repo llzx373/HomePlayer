@@ -199,6 +199,14 @@
                                     <TextBlock Text="模型下载" Style="{ThemeResource SubtitleTextBlockStyle}" />
                                     <TextBox x:Name="AiMirrorBox" Header="模型下载镜像" HorizontalAlignment="Stretch" />
                                     <TextBox x:Name="AiProxyBox" Header="下载代理（留空则直连）" HorizontalAlignment="Stretch" />
+                                    <TextBlock Text="模型存储位置" Style="{ThemeResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="AiModelPathText" Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="更改位置…" Click="ChangeAiModelPath_Click" />
+                                        <Button Content="打开模型文件夹" Click="OpenAiModelFolder_Click" />
+                                        <Button x:Name="ResetAiModelPathButton" Content="恢复默认位置" Click="ResetAiModelPath_Click" />
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="模型文件较大时可放到空间充足的磁盘。更换位置后会记住该目录，升级或重装不会删除模型。" TextWrapping="Wrap" />
                                     <TextBlock x:Name="AiModelStatusText" Style="{StaticResource SettingsDescriptionStyle}" />
                                 </StackPanel>
                             </Border>

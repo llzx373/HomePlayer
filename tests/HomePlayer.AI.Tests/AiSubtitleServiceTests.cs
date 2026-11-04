@@ -46,6 +46,30 @@ public class AiSubtitleServiceTests
     }
 
     [Fact]
+    public void ChangeModelDirectory_switches_new_model_paths()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "HomePlayer-model-dir-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var first = Path.Combine(root, "first");
+            var second = Path.Combine(root, "second");
+            var service = new AiSubtitleService(first, () => "", () => "");
+
+            Assert.Equal(first, service.ModelDirectory);
+
+            service.ChangeModelDirectory(second);
+
+            Assert.Equal(second, service.ModelDirectory);
+            Assert.True(Directory.Exists(second));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void SaveBesideMedia_replaces_complete_sidecar_without_leaving_temporary_files()
     {
         var root = Path.Combine(Path.GetTempPath(), "HomePlayer-ai-subtitles-" + Guid.NewGuid().ToString("N"));

@@ -24,7 +24,7 @@ public sealed class AppHost : IAsyncDisposable
         Repository = repository;
         Libraries = libraries;
         Playback = playback;
-        AiSubtitles = new AiSubtitleService(AppPaths.AiModels, () => settings.AiModelMirror, () => settings.AiDownloadProxy);
+        AiSubtitles = new AiSubtitleService(AppPaths.ResolveAiModels(settings.AiModelDirectory), () => settings.AiModelMirror, () => settings.AiDownloadProxy);
         _codecPlans = codecPlans;
         _settingsStore = settingsStore;
         SettingsWarning = settingsWarning;
@@ -40,6 +40,13 @@ public sealed class AppHost : IAsyncDisposable
     public bool Exiting { get; set; }
 
     public void InvalidateCodecPlan() => _codecPlans.Invalidate();
+
+    public void SetAiModelDirectory(string? directory)
+    {
+        Settings.AiModelDirectory = string.IsNullOrWhiteSpace(directory) ? "" : Path.GetFullPath(directory);
+        AiSubtitles.ChangeModelDirectory(AppPaths.ResolveAiModels(Settings.AiModelDirectory));
+        SaveSettings();
+    }
 
     public static AppHost Create(Action<Action> post)
     {

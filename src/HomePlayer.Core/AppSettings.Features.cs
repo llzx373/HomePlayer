@@ -36,7 +36,8 @@ public sealed partial class AppSettings
     public string UpdateChannel { get; set; } = "stable";
     public bool AiSubtitlesEnabled { get; set; }
     public string AiModelMirror { get; set; } = "https://hf-mirror.com";
-    public string AiDownloadProxy { get; set; } = "http://127.0.0.1:7890";
+    public string AiDownloadProxy { get; set; } = "";
+    public string AiModelDirectory { get; set; } = "";
     public string AiComputeDevice { get; set; } = "auto";
     public string AiRecognitionEngine { get; set; } = "sherpa";
     public string AiRecognitionModel { get; set; } = "whisper-small";

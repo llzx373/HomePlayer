@@ -152,7 +152,151 @@ public sealed partial class SettingsPage : Page
             ?? AiDeviceOption.Items[0];
         AiMirrorBox.Text = settings.AiModelMirror;
         AiProxyBox.Text = settings.AiDownloadProxy;
+        UpdateAiModelPathText();
         UpdateAiModelStatus();
+    }
+
+    private void UpdateAiModelPathText()
+    {
+        var path = App.Host.AiSubtitles.ModelDirectory;
+        var isDefault = string.IsNullOrWhiteSpace(App.Host.Settings.AiModelDirectory);
+        AiModelPathText.Text = isDefault ? $"{path}（默认）" : path;
+        ResetAiModelPathButton.IsEnabled = !isDefault;
+    }
+
+    private async void ChangeAiModelPath_Click(object sender, RoutedEventArgs e)
+    {
+        string? folder;
+        try
+        {
+            folder = await FolderDialog.PickAsync("选择模型存储文件夹");
+        }
+        catch (Exception ex)
+        {
+            await Message("无法选择文件夹：" + ex.Message);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(folder))
+            return;
+        var current = App.Host.AiSubtitles.ModelDirectory;
+        var target = Path.GetFullPath(folder);
+        if (string.Equals(target, current, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (IsWithin(current, target) || IsWithin(target, current))
+        {
+            await Message("新位置不能和当前模型文件夹互相包含，请选择其他文件夹。");
+            return;
+        }
+
+        var move = false;
+        if (Directory.Exists(current) && Directory.EnumerateFiles(current).Any())
+        {
+            var size = Format(Directory.EnumerateFiles(current, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length));
+            var dialog = new ContentDialog
+            {
+                Title = "更改模型存储位置",
+                Content = $"现有模型共 {size}。\n\n新位置：{target}\n\n迁移会移动现有模型；仅切换则新位置从空目录开始，旧模型保留在原处。",
+                PrimaryButtonText = "迁移并切换",
+                SecondaryButtonText = "仅切换",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = XamlRoot
+            };
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.None)
+                return;
+            move = result == ContentDialogResult.Primary;
+        }
+
+        if (move)
+        {
+            AiModelPathText.Text = "正在迁移模型…";
+            try
+            {
+                await Task.Run(() => MoveModelFiles(current, target));
+            }
+            catch (Exception ex)
+            {
+                UpdateAiModelPathText();
+                await Message("迁移模型失败：" + ex.Message);
+                return;
+            }
+        }
+
+        App.Host.SetAiModelDirectory(target);
+        UpdateAiModelPathText();
+        UpdateAiModelStatus();
+        SaveStatusText.Text = "模型位置已更新 " + DateTime.Now.ToString("HH:mm:ss");
+    }
+
+    private async void ResetAiModelPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(App.Host.Settings.AiModelDirectory))
+            return;
+        var dialog = new ContentDialog
+        {
+            Title = "恢复默认位置",
+            Content = "改回默认模型目录？自定义目录中的模型不会移动，需要时会重新下载。",
+            PrimaryButtonText = "恢复默认",
+            CloseButtonText = "取消",
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+        App.Host.SetAiModelDirectory(null);
+        UpdateAiModelPathText();
+        UpdateAiModelStatus();
+        SaveStatusText.Text = "模型位置已恢复默认。";
+    }
+
+    private async void OpenAiModelFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var path = App.Host.AiSubtitles.ModelDirectory;
+            Directory.CreateDirectory(path);
+            System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
+        }
+        catch (Exception ex)
+        {
+            await Message("无法打开模型文件夹：" + ex.Message);
+        }
+    }
+
+    private static bool IsWithin(string parent, string child)
+    {
+        var root = Path.GetFullPath(parent).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var path = Path.GetFullPath(child).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void MoveModelFiles(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        if (!Directory.Exists(source))
+            return;
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(source, file);
+            var destination = Path.Combine(target, relative);
+            var directory = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+            if (File.Exists(destination) && new FileInfo(destination).Length == new FileInfo(file).Length)
+                File.Delete(file);
+            else
+                File.Move(file, destination, true);
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories).OrderByDescending(path => path.Length))
+        {
+            if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                Directory.Delete(directory);
+        }
+
+        if (!Directory.EnumerateFileSystemEntries(source).Any())
+            Directory.Delete(source);
     }
 
     private void AiSetting_Changed(object sender, RoutedEventArgs e) => SaveAiSettings();

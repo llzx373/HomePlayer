@@ -4,17 +4,25 @@ namespace HomePlayer.AI;
 
 public sealed class AiModelManager
 {
-    private readonly string _directory;
+    private string _modelDirectory;
     private readonly Func<string> _proxy;
 
     public AiModelManager(string directory, Func<string> proxy)
     {
-        _directory = directory;
+        _modelDirectory = directory;
         _proxy = proxy;
-        Directory.CreateDirectory(_directory);
+        Directory.CreateDirectory(_modelDirectory);
     }
 
-    public string PathFor(AiModelInfo model) => Path.Combine(_directory, model.LocalFileName);
+    public string ModelDirectory => _modelDirectory;
+
+    public void SetModelDirectory(string directory)
+    {
+        _modelDirectory = directory;
+        Directory.CreateDirectory(_modelDirectory);
+    }
+
+    public string PathFor(AiModelInfo model) => Path.Combine(_modelDirectory, model.LocalFileName);
 
     public bool IsInstalled(AiModelInfo model)
     {

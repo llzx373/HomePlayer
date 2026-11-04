@@ -4,7 +4,7 @@ namespace HomePlayer;
 
 internal static class FolderDialog
 {
-    public static Task<string?> PickAsync()
+    public static Task<string?> PickAsync(string title = "选择媒体库文件夹")
     {
         // The WinUI thread cannot host this modal loop; doing so removes the content island.
         var source = new TaskCompletionSource<string?>();
@@ -12,7 +12,7 @@ internal static class FolderDialog
         {
             try
             {
-                source.SetResult(PickCore());
+                source.SetResult(PickCore(title));
             }
             catch (Exception ex)
             {
@@ -25,7 +25,7 @@ internal static class FolderDialog
         return source.Task;
     }
 
-    private static string? PickCore()
+    private static string? PickCore(string title)
     {
         var owner = CreateWindowEx(0, "Static", "", 0x80000000, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
         try
@@ -33,7 +33,7 @@ internal static class FolderDialog
             var dialog = (IFileDialog)new FileOpenDialog();
             dialog.GetOptions(out var options);
             dialog.SetOptions(options | 0x8 | 0x20 | 0x40 | 0x800);
-            dialog.SetTitle("选择媒体库文件夹");
+            dialog.SetTitle(title);
             var result = dialog.Show(owner);
             if (result == unchecked((int)0x800704C7))
                 return null;

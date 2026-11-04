@@ -24,6 +24,10 @@ public sealed class AiSubtitleService
 
     public bool IsInstalled(string modelId) => _models.IsInstalled(AiSubtitleCatalog.Model(modelId));
 
+    public string ModelDirectory => _models.ModelDirectory;
+
+    public void ChangeModelDirectory(string directory) => _models.SetModelDirectory(directory);
+
     public Task<IReadOnlyList<SubtitleCue>> RecognizeAsync(
         string mediaPath,
         int audioTrackIndex,
