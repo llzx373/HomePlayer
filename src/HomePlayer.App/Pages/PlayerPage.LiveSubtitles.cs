@@ -21,6 +21,7 @@ public sealed partial class PlayerPage
     private string _aiGenerationStage = "";
     private double _aiGenerationProgress;
     private int _aiGenerationVersion;
+    private bool _dubbingRunning;
 
     private void SelectLiveSubtitles()
     {
@@ -445,6 +446,110 @@ public sealed partial class PlayerPage
             : "正在为其他视频生成字幕";
         _aiGenerationMenuItem.Text = $"{prefix} · {_aiGenerationProgress:P0}";
         ToolTipService.SetToolTip(_aiGenerationMenuItem, _aiGenerationStage);
+    }
+
+    private MenuFlyoutSubItem CreateDubbingMenu()
+    {
+        var menu = new MenuFlyoutSubItem { Text = "中文配音（实验）" };
+        var voices = VoicePresets.Ensure(App.Host.Voices);
+        if (voices.Count == 0)
+        {
+            menu.Items.Add(new MenuFlyoutItem { Text = "没有可用音色", IsEnabled = false });
+            return menu;
+        }
+
+        var selected = App.Host.Settings.DubbingVoice;
+        if (string.IsNullOrWhiteSpace(selected) || voices.All(voice => voice.Id != selected))
+            selected = voices[0].Id;
+        foreach (var voice in voices)
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = voice.DisplayName,
+                GroupName = "DubbingVoice",
+                IsChecked = voice.Id == selected
+            };
+            item.Click += (_, _) =>
+            {
+                App.Host.Settings.DubbingVoice = voice.Id;
+                App.Host.SaveSettings();
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var start = new MenuFlyoutItem { Text = "开始生成配音" };
+        start.Click += async (_, _) => await StartDubbingAsync();
+        menu.Items.Add(start);
+        return menu;
+    }
+
+    private async Task StartDubbingAsync()
+    {
+        if (_dubbingRunning)
+        {
+            ShowStatusHold("正在生成配音，请稍候。");
+            return;
+        }
+
+        var path = Playback.Playlist.Current?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowStatusHold("请先打开一个媒体文件。");
+            return;
+        }
+
+        if (!App.Host.Settings.AiSubtitlesEnabled)
+        {
+            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
+            return;
+        }
+
+        var cues = _subtitles.Cues;
+        if (cues.Count == 0 || !_subtitles.HasTranslations)
+        {
+            ShowStatusHold("当前字幕没有译文，请先生成或选择带译文的 AI 字幕。");
+            return;
+        }
+
+        var voices = VoicePresets.Ensure(App.Host.Voices);
+        if (voices.Count == 0)
+        {
+            ShowStatusHold("没有可用音色，请先导入参考音频。");
+            return;
+        }
+
+        var settings = App.Host.Settings;
+        var voice = voices.FirstOrDefault(item => item.Id == settings.DubbingVoice) ?? voices[0];
+        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
+        _dubbingRunning = true;
+        ShowStatusHold($"开始生成配音（{voice.DisplayName}）…");
+        try
+        {
+            var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold(value.Stage + " · " + value.Value.ToString("P0")));
+            var result = await App.Host.AiSubtitles.CreateDubbing().GenerateAsync(
+                new DubbingRequest(path, cues, voice.Id),
+                device,
+                progress,
+                CancellationToken.None);
+            var message = $"配音已生成：{System.IO.Path.GetFileName(result.Manifest.AudioPath)}（{result.Generated} 句";
+            if (result.Failed > 0)
+                message += $"，{result.Failed} 句失败";
+            if (result.Truncated > 0)
+                message += $"，{result.Truncated} 句压缩";
+            if (result.Overlapped > 0)
+                message += $"，{result.Overlapped} 句重叠截断";
+            ShowStatusHold(message + "）");
+        }
+        catch (Exception ex)
+        {
+            ShowStatusHold("配音生成失败：" + ex.Message);
+            CrashLog.Write("AI 配音生成失败", ex.ToString());
+        }
+        finally
+        {
+            _dubbingRunning = false;
+        }
     }
 
     private void RefreshGeneratedSubtitles(string mediaPath)

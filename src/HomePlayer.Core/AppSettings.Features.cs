@@ -52,4 +52,5 @@ public sealed partial class AppSettings
     public bool AiLiveDraftSubtitles { get; set; } = true;
     public bool AiBilingualSubtitles { get; set; } = true;
     public SubtitleDisplayMode SubtitleDisplayMode { get; set; } = SubtitleDisplayMode.Both;
+    public string DubbingVoice { get; set; } = "";
 }

@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace HomePlayer.AI;
 
 public sealed class AiModelManager
 {
+    private static readonly string[] ArchiveSuffixes = [".tar.bz2", ".tar.gz", ".tgz"];
+
     private string _modelDirectory;
     private readonly Func<string> _proxy;
 
@@ -125,6 +128,98 @@ public sealed class AiModelManager
             File.Delete(path + ".verified");
         if (File.Exists(path + ".download"))
             File.Delete(path + ".download");
+        var directory = ArchiveDirectoryFor(model);
+        if (directory != null && Directory.Exists(directory))
+            Directory.Delete(directory, true);
+    }
+
+    /// <summary>
+    /// 归档模型解压后的目录；不是归档则返回 null。
+    /// </summary>
+    public string? ArchiveDirectoryFor(AiModelInfo model)
+    {
+        var name = model.FileName;
+        foreach (var suffix in ArchiveSuffixes)
+        {
+            if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return Path.Combine(_modelDirectory, name[..^suffix.Length]);
+        }
+
+        return null;
+    }
+
+    public bool IsArchiveInstalled(AiModelInfo model)
+    {
+        var directory = ArchiveDirectoryFor(model);
+        if (directory == null || !Directory.Exists(directory))
+            return false;
+        var marker = Path.Combine(directory, ".verified");
+        try
+        {
+            return File.Exists(marker)
+                && string.Equals(File.ReadAllText(marker).Trim(), model.Sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<string> EnsureArchiveAsync(
+        AiModelInfo model,
+        string mirror,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var directory = ArchiveDirectoryFor(model)
+            ?? throw new InvalidOperationException("模型 " + model.Id + " 不是归档文件。");
+        if (IsArchiveInstalled(model))
+            return directory;
+
+        var archive = await EnsureAsync(model, mirror, progress, cancellationToken);
+        var extract = directory + ".extract";
+        if (Directory.Exists(extract))
+            Directory.Delete(extract, true);
+        Directory.CreateDirectory(extract);
+        try
+        {
+            ExtractArchive(archive, extract);
+            var entries = Directory.GetFileSystemEntries(extract);
+            var root = entries.Length == 1 && Directory.Exists(entries[0]) ? entries[0] : extract;
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, true);
+            Directory.Move(root, directory);
+            File.WriteAllText(Path.Combine(directory, ".verified"), model.Sha256);
+            return directory;
+        }
+        finally
+        {
+            if (Directory.Exists(extract))
+                Directory.Delete(extract, true);
+        }
+    }
+
+    private static void ExtractArchive(string archive, string directory)
+    {
+        var executable = Path.Combine(Environment.SystemDirectory, "tar.exe");
+        if (!File.Exists(executable))
+            executable = "tar.exe";
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true
+        };
+        info.ArgumentList.Add("-xf");
+        info.ArgumentList.Add(archive);
+        info.ArgumentList.Add("-C");
+        info.ArgumentList.Add(directory);
+        using var process = Process.Start(info)
+            ?? throw new InvalidOperationException("无法启动解压程序。");
+        var errors = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidDataException("模型解压失败：" + errors.Trim());
     }
 
     private async Task DownloadAsync(

@@ -18,9 +18,14 @@ public sealed class SubtitleTrack
     {
         _cues = cues;
         _maxEnd = IsSortedByStart(cues) ? BuildMaxEnd(cues) : null;
+        HasTranslations = cues.Any(cue => cue.HasTranslation);
     }
 
     public int Count => _cues.Count;
+
+    public IReadOnlyList<SubtitleCue> Cues => _cues;
+
+    public bool HasTranslations { get; }
 
     public SubtitleCue? At(TimeSpan time)
     {

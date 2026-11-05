@@ -5,7 +5,8 @@ public enum AiModelKind
     Recognition,
     Translation,
     VoiceActivityDetection,
-    SenseVoiceComponent
+    SenseVoiceComponent,
+    SpeechSynthesis
 }
 
 public sealed record AiModelInfo(
@@ -61,7 +62,15 @@ public static class AiSubtitleCatalog
             "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51", "MIT"),
         new("sensevoice-tokens", AiModelKind.SenseVoiceComponent, "SenseVoice 词表",
             "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", "2365baeacb507f821a0c8120fcee3d484dba7a07", "tokens.txt", 315_894,
-            "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc", "MIT")
+            "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc", "MIT"),
+        new("zipvoice-model", AiModelKind.SpeechSynthesis, "ZipVoice 语音克隆模型 · 中英（110 MB）",
+            "k2-fsa/sherpa-onnx", "tts-models", "sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2", 109_162_785,
+            "77219c8b40f4ee8d73a7f902305ff6c1128ef9b54461c41b4ca6ed890b6c2803", "Apache-2.0",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2"),
+        new("zipvoice-vocoder", AiModelKind.SpeechSynthesis, "Vocos 24 kHz 声码器（54 MB）",
+            "k2-fsa/sherpa-onnx", "vocoder-models", "vocos_24khz.onnx", 54_157_409,
+            "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0", "MIT",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx")
     ];
 
     public static IReadOnlyList<AiLanguage> Languages { get; } =

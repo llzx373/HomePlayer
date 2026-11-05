@@ -10,11 +10,13 @@ internal static class AiRuntime
     public static string CudaWhisperDirectory => Directory("whisper-cuda");
     public static string WorkerDirectory => Directory("worker");
     public static string SherpaWorkerDirectory => Directory("sherpa-worker");
+    public static string TtsWorkerDirectory => Directory("tts-worker");
 
     public static string WhisperExecutable => Verify(WhisperDirectory, "whisper", "whisper-cli.exe");
     public static string CudaWhisperExecutable => Verify(CudaWhisperDirectory, "whisper-cuda", "whisper-cli.exe");
     public static string WorkerExecutable => Path.Combine(WorkerDirectory, "HomePlayer.AI.Worker.exe");
     public static string SherpaWorkerExecutable => Path.Combine(SherpaWorkerDirectory, "HomePlayer.AI.SherpaWorker.exe");
+    public static string TtsWorkerExecutable => Path.Combine(TtsWorkerDirectory, "HomePlayer.AI.TtsWorker.exe");
     public static bool HasNvidiaGpu => File.Exists(Path.Combine(Environment.SystemDirectory, "nvidia-smi.exe"));
 
     public static int NvidiaMemoryMiB

@@ -36,6 +36,8 @@ internal sealed class SubtitleSession
     public string? SidecarEncoding => _sidecarEncoding;
     public int DelayMilliseconds => _delayMs;
     public SubtitleDisplayMode? DisplayMode => _displayMode;
+    public IReadOnlyList<SubtitleCue> Cues => _track.Cues;
+    public bool HasTranslations => _track.HasTranslations;
     public int EmbeddedIndex => _embedded;
     public string? Error { get; private set; }
     public bool IsOff => _choice == Choice.Off;

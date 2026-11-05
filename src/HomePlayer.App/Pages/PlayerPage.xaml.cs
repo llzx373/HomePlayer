@@ -955,6 +955,7 @@ public sealed partial class PlayerPage : Page
         open.Click += OpenSubtitleFile_Click;
         SubtitleFlyout.Items.Add(open);
         SubtitleFlyout.Items.Add(CreateAiGenerationMenuItem());
+        SubtitleFlyout.Items.Add(CreateDubbingMenu());
 
         SubtitleFlyout.Items.Add(new MenuFlyoutSeparator());
         SubtitleFlyout.Items.Add(new MenuFlyoutItem
