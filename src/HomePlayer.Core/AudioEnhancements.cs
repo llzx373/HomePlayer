@@ -11,3 +11,8 @@ public interface IPlaybackAudioOutputEvents
 {
     event Action<Exception>? AudioOutputFailed;
 }
+
+public interface IPlaybackAudioMix
+{
+    void SetAudioMix(IAudioMixSource? source);
+}

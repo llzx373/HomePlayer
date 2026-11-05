@@ -532,6 +532,15 @@ public sealed partial class PlayerPage
                 device,
                 progress,
                 CancellationToken.None);
+            if (string.Equals(_dubbingPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_dubbingMode == DubbingMode.Off)
+                {
+                    _dubbingMode = DubbingMode.Mixed;
+                    SaveDubbingPreference();
+                }
+                ApplyDubbing();
+            }
             var message = $"配音已生成：{System.IO.Path.GetFileName(result.Manifest.AudioPath)}（{result.Generated} 句";
             if (result.Failed > 0)
                 message += $"，{result.Failed} 句失败";

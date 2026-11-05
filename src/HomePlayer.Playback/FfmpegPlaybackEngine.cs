@@ -6,7 +6,7 @@ using NAudio.Wave;
 
 namespace HomePlayer.Playback;
 
-public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackChapterSource, IPlaybackAudioEnhancements, IPlaybackAudioOutputEvents, IPlaybackTimedSeek
+public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource, IPlaybackChapterSource, IPlaybackAudioEnhancements, IPlaybackAudioOutputEvents, IPlaybackTimedSeek, IPlaybackAudioMix
 {
     private static readonly FieldInfo? AudioClientField = typeof(WasapiOut).GetField("audioClient", BindingFlags.Instance | BindingFlags.NonPublic);
     private readonly object _gate = new();
@@ -30,6 +30,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     private bool _nightMode;
     private int _delayBytes;
     private int _skipBytes;
+    private IAudioMixSource? _audioMix;
 
     public FfmpegPlaybackEngine(string? audioOutputId = null) => _audioOutputId = audioOutputId;
 
@@ -50,7 +51,7 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public void Open(string path)
     {
         Stop();
-        var player = new FfmpegPlayer { D3D11Device = D3D11Device };
+        var player = new FfmpegPlayer { D3D11Device = D3D11Device, AudioMix = _audioMix };
         try
         {
             player.FrameArrived += frame =>
@@ -282,6 +283,13 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public void SetNormalization(bool enabled) => _normalize = enabled;
 
     public void SetNightMode(bool enabled) => _nightMode = enabled;
+
+    public void SetAudioMix(IAudioMixSource? source)
+    {
+        _audioMix = source;
+        if (_player != null)
+            _player.AudioMix = source;
+    }
 
     private void OnPcm(byte[] data, int count, long epoch)
     {

@@ -2,51 +2,65 @@ using System.Text;
 
 namespace HomePlayer.Core;
 
+public sealed record WavInfo(int SampleRate, int Channels, int BitsPerSample, int DataOffset, long Frames);
+
 /// <summary>
 /// 配音产物只使用 16 位 PCM，这里只实现这一种格式，避免引入额外依赖。
 /// </summary>
 public static class WavFile
 {
-    public static (short[] Samples, int SampleRate, int Channels) ReadPcm16(string path)
+    public static WavInfo ReadInfo(string path)
     {
-        var bytes = File.ReadAllBytes(path);
-        if (bytes.Length < 44 || Encoding.ASCII.GetString(bytes, 0, 4) != "RIFF" || Encoding.ASCII.GetString(bytes, 8, 4) != "WAVE")
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
+        if (stream.Length < 44 || Encoding.ASCII.GetString(reader.ReadBytes(4)) != "RIFF")
+            throw new InvalidDataException("不是有效的 WAV 文件：" + path);
+        stream.Position = 8;
+        if (Encoding.ASCII.GetString(reader.ReadBytes(4)) != "WAVE")
             throw new InvalidDataException("不是有效的 WAV 文件：" + path);
 
         var channels = 1;
         var sampleRate = 16000;
         var bits = 16;
-        var dataOffset = -1;
-        var dataLength = 0;
-
-        for (var i = 12; i + 8 <= bytes.Length;)
+        var blockAlign = 2;
+        while (stream.Position + 8 <= stream.Length)
         {
-            var id = Encoding.ASCII.GetString(bytes, i, 4);
-            var size = BitConverter.ToInt32(bytes, i + 4);
-            var body = i + 8;
+            var id = Encoding.ASCII.GetString(reader.ReadBytes(4));
+            var size = reader.ReadInt32();
+            var body = stream.Position;
             if (id == "fmt ")
             {
-                channels = BitConverter.ToInt16(bytes, body + 2);
-                sampleRate = BitConverter.ToInt32(bytes, body + 4);
-                bits = BitConverter.ToInt16(bytes, body + 14);
+                reader.ReadInt16();
+                channels = reader.ReadInt16();
+                sampleRate = reader.ReadInt32();
+                reader.ReadInt32();
+                blockAlign = reader.ReadInt16();
+                bits = reader.ReadInt16();
             }
             else if (id == "data")
             {
-                dataOffset = body;
-                dataLength = Math.Min(size, bytes.Length - body);
+                if (bits != 16 || channels < 1 || blockAlign <= 0)
+                    throw new InvalidDataException("只支持 16 位 PCM WAV：" + path);
+                var frames = Math.Min(size, stream.Length - body) / blockAlign;
+                return new WavInfo(sampleRate, channels, bits, (int)body, frames);
             }
 
-            i = body + size + (size & 1);
+            stream.Position = body + size + (size & 1);
         }
 
-        if (dataOffset < 0)
-            throw new InvalidDataException("WAV 缺少 data 段：" + path);
-        if (bits != 16 || channels < 1)
-            throw new InvalidDataException("只支持 16 位 PCM WAV：" + path);
+        throw new InvalidDataException("WAV 缺少 data 段：" + path);
+    }
 
-        var samples = new short[dataLength / 2];
-        Buffer.BlockCopy(bytes, dataOffset, samples, 0, samples.Length * 2);
-        return (samples, sampleRate, channels);
+    public static (short[] Samples, int SampleRate, int Channels) ReadPcm16(string path)
+    {
+        var info = ReadInfo(path);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        stream.Position = info.DataOffset;
+        var bytes = new byte[info.Frames * info.Channels * 2];
+        stream.ReadExactly(bytes);
+        var samples = new short[bytes.Length / 2];
+        Buffer.BlockCopy(bytes, 0, samples, 0, bytes.Length);
+        return (samples, info.SampleRate, info.Channels);
     }
 
     public static void WritePcm16(string path, short[] samples, int sampleRate, int channels)

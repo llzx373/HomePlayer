@@ -117,6 +117,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     public Func<int>? UnplayedBytes { get; set; }
     public Func<bool>? AudioOutputDrained { get; set; }
     public Func<double?>? AudioDevicePosition { get; set; }
+    public IAudioMixSource? AudioMix { get; set; }
+    private double _mixSeconds = double.NaN;
 
     public Guid SessionId { get; private set; }
     public string TimelineId { get; private set; } = "";
@@ -1118,6 +1120,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         var source = frame->extended_data;
         var inputSamples = frame->nb_samples;
         var pts = AudioTiming(frame, epoch, packetPts).PresentationTimestamp;
+        var skipSamples = 0;
         var seek = ActiveSeek(epoch);
         if (seek != null && frame->sample_rate > 0)
         {
@@ -1147,12 +1150,16 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 }
                 source = trimmed;
                 inputSamples -= skip;
+                skipSamples = skip;
             }
         }
         var outSamples = (int)ffmpeg.av_rescale_rnd(
             ffmpeg.swr_get_delay(_resampler, frame->sample_rate) + inputSamples,
             48000, frame->sample_rate, AVRounding.AV_ROUND_UP);
-        ConvertAudio(source, inputSamples, outSamples, epoch);
+        double? startSeconds = pts != ffmpeg.AV_NOPTS_VALUE && _audioTimeBase.den > 0 && frame->sample_rate > 0
+            ? pts * (_audioTimeBase.num / (double)_audioTimeBase.den) + skipSamples / (double)frame->sample_rate
+            : null;
+        ConvertAudio(source, inputSamples, outSamples, epoch, startSeconds);
     }
 
     private void DrainResampler(long epoch)
@@ -1184,7 +1191,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         }
     }
 
-    private void ConvertAudio(byte** source, int inputSamples, int outSamples, long epoch)
+    private void ConvertAudio(byte** source, int inputSamples, int outSamples, long epoch, double? startSeconds = null)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(outSamples * OutputChannels * 2, 4));
         try
@@ -1197,7 +1204,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
                 converted = ffmpeg.swr_convert(_resampler, dest, outSamples, source, inputSamples);
             }
             if (converted > 0)
-                EmitConverted(buffer, converted * OutputChannels * 2, epoch);
+                EmitConverted(buffer, converted * OutputChannels * 2, epoch, startSeconds);
         }
         finally
         {
@@ -1205,8 +1212,28 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         }
     }
 
-    private void EmitConverted(byte[] buffer, int count, long epoch)
+    private void EmitConverted(byte[] buffer, int count, long epoch, double? startSeconds = null)
     {
+        // 只在首块或明显跳变（seek）时用 PTS 重新锚定；逐块用 PTS 会引入毫秒级抖动，
+        // 混音会变成周期性错位。连续播放时按采样数推进即可保持时间轴精确。
+        if (startSeconds is { } start && (double.IsNaN(_mixSeconds) || Math.Abs(start - _mixSeconds) > 0.1))
+            _mixSeconds = start;
+
+        var mix = AudioMix;
+        if (mix is { Enabled: true } && OutputChannels > 0 && !double.IsNaN(_mixSeconds))
+        {
+            try
+            {
+                mix.Process(_mixSeconds, buffer, count, 48000, OutputChannels);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        if (!double.IsNaN(_mixSeconds))
+            _mixSeconds += count / (double)(OutputChannels * 2 * 48000);
+
         var pcmEpoch = Interlocked.Read(ref _audioEpoch);
         var output = _timeStretcher.Process(buffer, count, OutputChannels, Rate);
         if (output.Length > 0 && epoch == Epoch)
