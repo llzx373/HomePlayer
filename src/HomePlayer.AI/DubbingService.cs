@@ -5,14 +5,21 @@ using HomePlayer.Core;
 
 namespace HomePlayer.AI;
 
-public sealed record DubbingRequest(string MediaPath, IReadOnlyList<SubtitleCue> Cues, string VoiceId, int Steps = 2);
+public sealed record DubbingRequest(
+    string MediaPath,
+    IReadOnlyList<SubtitleCue> Cues,
+    string VoiceId,
+    int Steps = 2,
+    int AudioTrackIndex = 0,
+    bool SeparateSpeakers = false);
 
 public sealed record DubbingResult(
     DubbingManifest Manifest,
     int Generated,
     int Failed,
     int Truncated,
-    int Overlapped);
+    int Overlapped,
+    int Speakers);
 
 /// <summary>
 /// 把带译文的字幕逐句合成配音，并拼成一条与视频时间轴对齐的配音音轨。
@@ -43,8 +50,49 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
             Directory.Delete(work, true);
         Directory.CreateDirectory(work);
 
+        SpeakerAnalysis? analysis = null;
+        IReadOnlyDictionary<int, string>? speakerVoices = null;
+        var startProgress = 0.0;
+        if (request.SeparateSpeakers)
+        {
+            startProgress = 0.35;
+            analysis = await new SpeakerAnalysisService(models, mirror).AnalyzeAsync(
+                request.MediaPath,
+                request.AudioTrackIndex,
+                device,
+                new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, value.Value * startProgress)),
+                cancellationToken);
+            var presets = new VoiceLibrary(voicesDirectory).List();
+            speakerVoices = SpeakerVoicePlanner.Assign(cues, analysis, presets);
+            Report(progress, $"识别到 {analysis.SpeakerCount} 个说话人", startProgress);
+        }
+
+        try
+        {
+            return await GenerateCoreAsync(request, cues, work, device, speakerVoices, startProgress, progress, cancellationToken);
+        }
+        finally
+        {
+            analysis?.Dispose();
+        }
+    }
+
+    private async Task<DubbingResult> GenerateCoreAsync(
+        DubbingRequest request,
+        SubtitleCue[] cues,
+        string work,
+        AiComputeDevice device,
+        IReadOnlyDictionary<int, string>? speakerVoices,
+        double startProgress,
+        IProgress<AiSubtitleProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var span = 1 - startProgress;
+
         await using var tts = new TtsService(models, device, mirror, voicesDirectory);
-        await tts.StartAsync(new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, value.Value * 0.12)), cancellationToken);
+        await tts.StartAsync(
+            new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, startProgress + value.Value * 0.12 * span)),
+            cancellationToken);
 
         var segments = new List<DubbingSegment>(cues.Length);
         var failed = 0;
@@ -53,12 +101,15 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
         {
             cancellationToken.ThrowIfCancellationRequested();
             var cue = cues[index];
-            Report(progress, $"合成配音 {index + 1}/{cues.Length}", 0.12 + 0.78 * index / cues.Length);
+            Report(progress, $"合成配音 {index + 1}/{cues.Length}", startProgress + (0.12 + 0.78 * index / cues.Length) * span);
             var path = Path.Combine(work, index.ToString("D5", CultureInfo.InvariantCulture) + ".wav");
             var text = cue.Translation!.Trim();
+            var voiceId = speakerVoices != null && speakerVoices.TryGetValue(index, out var assigned)
+                ? assigned
+                : request.VoiceId;
             try
             {
-                var (sampleRate, _) = await tts.SynthesizeAsync(text, request.VoiceId, path, request.Steps, cancellationToken);
+                var (sampleRate, _) = await tts.SynthesizeAsync(text, voiceId, path, request.Steps, cancellationToken);
                 var (samples, wasTruncated) = Fit(path, sampleRate, (cue.End - cue.Start).TotalSeconds);
                 if (wasTruncated)
                     truncated++;
@@ -68,7 +119,7 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
                     (int)Math.Round(cue.End.TotalMilliseconds),
                     cue.Text,
                     text,
-                    request.VoiceId,
+                    voiceId,
                     path,
                     sampleRate,
                     samples));
@@ -86,7 +137,7 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
         if (segments.Count == 0)
             throw new InvalidOperationException("所有句子都合成失败，请检查音色和语音合成模型。");
 
-        Report(progress, "写入配音音轨", 0.93);
+        Report(progress, "写入配音音轨", startProgress + 0.93 * span);
         var audioPath = DubbingFile.AudioPathFor(request.MediaPath);
         var overlapped = WriteTrack(audioPath, segments);
         var manifest = new DubbingManifest(
@@ -98,7 +149,13 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
             segments);
         DubbingFile.Save(manifest);
         Report(progress, "配音完成", 1);
-        return new DubbingResult(manifest, segments.Count, failed, truncated, overlapped);
+        return new DubbingResult(
+            manifest,
+            segments.Count,
+            failed,
+            truncated,
+            overlapped,
+            segments.Select(segment => segment.VoiceId).Distinct().Count());
     }
 
     private static (long Samples, bool Truncated) Fit(string path, int sampleRate, double targetSeconds)

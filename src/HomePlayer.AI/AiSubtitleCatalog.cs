@@ -6,7 +6,8 @@ public enum AiModelKind
     Translation,
     VoiceActivityDetection,
     SenseVoiceComponent,
-    SpeechSynthesis
+    SpeechSynthesis,
+    SpeakerAnalysis
 }
 
 public sealed record AiModelInfo(
@@ -70,7 +71,15 @@ public static class AiSubtitleCatalog
         new("zipvoice-vocoder", AiModelKind.SpeechSynthesis, "Vocos 24 kHz 声码器（54 MB）",
             "k2-fsa/sherpa-onnx", "vocoder-models", "vocos_24khz.onnx", 54_157_409,
             "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0", "MIT",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx")
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"),
+        new("diarization-segmentation", AiModelKind.SpeakerAnalysis, "说话人分割模型（7 MB）",
+            "k2-fsa/sherpa-onnx", "speaker-segmentation-models", "sherpa-onnx-pyannote-segmentation-3-0.tar.bz2", 6_958_444,
+            "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488", "MIT",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"),
+        new("speaker-embedding", AiModelKind.SpeakerAnalysis, "声纹嵌入模型 Campplus（28 MB）",
+            "k2-fsa/sherpa-onnx", "speaker-recongition-models", "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx", 28_281_138,
+            "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11", "Apache-2.0",
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx")
     ];
 
     public static IReadOnlyList<AiLanguage> Languages { get; } =

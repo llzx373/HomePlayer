@@ -54,4 +54,5 @@ public sealed partial class AppSettings
     public SubtitleDisplayMode SubtitleDisplayMode { get; set; } = SubtitleDisplayMode.Both;
     public string DubbingVoice { get; set; } = "";
     public DubbingMode DubbingMode { get; set; } = DubbingMode.Off;
+    public bool DubbingSeparateSpeakers { get; set; }
 }

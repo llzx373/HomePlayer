@@ -478,6 +478,17 @@ public sealed partial class PlayerPage
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
+        var separate = new ToggleMenuFlyoutItem
+        {
+            Text = "按说话人区分音色（实验）",
+            IsChecked = App.Host.Settings.DubbingSeparateSpeakers
+        };
+        separate.Click += (_, _) =>
+        {
+            App.Host.Settings.DubbingSeparateSpeakers = separate.IsChecked;
+            App.Host.SaveSettings();
+        };
+        menu.Items.Add(separate);
         var start = new MenuFlyoutItem { Text = "开始生成配音" };
         start.Click += async (_, _) => await StartDubbingAsync();
         menu.Items.Add(start);
@@ -528,7 +539,8 @@ public sealed partial class PlayerPage
         {
             var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold(value.Stage + " · " + value.Value.ToString("P0")));
             var result = await App.Host.AiSubtitles.CreateDubbing().GenerateAsync(
-                new DubbingRequest(path, cues, voice.Id),
+                new DubbingRequest(path, cues, voice.Id, AudioTrackIndex: Playback.AudioTrackIndex,
+                    SeparateSpeakers: settings.DubbingSeparateSpeakers),
                 device,
                 progress,
                 CancellationToken.None);
@@ -542,6 +554,8 @@ public sealed partial class PlayerPage
                 ApplyDubbing();
             }
             var message = $"配音已生成：{System.IO.Path.GetFileName(result.Manifest.AudioPath)}（{result.Generated} 句";
+            if (result.Speakers > 1)
+                message += $" · {result.Speakers} 个音色";
             if (result.Failed > 0)
                 message += $"，{result.Failed} 句失败";
             if (result.Truncated > 0)
