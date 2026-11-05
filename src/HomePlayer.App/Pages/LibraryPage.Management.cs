@@ -10,6 +10,7 @@ namespace HomePlayer;
 public sealed partial class LibraryPage
 {
     private bool _changingFilters;
+    private double _columnWidth;
     private IReadOnlyDictionary<string, MediaLibrary> _pageLibraries = new Dictionary<string, MediaLibrary>();
 
     private void InitializeManagement()
@@ -218,6 +219,7 @@ public sealed partial class LibraryPage
             }
         }
         _cards.ReplaceAll(cards);
+        QueueCardColumnUpdate();
         Pager.Update(_browseMode == LibraryBrowseMode.Series ? 0 : total, page, pageSize);
         _pendingUpdates = 0;
         _pendingAll = false;
@@ -304,19 +306,75 @@ public sealed partial class LibraryPage
         };
     }
 
-    private (double Width, double Height) CardDimensions(MediaCard card)
+    // 与 LibraryGridItemStyle 的右边距保持一致，列宽要按它均分才能铺满整行。
+    private const double CardGapX = 20;
+
+    private double CardBaseWidth(bool portrait)
     {
         if (!UsesLibraryQuery)
-            return (Math.Round(400 * _cardScale), 104);
+            return Math.Round(400 * _cardScale);
         var compact = (LibraryLayout)Math.Max(0, LayoutBox.SelectedIndex) == LibraryLayout.CompactCards;
         var size = (LibraryCardSize)Math.Max(0, CardSizeBox.SelectedIndex);
-        var portrait = card.Library.Kind == LibraryKind.Catalog;
         double width = portrait
             ? compact ? 150 : size switch { LibraryCardSize.Small => 160, LibraryCardSize.Large => 224, _ => 184 }
             : compact ? 224 : size switch { LibraryCardSize.Small => 240, LibraryCardSize.Large => 336, _ => 280 };
-        width = Math.Round(width * _cardScale);
+        return Math.Round(width * _cardScale);
+    }
+
+    private double TargetCardWidth()
+    {
+        if (!UsesLibraryQuery)
+            return CardBaseWidth(false);
+        var portraits = 0;
+        foreach (var card in _cards)
+        {
+            if (card.Library.Kind == LibraryKind.Catalog)
+                portraits++;
+        }
+        var portraitDominant = portraits > 0 && portraits * 2 >= _cards.Count;
+        return CardBaseWidth(portraitDominant);
+    }
+
+    private (double Width, double Height) CardDimensions(MediaCard card)
+    {
+        var portrait = card.Library.Kind == LibraryKind.Catalog;
+        var width = _columnWidth > 0 ? _columnWidth : CardBaseWidth(portrait);
+        if (!UsesLibraryQuery)
+            return (width, 104);
         var height = Math.Round(portrait ? width * 1.5 : width * 9 / 16);
         return (width, height);
+    }
+
+    private void QueueCardColumnUpdate()
+    {
+        if (!_ready)
+            return;
+        _cardLayoutTimer.Stop();
+        _cardLayoutTimer.Start();
+    }
+
+    private void RecalculateCardColumns()
+    {
+        if (!_ready)
+            return;
+        var grid = UsesLibraryQuery ? Cards : RecentCards;
+        if (grid.Visibility != Visibility.Visible)
+            return;
+        var available = grid.ActualWidth;
+        if (available <= 1)
+            available = grid.ItemsPanelRoot?.ActualWidth ?? 0;
+        if (available <= 1)
+            return;
+
+        var target = TargetCardWidth();
+        if (target <= 1)
+            return;
+        var columns = Math.Max(1, (int)Math.Round(available / (target + CardGapX)));
+        var width = Math.Floor(available / columns) - CardGapX;
+        if (width <= 0 || Math.Abs(width - _columnWidth) < 0.5)
+            return;
+        _columnWidth = width;
+        ApplyCardDimensions();
     }
 
     private void ApplyCardDimensions()

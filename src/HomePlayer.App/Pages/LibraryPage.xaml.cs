@@ -22,6 +22,7 @@ public sealed partial class LibraryPage : Page
     private readonly DispatcherQueueTimer _reloadTimer;
     private readonly DispatcherQueueTimer _libraryTimer;
     private readonly DispatcherQueueTimer _filterTimer;
+    private readonly DispatcherQueueTimer _cardLayoutTimer;
     private readonly Dictionary<string, FolderNode> _folderNodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TreeViewNode> _folderTreeNodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (DateTime Stamp, BitmapImage Image)> _coverCache = new(StringComparer.OrdinalIgnoreCase);
@@ -68,6 +69,10 @@ public sealed partial class LibraryPage : Page
         _filterTimer.Interval = TimeSpan.FromMilliseconds(200);
         _filterTimer.IsRepeating = false;
         _filterTimer.Tick += (_, _) => LoadPage();
+        _cardLayoutTimer = DispatcherQueue.CreateTimer();
+        _cardLayoutTimer.Interval = TimeSpan.FromMilliseconds(60);
+        _cardLayoutTimer.IsRepeating = false;
+        _cardLayoutTimer.Tick += (_, _) => RecalculateCardColumns();
         Pager.PageRequested += (_, page) =>
         {
             _page = page;
@@ -89,6 +94,7 @@ public sealed partial class LibraryPage : Page
         {
             _ready = true;
             QueueLibraryReload();
+            QueueCardColumnUpdate();
         };
         Unloaded += (_, _) =>
         {
@@ -97,6 +103,7 @@ public sealed partial class LibraryPage : Page
             _reloadTimer.Stop();
             _libraryTimer.Stop();
             _filterTimer.Stop();
+            _cardLayoutTimer.Stop();
         };
         _ready = true;
     }
@@ -115,11 +122,8 @@ public sealed partial class LibraryPage : Page
     {
         SidebarColumn.Width = new GridLength(ActualWidth < 1180 ? 208 : 240);
         SearchBox.Width = ActualWidth < 1050 ? 220 : 300;
-        var scale = ActualWidth < 1050 ? 0.85 : ActualWidth > 1680 ? 1.12 : 1;
-        if (Math.Abs(_cardScale - scale) < 0.01)
-            return;
-        _cardScale = scale;
-        ApplyCardDimensions();
+        _cardScale = ActualWidth < 1050 ? 0.85 : ActualWidth > 1680 ? 1.12 : 1;
+        QueueCardColumnUpdate();
     }
 
     private void QueuePageReload()
@@ -481,6 +485,7 @@ public sealed partial class LibraryPage : Page
         }
 
         _cards.ReplaceAll(cards);
+        QueueCardColumnUpdate();
         Pager.Update(total, page, pageSize);
         _pendingUpdates = 0;
         _pendingAll = false;
