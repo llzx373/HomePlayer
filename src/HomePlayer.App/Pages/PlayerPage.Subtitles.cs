@@ -83,13 +83,19 @@ public sealed partial class PlayerPage
         if (!string.IsNullOrWhiteSpace(style.FontName))
             SubtitleText.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(style.FontName);
         if (style.FontSize is double fontSize)
+        {
             SubtitleText.FontSize = Math.Clamp(fontSize * VideoHost.ActualHeight / 1080.0, 8, 160);
+            SubtitleTranslation.FontSize = Math.Clamp(SubtitleText.FontSize * 0.78, 8, 140);
+        }
         if (style.BgrColor is uint bgr)
+        {
             SubtitleText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(
                 255,
                 (byte)(bgr & 0xff),
                 (byte)((bgr >> 8) & 0xff),
                 (byte)((bgr >> 16) & 0xff)));
+            SubtitleTranslation.Foreground = SubtitleText.Foreground;
+        }
         SubtitleText.FontWeight = style.Bold ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal;
         SubtitleText.FontStyle = style.Italic ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
         if (style.Alignment is int alignment)

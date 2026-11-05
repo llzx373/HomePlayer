@@ -630,7 +630,8 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
                 reader.IsDBNull(reader.GetOrdinal("PlaybackRate")) ? null : reader.GetDouble(reader.GetOrdinal("PlaybackRate")),
                 reader.GetInt32(reader.GetOrdinal("AudioDelayMs")),
                 reader.IsDBNull(reader.GetOrdinal("AudioTrackStableId")) ? null : reader.GetString(reader.GetOrdinal("AudioTrackStableId")),
-                reader.IsDBNull(reader.GetOrdinal("SubtitleTrackStableId")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackStableId")));
+                reader.IsDBNull(reader.GetOrdinal("SubtitleTrackStableId")) ? null : reader.GetString(reader.GetOrdinal("SubtitleTrackStableId")),
+                reader.IsDBNull(reader.GetOrdinal("SubtitleDisplayMode")) ? null : (SubtitleDisplayMode)reader.GetInt32(reader.GetOrdinal("SubtitleDisplayMode")));
         }
     }
 
@@ -644,11 +645,11 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
                     Path, AudioTrackIndex, AudioTrackTitle, AudioTrackLanguage,
                     SubtitleMode, SubtitleTrackIndex, SubtitleTrackTitle, SubtitleTrackLanguage,
                     SubtitlePath, SubtitleDelayMs, Volume, PlaybackRate, AudioDelayMs,
-                    AudioTrackStableId, SubtitleTrackStableId)
+                    AudioTrackStableId, SubtitleTrackStableId, SubtitleDisplayMode)
                 VALUES ($path, $audioIndex, $audioTitle, $audioLanguage,
                     $subtitleMode, $subtitleIndex, $subtitleTitle, $subtitleLanguage,
                     $subtitlePath, $subtitleDelay, $volume, $rate, $audioDelay,
-                    $audioStableId, $subtitleStableId)
+                    $audioStableId, $subtitleStableId, $subtitleDisplayMode)
                 ON CONFLICT(Path) DO UPDATE SET
                     AudioTrackIndex = excluded.AudioTrackIndex,
                     AudioTrackTitle = excluded.AudioTrackTitle,
@@ -663,7 +664,8 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
                     PlaybackRate = excluded.PlaybackRate,
                     AudioDelayMs = excluded.AudioDelayMs,
                     AudioTrackStableId = excluded.AudioTrackStableId,
-                    SubtitleTrackStableId = excluded.SubtitleTrackStableId;
+                    SubtitleTrackStableId = excluded.SubtitleTrackStableId,
+                    SubtitleDisplayMode = excluded.SubtitleDisplayMode;
                 """,
                 ("$path", preference.Path),
                 ("$audioIndex", (object?)preference.AudioTrackIndex ?? DBNull.Value),
@@ -679,7 +681,8 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
                 ("$rate", (object?)preference.PlaybackRate ?? DBNull.Value),
                 ("$audioDelay", preference.AudioDelayMs),
                 ("$audioStableId", (object?)preference.AudioTrackStableId ?? DBNull.Value),
-                ("$subtitleStableId", (object?)preference.SubtitleTrackStableId ?? DBNull.Value));
+                ("$subtitleStableId", (object?)preference.SubtitleTrackStableId ?? DBNull.Value),
+                ("$subtitleDisplayMode", preference.SubtitleDisplayMode is { } mode ? (int)mode : DBNull.Value));
         }
     }
 
@@ -1313,7 +1316,7 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
         }
     }
 
-    public const int SchemaVersion = 9;
+    public const int SchemaVersion = 10;
 
     private void Migrate()
     {
@@ -1447,6 +1450,8 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
             MigrateToVersion8();
         if (version < 9)
             MigrateToVersion9();
+        if (version < 10)
+            MigrateToVersion10();
     }
 
     private int ReadUserVersion()
@@ -1571,6 +1576,14 @@ public sealed partial class LibraryRepository : IDisposable, IPlaybackStateStore
         AddColumn("MediaPreference", "AudioTrackStableId", "TEXT NULL", tx);
         AddColumn("MediaPreference", "SubtitleTrackStableId", "TEXT NULL", tx);
         WriteUserVersion(9, tx);
+        tx.Commit();
+    }
+
+    private void MigrateToVersion10()
+    {
+        using var tx = _connection.BeginTransaction();
+        AddColumn("MediaPreference", "SubtitleDisplayMode", "INTEGER NULL", tx);
+        WriteUserVersion(10, tx);
         tx.Commit();
     }
 

@@ -158,6 +158,12 @@
                                         <ComboBoxItem Content="居中" />
                                         <ComboBoxItem Content="底部" />
                                     </ComboBox>
+                                    <ComboBox x:Name="SubtitleDisplayBox" Header="字幕显示" HorizontalAlignment="Stretch" SelectionChanged="SubtitleStyle_Changed">
+                                        <ComboBoxItem Content="原文与译文" />
+                                        <ComboBoxItem Content="仅原文" />
+                                        <ComboBoxItem Content="仅译文" />
+                                    </ComboBox>
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="只影响带译文的 AI 字幕；影片内单独切换过显示方式时以该影片为准。" TextWrapping="Wrap" />
                                     <Slider
                                         x:Name="SubtitleOpacitySlider"
                                         Header="背景不透明度"

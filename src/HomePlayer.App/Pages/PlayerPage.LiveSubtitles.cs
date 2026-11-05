@@ -60,7 +60,6 @@ public sealed partial class PlayerPage
         var settings = App.Host.Settings;
         var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
         var translate = settings.AiTranslateLiveSubtitles;
-        var bilingual = settings.AiBilingualSubtitles;
         var drafts = settings.AiLiveDraftSubtitles;
         var translation = translate
             ? App.Host.AiSubtitles.CreateLiveTranslator(
@@ -99,7 +98,7 @@ public sealed partial class PlayerPage
                 var cues = await App.Host.AiSubtitles.RecognizeWithSherpaAsync(
                     path, audioTrack, device, startSeconds,
                     null,
-                    update => DispatcherQueue.TryEnqueue(() => ApplyLiveSegment(generation, path, update, translation, bilingual, task.Token)),
+                    update => DispatcherQueue.TryEnqueue(() => ApplyLiveSegment(generation, path, update, translation, task.Token)),
                     task.Token,
                     realtime: true,
                     drafts: drafts);
@@ -125,7 +124,6 @@ public sealed partial class PlayerPage
         string path,
         SubtitleSegmentUpdate update,
         LiveTranslationService? translation,
-        bool bilingual,
         CancellationToken cancellationToken)
     {
         if (generation != _liveSubtitleGeneration || _liveSubtitles == null
@@ -150,7 +148,7 @@ public sealed partial class PlayerPage
         {
             if (string.IsNullOrWhiteSpace(entry.OriginalText))
                 continue;
-            var translationTask = TranslateLiveCueAsync(generation, entry, translation, bilingual, cancellationToken);
+            var translationTask = TranslateLiveCueAsync(generation, entry, translation, cancellationToken);
             lock (_liveTranslationLock)
                 _liveTranslationTasks.Add(translationTask);
         }
@@ -160,7 +158,6 @@ public sealed partial class PlayerPage
         int generation,
         LiveCueEntry entry,
         LiveTranslationService translation,
-        bool bilingual,
         CancellationToken cancellationToken)
     {
         try
@@ -174,7 +171,8 @@ public sealed partial class PlayerPage
                     return;
                 entry.Cue = entry.Cue with
                 {
-                    Text = bilingual ? entry.OriginalText + "\n" + translated : translated,
+                    Text = entry.OriginalText,
+                    Translation = translated.Trim(),
                     Bitmaps = [],
                     AssEvent = null
                 };
@@ -242,7 +240,8 @@ public sealed partial class PlayerPage
         var description = "SenseVoice 实时字幕" + (translation != null
             ? " · " + AiSubtitleCatalog.LanguageName(App.Host.Settings.AiTargetLanguage)
             : "");
-        await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, snapshot, description), cancellationToken);
+        var bilingual = App.Host.Settings.AiBilingualSubtitles;
+        await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, snapshot, description, bilingual), cancellationToken);
         DispatcherQueue.TryEnqueue(() =>
         {
             if (generation != _liveSubtitleGeneration)
@@ -388,12 +387,12 @@ public sealed partial class PlayerPage
                 throw new InvalidOperationException("没有识别到可用对白。");
             if (translate)
             {
-                cues = await App.Host.AiSubtitles.TranslateAsync(cues, sourceLanguage, targetLanguage, bilingual,
+                cues = await App.Host.AiSubtitles.TranslateAsync(cues, sourceLanguage, targetLanguage,
                     translationModel, device, AiGenerationProgress(version, path, 0.4, 0.6), task.Token);
             }
             var description = (useSherpa ? "Sherpa 识别" : "Whisper 识别")
                 + (translate ? " · " + AiSubtitleCatalog.LanguageName(targetLanguage) : " · 原文");
-            var result = await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, cues, description), task.Token);
+            var result = await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, cues, description, bilingual), task.Token);
             RefreshGeneratedSubtitles(path);
             if (_aiGenerationMenuItem != null)
             {

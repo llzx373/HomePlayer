@@ -10,7 +10,6 @@ public sealed class LlamaTranslationService(AiModelManager models)
         IReadOnlyList<SubtitleCue> cues,
         string? sourceLanguage,
         string targetLanguage,
-        bool bilingual,
         string modelId,
         string mirror,
         AiComputeDevice device,
@@ -90,7 +89,8 @@ public sealed class LlamaTranslationService(AiModelManager models)
 
             var result = cues.Select((cue, index) => cue with
             {
-                Text = bilingual ? cue.Text.Trim() + "\n" + translated[index] : translated[index],
+                Text = cue.Text.Trim(),
+                Translation = string.IsNullOrWhiteSpace(translated[index]) ? null : translated[index].Trim(),
                 Bitmaps = [],
                 AssEvent = null
             }).ToArray();

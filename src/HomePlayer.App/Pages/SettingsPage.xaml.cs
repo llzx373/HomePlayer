@@ -105,6 +105,7 @@ public sealed partial class SettingsPage : Page
                 SubtitleFontSizeBox.Value = App.Host.Settings.SubtitleFontSize;
                 SubtitleColorBox.SelectedIndex = (int)App.Host.Settings.SubtitleColor;
                 SubtitlePositionBox.SelectedIndex = (int)App.Host.Settings.SubtitlePosition;
+                SubtitleDisplayBox.SelectedIndex = (int)App.Host.Settings.SubtitleDisplayMode;
                 SubtitleOpacitySlider.Value = App.Host.Settings.SubtitleBackgroundOpacity * 100;
                 InitializePlaybackFeatureSettings();
                 InitializeRefreshRateSettings();
@@ -612,10 +613,12 @@ public sealed partial class SettingsPage : Page
 
     private void SubtitleStyle_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading || SubtitleColorBox.SelectedIndex < 0 || SubtitlePositionBox.SelectedIndex < 0)
+        if (_loading || SubtitleColorBox.SelectedIndex < 0 || SubtitlePositionBox.SelectedIndex < 0
+            || SubtitleDisplayBox.SelectedIndex < 0)
             return;
         App.Host.Settings.SubtitleColor = (SubtitleTextColor)SubtitleColorBox.SelectedIndex;
         App.Host.Settings.SubtitlePosition = (SubtitleVerticalPosition)SubtitlePositionBox.SelectedIndex;
+        App.Host.Settings.SubtitleDisplayMode = (SubtitleDisplayMode)SubtitleDisplayBox.SelectedIndex;
         SaveSettings();
     }
 

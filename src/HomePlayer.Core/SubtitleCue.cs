@@ -7,9 +7,12 @@ public sealed record SubtitleCue(
     TimeSpan End,
     string Text,
     IReadOnlyList<SubtitleBitmap>? Bitmaps = null,
-    string? AssEvent = null)
+    string? AssEvent = null,
+    string? Translation = null)
 {
     public IReadOnlyList<SubtitleBitmap> Bitmaps { get; init; } = Bitmaps ?? [];
+
+    public bool HasTranslation => !string.IsNullOrWhiteSpace(Translation);
 }
 
 public static class SubtitleCues

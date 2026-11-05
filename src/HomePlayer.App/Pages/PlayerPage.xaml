@@ -56,16 +56,30 @@
                         CornerRadius="8"
                         MaxWidth="640"
                         Background="#99000000">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock x:Name="LiveSubtitleMarker" Text="●" FontSize="12" Foreground="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center" Visibility="Collapsed" />
-                            <TextBlock
-                                x:Name="SubtitleText"
-                                FontFamily="Segoe UI"
-                                FontSize="28"
-                                Foreground="White"
-                                TextAlignment="Center"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="LiveSubtitleMarker" Text="●" FontSize="12" Margin="0,0,10,0" Foreground="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center" Visibility="Collapsed" />
+                            <StackPanel Grid.Column="1" Orientation="Vertical" Spacing="2">
+                                <TextBlock
+                                    x:Name="SubtitleText"
+                                    FontFamily="Segoe UI"
+                                    FontSize="28"
+                                    Foreground="White"
+                                    TextAlignment="Center"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="SubtitleTranslation"
+                                    FontFamily="Segoe UI"
+                                    FontSize="22"
+                                    Foreground="#E6FFFFFF"
+                                    TextAlignment="Center"
+                                    TextWrapping="Wrap"
+                                    Visibility="Collapsed" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
                 <Border

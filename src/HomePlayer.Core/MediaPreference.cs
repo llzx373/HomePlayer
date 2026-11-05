@@ -23,7 +23,8 @@ public sealed record MediaPreference(
     double? PlaybackRate = null,
     int AudioDelayMs = 0,
     string? AudioTrackStableId = null,
-    string? SubtitleTrackStableId = null)
+    string? SubtitleTrackStableId = null,
+    SubtitleDisplayMode? SubtitleDisplayMode = null)
 {
     public static MediaPreference Empty(string path) => new(
         path, null, null, null, SubtitlePreferenceMode.Auto, null, null, null, null, 0);

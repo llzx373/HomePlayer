@@ -5,11 +5,11 @@ namespace HomePlayer.Core;
 
 public static class SubtitleFileWriter
 {
-    public static void WriteSrt(string path, IEnumerable<SubtitleCue> cues) =>
-        WriteAtomic(path, FormatSrt(cues));
+    public static void WriteSrt(string path, IEnumerable<SubtitleCue> cues, bool bilingual = false) =>
+        WriteAtomic(path, FormatSrt(cues, bilingual));
 
     public static void WriteVtt(string path, IEnumerable<SubtitleCue> cues) =>
-        WriteAtomic(path, "WEBVTT\n\n" + Format(cues, ".", false));
+        WriteAtomic(path, "WEBVTT\n\n" + Format(cues, ".", false, false));
 
     public static void WriteText(string path, IEnumerable<SubtitleCue> cues)
     {
@@ -17,9 +17,9 @@ public static class SubtitleFileWriter
         WriteAtomic(path, text);
     }
 
-    public static string FormatSrt(IEnumerable<SubtitleCue> cues) => Format(cues, ",", true);
+    public static string FormatSrt(IEnumerable<SubtitleCue> cues, bool bilingual = false) => Format(cues, ",", true, bilingual);
 
-    private static string Format(IEnumerable<SubtitleCue> cues, string decimalSeparator, bool numbered)
+    private static string Format(IEnumerable<SubtitleCue> cues, string decimalSeparator, bool numbered, bool bilingual)
     {
         var builder = new StringBuilder();
         var index = 0;
@@ -34,7 +34,10 @@ public static class SubtitleFileWriter
             builder.Append(TimeText(cue.Start, decimalSeparator));
             builder.Append(" --> ");
             builder.AppendLine(TimeText(cue.End, decimalSeparator));
-            builder.AppendLine(cue.Text.Trim());
+            var body = cue.Text.Trim();
+            if (bilingual && cue.HasTranslation)
+                body += "\n" + cue.Translation!.Trim();
+            builder.AppendLine(body);
             builder.AppendLine();
         }
 

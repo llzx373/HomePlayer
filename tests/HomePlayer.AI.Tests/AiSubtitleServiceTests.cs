@@ -99,4 +99,34 @@ public class AiSubtitleServiceTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public void SaveBesideMedia_writes_structured_sidecar_for_translated_cues()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "HomePlayer-ai-subtitles-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var media = Path.Combine(root, "movie.mkv");
+            File.WriteAllBytes(media, [0]);
+            var service = new AiSubtitleService(Path.Combine(root, "models"), () => "", () => "");
+            var json = Path.Combine(root, "movie.ai.json");
+            var srt = Path.Combine(root, "movie.ai.srt");
+
+            service.SaveBesideMedia(media, [new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), "原文")], "test");
+            Assert.False(File.Exists(json));
+
+            var translated = service.SaveBesideMedia(media,
+                [new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), "原文", Translation: "译文")], "test");
+
+            Assert.True(File.Exists(json));
+            var cue = Assert.Single(AiSubtitleFile.AttachTranslations(SubtitleText.ParseFile(srt), translated.Path));
+            Assert.Equal("原文", cue.Text);
+            Assert.Equal("译文", cue.Translation);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

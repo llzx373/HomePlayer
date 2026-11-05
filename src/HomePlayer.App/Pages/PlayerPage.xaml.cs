@@ -66,6 +66,8 @@ public sealed partial class PlayerPage : Page
     private int _subtitleEmbed;
     private int _subtitleLoad;
     private string? _shownSubtitle;
+    private SubtitleDisplayMode CurrentSubtitleDisplay =>
+        _subtitles.DisplayMode ?? App.Host.Settings.SubtitleDisplayMode;
     private (string? Path, string Engine)? _audioTracksKey;
     private bool _hasAudioTracks;
     private bool _windowEvents;
@@ -963,6 +965,7 @@ public sealed partial class PlayerPage : Page
         SubtitleFlyout.Items.Add(SubtitleDelayItem("提前 0.5 秒", -500));
         SubtitleFlyout.Items.Add(SubtitleDelayItem("延后 0.5 秒", 500));
         SubtitleFlyout.Items.Add(SubtitleDelayItem("重置延迟", 0, true));
+        SubtitleFlyout.Items.Add(CreateSubtitleDisplayMenu());
         var reload = new MenuFlyoutItem { Text = "重新加载外挂字幕" };
         reload.Click += (_, _) =>
         {
@@ -1001,6 +1004,41 @@ public sealed partial class PlayerPage : Page
             FinishSubtitleChoice();
         };
         menu.Items.Add(item);
+    }
+
+    private MenuFlyoutSubItem CreateSubtitleDisplayMenu()
+    {
+        var menu = new MenuFlyoutSubItem { Text = "字幕显示" };
+        var current = CurrentSubtitleDisplay;
+        AddSubtitleDisplayItem(menu, "原文与译文", SubtitleDisplayMode.Both, current);
+        AddSubtitleDisplayItem(menu, "仅原文", SubtitleDisplayMode.Original, current);
+        AddSubtitleDisplayItem(menu, "仅译文", SubtitleDisplayMode.Translation, current);
+        return menu;
+    }
+
+    private void AddSubtitleDisplayItem(MenuFlyoutSubItem menu, string text, SubtitleDisplayMode mode, SubtitleDisplayMode current)
+    {
+        var item = new RadioMenuFlyoutItem
+        {
+            Text = text,
+            GroupName = "SubtitleDisplay",
+            IsChecked = current == mode
+        };
+        item.Click += (_, _) => SetSubtitleDisplayMode(mode);
+        menu.Items.Add(item);
+    }
+
+    private void SetSubtitleDisplayMode(SubtitleDisplayMode mode)
+    {
+        _subtitles.SetDisplayMode(mode);
+        SaveSubtitlePreference();
+        UpdateSubtitleOverlay();
+        ShowStatusHold(mode switch
+        {
+            SubtitleDisplayMode.Original => "字幕显示：仅原文",
+            SubtitleDisplayMode.Translation => "字幕显示：仅译文",
+            _ => "字幕显示：原文与译文"
+        });
     }
 
     private void AdjustSubtitleDelay(int milliseconds, bool reset = false)
@@ -1230,20 +1268,24 @@ public sealed partial class PlayerPage : Page
 
     private void LayoutSubtitle()
     {
-        if (SubtitlePill == null || SubtitleText == null || VideoHost == null)
+        if (SubtitlePill == null || SubtitleText == null || SubtitleTranslation == null || VideoHost == null)
             return;
         var height = VideoHost.ActualHeight;
         var width = VideoHost.ActualWidth;
         if (height < 1 || width < 1)
             return;
         var settings = App.Host.Settings;
-        SubtitleText.FontSize = Math.Clamp(settings.SubtitleFontSize * (height / 720.0), 12, 96);
-        SubtitleText.Foreground = settings.SubtitleColor switch
+        var fontSize = Math.Clamp(settings.SubtitleFontSize * (height / 720.0), 12, 96);
+        var brush = settings.SubtitleColor switch
         {
             SubtitleTextColor.Yellow => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 220, 100)),
             SubtitleTextColor.LightGreen => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 160, 230, 170)),
             _ => new SolidColorBrush(Microsoft.UI.Colors.White)
         };
+        SubtitleText.FontSize = fontSize;
+        SubtitleText.Foreground = brush;
+        SubtitleTranslation.FontSize = Math.Clamp(fontSize * 0.78, 10, 80);
+        SubtitleTranslation.Foreground = brush;
         var alpha = (byte)Math.Round(Math.Clamp(settings.SubtitleBackgroundOpacity, 0, 1) * 255);
         SubtitlePill.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, 0, 0, 0));
         SubtitlePill.MaxWidth = Math.Max(160, width * 0.8);
@@ -1265,7 +1307,7 @@ public sealed partial class PlayerPage : Page
 
     private void UpdateSubtitleOverlay()
     {
-        if (SubtitleLayer == null || SubtitleText == null)
+        if (SubtitleLayer == null || SubtitleText == null || SubtitleTranslation == null)
             return;
         if (Playback.UsesExternalVideoOutput)
         {
@@ -1296,8 +1338,10 @@ public sealed partial class PlayerPage : Page
         }
         if (!_subtitles.CurrentIsAss)
             ApplyAssStyle(cue?.AssEvent);
-        SubtitleText.Opacity = cue != null && _liveBuffer.IsProvisional(cue) ? 0.72 : 1;
-        var text = cue?.Text;
+        var provisional = cue != null && _liveBuffer.IsProvisional(cue);
+        SubtitleText.Opacity = provisional ? 0.72 : 1;
+        SubtitleTranslation.Opacity = provisional ? 0.72 : 0.88;
+        var (text, secondary) = SubtitleDisplay.Split(cue, CurrentSubtitleDisplay);
         var hasText = !string.IsNullOrEmpty(text);
         if (!hasText && cue?.Bitmaps.Count is not > 0)
         {
@@ -1305,16 +1349,23 @@ public sealed partial class PlayerPage : Page
                 SubtitleLayer.Visibility = Visibility.Collapsed;
             if (SubtitleText.Text.Length > 0)
                 SubtitleText.Text = "";
+            if (SubtitleTranslation.Text.Length > 0)
+                SubtitleTranslation.Text = "";
+            if (SubtitleTranslation.Visibility != Visibility.Collapsed)
+                SubtitleTranslation.Visibility = Visibility.Collapsed;
             SubtitleText.Opacity = 1;
             _shownSubtitle = null;
             UpdateBitmapSubtitle(null);
             return;
         }
 
-        if (text != _shownSubtitle)
+        var shown = text + "\u0000" + (secondary ?? "");
+        if (shown != _shownSubtitle)
         {
-            _shownSubtitle = text;
-            SubtitleText.Text = text ?? "";
+            _shownSubtitle = shown;
+            SubtitleText.Text = text;
+            SubtitleTranslation.Text = secondary ?? "";
+            SubtitleTranslation.Visibility = string.IsNullOrEmpty(secondary) ? Visibility.Collapsed : Visibility.Visible;
             ApplyAssStyle(cue?.AssEvent);
         }
         SubtitlePill.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;

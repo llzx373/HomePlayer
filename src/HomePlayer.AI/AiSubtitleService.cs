@@ -42,12 +42,11 @@ public sealed class AiSubtitleService
         IReadOnlyList<SubtitleCue> cues,
         string? sourceLanguage,
         string targetLanguage,
-        bool bilingual,
         string modelId,
         AiComputeDevice device,
         IProgress<AiSubtitleProgress>? progress,
         CancellationToken cancellationToken) =>
-        _translation.TranslateAsync(cues, sourceLanguage, targetLanguage, bilingual, modelId, _mirror(), device, progress, cancellationToken);
+        _translation.TranslateAsync(cues, sourceLanguage, targetLanguage, modelId, _mirror(), device, progress, cancellationToken);
 
     public static bool LightweightTranslationRecommended(string? computeDevice) =>
         RecommendLightweightTranslation(computeDevice, AiRuntime.HasNvidiaGpu, AiRuntime.NvidiaMemoryMiB);
@@ -83,7 +82,7 @@ public sealed class AiSubtitleService
         bool drafts = false) =>
         _sherpa.RecognizeAsync(mediaPath, audioTrackIndex, _mirror(), device, startSeconds, progress, segmentReady, cancellationToken, realtime, drafts);
 
-    public AiSubtitleResult SaveBesideMedia(string mediaPath, IReadOnlyList<SubtitleCue> cues, string description)
+    public AiSubtitleResult SaveBesideMedia(string mediaPath, IReadOnlyList<SubtitleCue> cues, string description, bool bilingual = true)
     {
         var fullMediaPath = Path.GetFullPath(mediaPath);
         var directory = Path.GetDirectoryName(fullMediaPath)
@@ -92,7 +91,7 @@ public sealed class AiSubtitleService
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            SubtitleFileWriter.WriteSrt(temporary, cues);
+            SubtitleFileWriter.WriteSrt(temporary, cues, bilingual);
             File.Move(temporary, path, true);
         }
         finally
@@ -100,9 +99,13 @@ public sealed class AiSubtitleService
             if (File.Exists(temporary))
                 File.Delete(temporary);
         }
+        AiSubtitleFile.Save(path, cues);
         return new AiSubtitleResult(path, cues, description);
     }
 
-    public void SaveEdits(AiSubtitleResult result, IReadOnlyList<SubtitleCue> cues) =>
-        SubtitleFileWriter.WriteSrt(result.Path, cues);
+    public void SaveEdits(AiSubtitleResult result, IReadOnlyList<SubtitleCue> cues, bool bilingual = true)
+    {
+        SubtitleFileWriter.WriteSrt(result.Path, cues, bilingual);
+        AiSubtitleFile.Save(result.Path, cues);
+    }
 }
