@@ -42,6 +42,12 @@ jobs:
       - name: Restore FFmpeg
         run: pwsh -NoProfile -File scripts/Restore-Ffmpeg.ps1
 
+      - name: Restore AI runtimes
+        run: |
+          pwsh -NoProfile -File scripts/Restore-Sherpa.ps1
+          pwsh -NoProfile -File scripts/Restore-CudaRuntime.ps1
+          pwsh -NoProfile -File scripts/Restore-AI.ps1
+
       - name: Install FFmpeg test tools
         run: choco install ffmpeg --no-progress -y
 
