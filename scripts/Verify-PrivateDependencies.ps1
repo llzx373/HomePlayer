@@ -50,7 +50,7 @@ foreach ($relative in $expected.Keys | Sort-Object) {
         checksums = @(@{ algorithm = "SHA256"; checksumValue = $actual })
     }
 }
-foreach ($license in @("ffmpeg/LICENSE.txt", "libplacebo/licenses/libplacebo/LICENSE", "ai/whisper/LICENSE.txt", "ai/whisper-cuda/LICENSE.txt", "ai/cuda-runtime/NOTICE.txt", "ai/sherpa-cuda/LICENSE.txt", "ai/cuda12.8-cudart/NOTICE.txt")) {
+foreach ($license in @("ffmpeg/LICENSE.txt", "libplacebo/licenses/libplacebo/LICENSE", "ai/whisper/LICENSE.txt", "ai/whisper-cuda/LICENSE.txt", "ai/cuda-runtime/NOTICE.txt", "ai/sherpa-cuda/LICENSE.txt", "ai/cuda12.8-cudart/NOTICE.txt", "ai/cosyvoice/LICENSE.txt", "ai/cuda13.1-cudart/NOTICE.txt", "ai/cuda13.1-cublas/NOTICE.txt")) {
     if (-not (Test-Path (Join-Path $root "third_party/$license") -PathType Leaf)) {
         throw "Missing license: $license"
     }
@@ -94,6 +94,8 @@ Add-Package "whisper.cpp" "v1.8.3" "MIT" "https://github.com/ggml-org/whisper.cp
 Add-Package "NVIDIA CUDA Runtime" "12.4" "LicenseRef-NVIDIA-CUDA-EULA" "https://github.com/ggml-org/llama.cpp/releases/tag/b11960" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/cuda-runtime/") })
 Add-Package "sherpa-onnx" "2.0.1" "Apache-2.0" "https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/sherpa-cuda/") })
 Add-Package "NVIDIA CUDA and cuDNN" "12.8 / 9.8" "LicenseRef-NVIDIA-CUDA-EULA" "https://developer.download.nvidia.com/" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/cuda12.8-") })
+Add-Package "CosyVoice.cpp" "93a01fa" "MIT" "https://github.com/Lourdle/cosyvoice.cpp" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/cosyvoice/") })
+Add-Package "NVIDIA CUDA Runtime" "13.1" "LicenseRef-NVIDIA-CUDA-EULA" "https://developer.download.nvidia.com/" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/cuda13.1-") })
 
 $libraryVersions = @{}
 foreach ($assets in Get-ChildItem -Path (Join-Path $root "src") -Recurse -Filter "project.assets.json") {

@@ -2,19 +2,19 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "HomePlayer-0.3.0-11",
-  "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-11",
+  "name": "HomePlayer-0.3.0-12",
+  "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-12",
   "creationInfo": {
+    "created": "2026-11-06T02:27:55Z",
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
-    ],
-    "created": "2026-11-04T09:15:05Z"
+    ]
   },
   "packages": [
     {
       "name": "HomePlayer",
       "SPDXID": "SPDXRef-Package-HomePlayer",
-      "versionInfo": "0.3.0-11",
+      "versionInfo": "0.3.0-12",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "MIT",
@@ -537,6 +537,230 @@
           "checksums": [
             {
               "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db",
+              "algorithm": "SHA256"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CosyVoice.cpp",
+      "SPDXID": "SPDXRef-Package-CosyVoice.cpp",
+      "versionInfo": "93a01fa",
+      "downloadLocation": "https://github.com/Lourdle/cosyvoice.cpp",
+      "filesAnalyzed": true,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/ai/cosyvoice/cosyvoice-cli.exe",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice-cli.exe",
+          "checksums": [
+            {
+              "checksumValue": "6be0f1e163d79ac44884dedcac4f2a1e62548e0743ebc5776ae8dd805d3147a7",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/cosyvoice-server.exe",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice-server.exe",
+          "checksums": [
+            {
+              "checksumValue": "fa8495d20a78b4b3415b73d118983d5c0759e289c6c5acceb41b5f60dad29658",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/cosyvoice.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice.dll",
+          "checksums": [
+            {
+              "checksumValue": "7dd615dfb7eeeacc5c48ff755a4baa4a326cc87ede5add7dcdc4132ad9ec26bb",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/ggml-base.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-base.dll",
+          "checksums": [
+            {
+              "checksumValue": "470c7b7d8cdbd3815ccabe608c4191d71d3b59a358d7d0c0adacb1d38a88378b",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/ggml-cpu.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-cpu.dll",
+          "checksums": [
+            {
+              "checksumValue": "42c1c4475004018f47492ab63b8a014307dc1225db1ceb535a223654587bdbb3",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/ggml-cuda.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-cuda.dll",
+          "checksums": [
+            {
+              "checksumValue": "765b53982f640ec0438de7cc58d5a93907b7bdf680ab65c2ec07044d64548ef5",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/ggml-vulkan.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-vulkan.dll",
+          "checksums": [
+            {
+              "checksumValue": "7749d256d4e4ba4935ab8dffe8fa5cba89c75402c97756476419bee7f59958d8",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/ggml.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml.dll",
+          "checksums": [
+            {
+              "checksumValue": "42659cf9e8803ed365fbb3acb5e1324bab3571907df8cbfa361e47d0e8455235",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/msvcp140_1.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-1.dll",
+          "checksums": [
+            {
+              "checksumValue": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/msvcp140_2.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-2.dll",
+          "checksums": [
+            {
+              "checksumValue": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/msvcp140_atomic_wait.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-atomic-wait.dll",
+          "checksums": [
+            {
+              "checksumValue": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/msvcp140_codecvt_ids.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-codecvt-ids.dll",
+          "checksums": [
+            {
+              "checksumValue": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/msvcp140.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140.dll",
+          "checksums": [
+            {
+              "checksumValue": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/onnxruntime.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-onnxruntime.dll",
+          "checksums": [
+            {
+              "checksumValue": "cb2fa518b18356617f6f9f460c012501da2819ec7e5c1d80bd8f5de20492db0c",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/vcruntime140_1.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140-1.dll",
+          "checksums": [
+            {
+              "checksumValue": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/vcruntime140_threads.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140-threads.dll",
+          "checksums": [
+            {
+              "checksumValue": "40f39e8cee5f5a531b4010e18b807e8fe265b908dc58f959ecb7ebc6ea6cb11a",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cosyvoice/vcruntime140.dll",
+          "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140.dll",
+          "checksums": [
+            {
+              "checksumValue": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7",
+              "algorithm": "SHA256"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NVIDIA CUDA Runtime",
+      "SPDXID": "SPDXRef-Package-NVIDIA-CUDA-Runtime",
+      "versionInfo": "13.1",
+      "downloadLocation": "https://developer.download.nvidia.com/",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LicenseRef-NVIDIA-CUDA-EULA",
+      "licenseDeclared": "LicenseRef-NVIDIA-CUDA-EULA",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/ai/cuda13.1-cublas/cublas64_13.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda13.1-cublas-cublas64-13.dll",
+          "checksums": [
+            {
+              "checksumValue": "3a9a8abd59316ef56bec6c01422639466a213443144fa25e1a9862c1b40a7584",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cuda13.1-cublas/cublasLt64_13.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda13.1-cublas-cublasLt64-13.dll",
+          "checksums": [
+            {
+              "checksumValue": "181e99b9c839cd665afdcc9181959957d68d559b34b89f05b385a2a613b80337",
+              "algorithm": "SHA256"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/ai/cuda13.1-cudart/cudart64_13.dll",
+          "SPDXID": "SPDXRef-File-ai-cuda13.1-cudart-cudart64-13.dll",
+          "checksums": [
+            {
+              "checksumValue": "352ba4ebe61e9a3b171f357a3daf5dd15b6af4a9857673ff893bd6fd2964c075",
               "algorithm": "SHA256"
             }
           ]
@@ -1182,6 +1406,17 @@
       "files": []
     },
     {
+      "name": "System.Speech",
+      "SPDXID": "SPDXRef-Package-System.Speech",
+      "versionInfo": "10.0.0",
+      "downloadLocation": "https://www.nuget.org/packages/System.Speech/10.0.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "supplier": "NOASSERTION",
+      "files": []
+    },
+    {
       "name": "Vortice.Direct3D11",
       "SPDXID": "SPDXRef-Package-Vortice.Direct3D11",
       "versionInfo": "3.8.3",
@@ -1227,6 +1462,176 @@
     }
   ],
   "files": [
+    {
+      "fileName": "third_party/ai/cosyvoice/cosyvoice-cli.exe",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice-cli.exe",
+      "checksums": [
+        {
+          "checksumValue": "6be0f1e163d79ac44884dedcac4f2a1e62548e0743ebc5776ae8dd805d3147a7",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/cosyvoice-server.exe",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice-server.exe",
+      "checksums": [
+        {
+          "checksumValue": "fa8495d20a78b4b3415b73d118983d5c0759e289c6c5acceb41b5f60dad29658",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/cosyvoice.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-cosyvoice.dll",
+      "checksums": [
+        {
+          "checksumValue": "7dd615dfb7eeeacc5c48ff755a4baa4a326cc87ede5add7dcdc4132ad9ec26bb",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/ggml-base.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-base.dll",
+      "checksums": [
+        {
+          "checksumValue": "470c7b7d8cdbd3815ccabe608c4191d71d3b59a358d7d0c0adacb1d38a88378b",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/ggml-cpu.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-cpu.dll",
+      "checksums": [
+        {
+          "checksumValue": "42c1c4475004018f47492ab63b8a014307dc1225db1ceb535a223654587bdbb3",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/ggml-cuda.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-cuda.dll",
+      "checksums": [
+        {
+          "checksumValue": "765b53982f640ec0438de7cc58d5a93907b7bdf680ab65c2ec07044d64548ef5",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/ggml-vulkan.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml-vulkan.dll",
+      "checksums": [
+        {
+          "checksumValue": "7749d256d4e4ba4935ab8dffe8fa5cba89c75402c97756476419bee7f59958d8",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/ggml.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-ggml.dll",
+      "checksums": [
+        {
+          "checksumValue": "42659cf9e8803ed365fbb3acb5e1324bab3571907df8cbfa361e47d0e8455235",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/msvcp140_1.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-1.dll",
+      "checksums": [
+        {
+          "checksumValue": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/msvcp140_2.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-2.dll",
+      "checksums": [
+        {
+          "checksumValue": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/msvcp140_atomic_wait.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-atomic-wait.dll",
+      "checksums": [
+        {
+          "checksumValue": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/msvcp140_codecvt_ids.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140-codecvt-ids.dll",
+      "checksums": [
+        {
+          "checksumValue": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/msvcp140.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-msvcp140.dll",
+      "checksums": [
+        {
+          "checksumValue": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/onnxruntime.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-onnxruntime.dll",
+      "checksums": [
+        {
+          "checksumValue": "cb2fa518b18356617f6f9f460c012501da2819ec7e5c1d80bd8f5de20492db0c",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/vcruntime140_1.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140-1.dll",
+      "checksums": [
+        {
+          "checksumValue": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/vcruntime140_threads.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140-threads.dll",
+      "checksums": [
+        {
+          "checksumValue": "40f39e8cee5f5a531b4010e18b807e8fe265b908dc58f959ecb7ebc6ea6cb11a",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cosyvoice/vcruntime140.dll",
+      "SPDXID": "SPDXRef-File-ai-cosyvoice-vcruntime140.dll",
+      "checksums": [
+        {
+          "checksumValue": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
     {
       "fileName": "third_party/ai/cuda-runtime/cublas64_12.dll",
       "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublas64-12.dll",
@@ -1373,6 +1778,36 @@
       "checksums": [
         {
           "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cuda13.1-cublas/cublas64_13.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda13.1-cublas-cublas64-13.dll",
+      "checksums": [
+        {
+          "checksumValue": "3a9a8abd59316ef56bec6c01422639466a213443144fa25e1a9862c1b40a7584",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cuda13.1-cublas/cublasLt64_13.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda13.1-cublas-cublasLt64-13.dll",
+      "checksums": [
+        {
+          "checksumValue": "181e99b9c839cd665afdcc9181959957d68d559b34b89f05b385a2a613b80337",
+          "algorithm": "SHA256"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/ai/cuda13.1-cudart/cudart64_13.dll",
+      "SPDXID": "SPDXRef-File-ai-cuda13.1-cudart-cudart64-13.dll",
+      "checksums": [
+        {
+          "checksumValue": "352ba4ebe61e9a3b171f357a3daf5dd15b6af4a9857673ff893bd6fd2964c075",
           "algorithm": "SHA256"
         }
       ]
@@ -1841,6 +2276,16 @@
     },
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-CosyVoice.cpp",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-NVIDIA-CUDA-Runtime",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-CommunityToolkit.HighPerformance",
       "relationshipType": "DEPENDS_ON"
     },
@@ -2127,6 +2572,11 @@
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-System.Numerics.Tensors",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-System.Speech",
       "relationshipType": "DEPENDS_ON"
     },
     {

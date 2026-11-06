@@ -85,6 +85,9 @@ Type: filesandordirs; Name: "{app}\ai\sherpa-cuda"
 Type: filesandordirs; Name: "{app}\ai\cuda12.8-cudart"
 Type: filesandordirs; Name: "{app}\ai\cuda12.8-cublas"
 Type: filesandordirs; Name: "{app}\ai\cuda12.8-cudnn"
+Type: filesandordirs; Name: "{app}\ai\cuda13.1-cudart"
+Type: filesandordirs; Name: "{app}\ai\cuda13.1-cublas"
+Type: filesandordirs; Name: "{app}\ai\cosyvoice"
 Type: filesandordirs; Name: "{app}\ai\sherpa-worker\runtimes"
 
 [Files]
