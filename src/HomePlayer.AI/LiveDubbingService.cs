@@ -15,6 +15,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private const double EvictBeforeSeconds = 5;
     private const double PollSeconds = 0.12;
     private const double SpeakerGraceSeconds = 2;
+    private const int MaxLiveSpeakers = 6;
 
     private readonly AiModelManager _models;
     private readonly Func<string> _mirror;
@@ -31,8 +32,13 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private readonly List<LiveDubbingCue> _cues = [];
     private readonly HashSet<long> _assigned = [];
     private readonly Dictionary<int, string> _speakerVoices = [];
+    private readonly Dictionary<string, string> _voicePrompts = new(StringComparer.Ordinal);
+    private readonly HashSet<int> _promptPreparing = [];
+    private readonly Dictionary<long, int> _cueSpeakers = [];
     private LiveSpeakerTimeline? _speakerTimeline;
+    private Func<double, double, string, bool>? _cutReference;
     private bool _separateSpeakers;
+    private bool _voicePromptsDirty;
     private string? _workDirectory;
     private CosyVoiceService? _cosyVoice;
     private TtsService? _zipVoice;
@@ -75,6 +81,24 @@ public sealed class LiveDubbingService : IAsyncDisposable
         }
     }
 
+    public IReadOnlyDictionary<int, string> SpeakerVoices
+    {
+        get
+        {
+            lock (_speakerGate)
+                return new Dictionary<int, string>(_speakerVoices);
+        }
+    }
+
+    public IReadOnlyDictionary<string, string> VoicePrompts
+    {
+        get
+        {
+            lock (_speakerGate)
+                return new Dictionary<string, string>(_voicePrompts);
+        }
+    }
+
     public Task StartAsync(IProgress<AiSubtitleProgress>? progress, CancellationToken cancellationToken) =>
         _start ??= StartCoreAsync(progress, cancellationToken);
 
@@ -91,7 +115,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
             lock (_speakerGate)
             {
                 if (!_cues.Any(item => item.Key == key))
-                    _cues.Add(new LiveDubbingCue(key, start, end));
+                    _cues.Add(new LiveDubbingCue(key, start, end, cue.Text));
             }
         }
 
@@ -116,6 +140,12 @@ public sealed class LiveDubbingService : IAsyncDisposable
         SyncSpeakers();
     }
 
+    public void SetReferenceCutter(Func<double, double, string, bool>? cutReference)
+    {
+        lock (_speakerGate)
+            _cutReference = cutReference;
+    }
+
     public void Reset(double position)
     {
         Interlocked.Increment(ref _generation);
@@ -126,6 +156,8 @@ public sealed class LiveDubbingService : IAsyncDisposable
             _cues.Clear();
             _assigned.Clear();
             _speakerVoices.Clear();
+            _cueSpeakers.Clear();
+            _promptPreparing.Clear();
             _speakerTimeline = null;
         }
         lock (_gate)
@@ -215,6 +247,8 @@ public sealed class LiveDubbingService : IAsyncDisposable
         _cosyVoice = service;
         Report(progress, "准备参考音色", 0.65);
         var prompt = await PrepareVoiceAsync(service, cancellationToken);
+        lock (_speakerGate)
+            _voicePrompts["default"] = prompt;
         await service.StartAsync(new Dictionary<string, string>(StringComparer.Ordinal) { ["default"] = prompt },
             new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, 0.7 + value.Value * 0.3)),
             cancellationToken);
@@ -247,6 +281,8 @@ public sealed class LiveDubbingService : IAsyncDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             SyncSpeakers();
+            if (_engine == DubbingEngine.CosyVoice)
+                await SyncVoicesAsync(cancellationToken);
             var playhead = _playhead();
             var job = _scheduler.Next(playhead, LookaheadSeconds);
             if (job == null)
@@ -333,6 +369,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
             lock (_speakerGate)
             {
                 _assigned.Add(cue.Key);
+                _cueSpeakers[cue.Key] = speaker;
                 if (speaker >= 0)
                     EnsureVoiceLocked(speaker);
             }
@@ -351,15 +388,146 @@ public sealed class LiveDubbingService : IAsyncDisposable
                 }
             }
         }
+
+        lock (_speakerGate)
+        {
+            foreach (var speaker in _cueSpeakers.Values.Where(value => value >= 0).Distinct())
+                EnsureVoiceLocked(speaker);
+        }
     }
 
     private void EnsureVoiceLocked(int speaker)
     {
         if (_speakerVoices.ContainsKey(speaker))
             return;
-        _speakerVoices[speaker] = _engine == DubbingEngine.CosyVoice
-            ? "default"
-            : PickPresetLocked(speaker);
+        if (_engine != DubbingEngine.CosyVoice)
+        {
+            _speakerVoices[speaker] = PickPresetLocked(speaker);
+            return;
+        }
+
+        if (speaker < 0 || speaker >= MaxLiveSpeakers)
+            return;
+        if (_promptPreparing.Contains(speaker) || _cosyVoice == null || _cutReference == null)
+            return;
+        var cue = LongestCueForSpeakerLocked(speaker);
+        if (cue == null)
+            return;
+        _promptPreparing.Add(speaker);
+        _ = Task.Run(() => PrepareSpeakerVoiceAsync(speaker, cue), _cancel.Token);
+    }
+
+    private LiveDubbingCue? LongestCueForSpeakerLocked(int speaker)
+    {
+        LiveDubbingCue? best = null;
+        foreach (var cue in _cues)
+        {
+            if (!_cueSpeakers.TryGetValue(cue.Key, out var assigned) || assigned != speaker)
+                continue;
+            if (string.IsNullOrWhiteSpace(cue.Text) || cue.End - cue.Start < 1.5)
+                continue;
+            if (best == null || cue.End - cue.Start > best.End - best.Start)
+                best = cue;
+        }
+
+        return best;
+    }
+
+    private async Task PrepareSpeakerVoiceAsync(int speaker, LiveDubbingCue cue)
+    {
+        try
+        {
+            string? workDirectory;
+            Func<double, double, string, bool>? cut;
+            CosyVoiceService? service;
+            lock (_speakerGate)
+            {
+                workDirectory = _workDirectory;
+                cut = _cutReference;
+                service = _cosyVoice;
+            }
+
+            if (workDirectory == null || cut == null || service == null)
+                return;
+            var reference = Path.Combine(workDirectory, $"ref-speaker-{speaker}.wav");
+            if (!cut(cue.Start, cue.End, reference))
+                return;
+
+            var cacheId = "live-" + Fingerprint(reference, cue.Text);
+            var prompt = Path.Combine(AppPaths.DubbingCache, "voices", cacheId + ".gguf");
+            if (!File.Exists(prompt))
+            {
+                var prepared = await service.PrepareVoiceAsync(cacheId, reference, cue.Text, _cancel.Token);
+                if (!string.Equals(prepared, prompt, StringComparison.OrdinalIgnoreCase) && File.Exists(prepared))
+                    File.Move(prepared, prompt, true);
+            }
+
+            lock (_speakerGate)
+            {
+                _voicePrompts["speaker-" + speaker] = prompt;
+                _voicePromptsDirty = true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+                _lastError = "准备角色音色失败：" + ex.Message;
+        }
+        finally
+        {
+            lock (_speakerGate)
+                _promptPreparing.Remove(speaker);
+        }
+    }
+
+    private async Task SyncVoicesAsync(CancellationToken cancellationToken)
+    {
+        Dictionary<string, string>? prompts;
+        lock (_speakerGate)
+        {
+            if (!_voicePromptsDirty)
+                return;
+            _voicePromptsDirty = false;
+            prompts = new Dictionary<string, string>(_voicePrompts, StringComparer.Ordinal);
+        }
+
+        var service = _cosyVoice;
+        if (service == null)
+            return;
+        try
+        {
+            await service.SwapVoicesAsync(prompts, cancellationToken);
+            lock (_speakerGate)
+            {
+                foreach (var name in prompts.Keys)
+                {
+                    if (!name.StartsWith("speaker-", StringComparison.Ordinal))
+                        continue;
+                    if (int.TryParse(name["speaker-".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var speaker))
+                        _speakerVoices[speaker] = name;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+                _lastError = "切换角色音色失败：" + ex.Message;
+        }
+    }
+
+    private static string Fingerprint(string audioPath, string text)
+    {
+        using var stream = File.OpenRead(audioPath);
+        var audio = Convert.ToHexString(SHA256.HashData(stream))[..16].ToLowerInvariant();
+        var transcript = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant();
+        return audio + "-" + transcript;
     }
 
     private string PickPresetLocked(int speaker)
@@ -414,5 +582,5 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private static void Report(IProgress<AiSubtitleProgress>? progress, string stage, double value) =>
         progress?.Report(new AiSubtitleProgress(stage, Math.Clamp(value, 0, 1)));
 
-    private sealed record LiveDubbingCue(long Key, double Start, double End);
+    private sealed record LiveDubbingCue(long Key, double Start, double End, string Text);
 }

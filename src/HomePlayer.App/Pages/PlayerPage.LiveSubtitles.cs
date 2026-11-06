@@ -750,6 +750,7 @@ public sealed partial class PlayerPage
         _liveSpeaker = speaker;
         service.SetSeparateSpeakers(true);
         service.SetSpeakerTimeline(speaker.Timeline);
+        service.SetReferenceCutter(speaker.TryCutReference);
         var device = AiComputeDeviceExtensions.Parse(App.Host.Settings.AiComputeDevice);
         ShowStatusHold("正在分析说话人…");
         try
