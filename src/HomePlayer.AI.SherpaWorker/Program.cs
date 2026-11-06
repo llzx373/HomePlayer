@@ -13,8 +13,17 @@ if (args.Length == 2 && args[0] == "--diarize")
     return;
 }
 
+if (args.Length == 2 && args[0] == "--diarize-live")
+{
+    LiveDiarizationRunner.Run(JsonSerializer.Deserialize<DiarizeLiveJob>(
+        File.ReadAllText(args[1]),
+        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? throw new InvalidDataException("Empty live diarization job."));
+    return;
+}
+
 if (args.Length != 1)
-    throw new ArgumentException("Usage: HomePlayer.AI.SherpaWorker <job.json> | --diarize <diarize.json>");
+    throw new ArgumentException("Usage: HomePlayer.AI.SherpaWorker <job.json> | --diarize <diarize.json> | --diarize-live <diarize.json>");
 var job = JsonSerializer.Deserialize<SherpaJob>(File.ReadAllText(args[0]))
     ?? throw new InvalidDataException("Empty Sherpa job.");
 var config = new OfflineRecognizerConfig();
@@ -269,8 +278,6 @@ public sealed record DiarizeJob(string AudioPath, string SegmentationModel, stri
 
 internal static class DiarizationRunner
 {
-    private const double ProbeSeconds = 8;
-
     public static void Run(DiarizeJob job)
     {
         var config = new OfflineSpeakerDiarizationConfig();
@@ -318,12 +325,12 @@ internal static class DiarizationRunner
             foreach (var segment in segments)
             {
                 if (!probes.ContainsKey(segment.Speaker))
-                    probes[segment.Speaker] = Probe(samples, rate, segments, segment.Speaker, extractor);
+                    probes[segment.Speaker] = SpeakerProbe.Extract(samples, rate, segments, segment.Speaker, extractor);
             }
 
             foreach (var segment in segments)
             {
-                var duration = segments.Where(item => item.Speaker == segment.Speaker).Sum(item => item.End - item.Start);
+                var duration = SpeakerProbe.TotalSeconds(segments, segment.Speaker);
                 var speaker = tracker.Match(probes[segment.Speaker], duration);
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
@@ -340,29 +347,6 @@ internal static class DiarizationRunner
         }
 
         Console.WriteLine(JsonSerializer.Serialize(new { type = "done", speakers = tracker.Count }, options));
-    }
-
-    private static float[] Probe(float[] samples, int rate, OfflineSpeakerDiarizationSegment[] segments, int speaker, SpeakerEmbeddingExtractor extractor)
-    {
-        var parts = new List<float>(rate * 8);
-        var wanted = (int)(ProbeSeconds * rate);
-        foreach (var segment in segments)
-        {
-            if (segment.Speaker != speaker)
-                continue;
-            var start = Math.Max(0, (int)(segment.Start * rate));
-            var end = Math.Min(samples.Length, (int)(segment.End * rate));
-            for (var index = start; index < end && parts.Count < wanted; index++)
-                parts.Add(samples[index]);
-            if (parts.Count >= wanted)
-                break;
-        }
-
-        if (parts.Count < rate / 2)
-            return [];
-        using var stream = extractor.CreateStream();
-        stream.AcceptWaveform(rate, parts.ToArray());
-        return extractor.IsReady(stream) ? extractor.Compute(stream) : [];
     }
 
     private static int ReadBlock(FileStream stream, byte[] buffer)
