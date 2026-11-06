@@ -192,25 +192,35 @@ const
 function IsLocalizationOnlyDir(const Dir: String): Boolean;
 var
   FindRec: TFindRec;
-  Found: Boolean;
+  Found, Valid: Boolean;
 begin
   Result := False;
   Found := False;
+  Valid := True;
   if FindFirst(AddBackslash(Dir) + '*', FindRec) then
-  try
-    repeat
-      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
-        Exit;
-      Found := True;
-      if (CompareText(ExtractFileExt(FindRec.Name), '.mui') <> 0) and
-         not ((CompareText(ExtractFileExt(FindRec.Name), '.dll') = 0) and
-              (Pos('.resources.dll', LowerCase(FindRec.Name)) > 0)) then
-        Exit;
-    until not FindNext(FindRec);
-  finally
-    FindClose(FindRec);
+  begin
+    try
+      repeat
+        if (FindRec.Name = '.') or (FindRec.Name = '..') then
+        begin
+          // Inno 的 FindFirst 也会返回 . 和 ..，忽略。
+        end
+        else if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          Valid := False
+        else
+        begin
+          Found := True;
+          if (CompareText(ExtractFileExt(FindRec.Name), '.mui') <> 0) and
+             ((CompareText(ExtractFileExt(FindRec.Name), '.dll') <> 0) or
+              (Pos('.resources.dll', LowerCase(FindRec.Name)) = 0)) then
+            Valid := False;
+        end;
+      until (not Valid) or (not FindNext(FindRec));
+    finally
+      FindClose(FindRec);
+    end;
   end;
-  Result := Found;
+  Result := Valid and Found;
 end;
 
 procedure RemoveUnusedLocales;
@@ -218,17 +228,29 @@ var
   FindRec: TFindRec;
   Dir: String;
 begin
+  Log('RemoveUnusedLocales: scanning ' + ExpandConstant('{app}'));
   if not FindFirst(ExpandConstant('{app}\*'), FindRec) then
+  begin
+    Log('RemoveUnusedLocales: FindFirst failed');
     Exit;
+  end;
   try
     repeat
-      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
-        continue;
-      if Pos('|' + FindRec.Name + '|', KeepLocales) > 0 then
-        continue;
-      Dir := ExpandConstant('{app}\') + FindRec.Name;
-      if IsLocalizationOnlyDir(Dir) then
-        DelTree(Dir, True, True, True);
+      if (FindRec.Name <> '.') and (FindRec.Name <> '..') and
+         ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then
+      begin
+        if Pos('|' + FindRec.Name + '|', KeepLocales) = 0 then
+        begin
+          Dir := ExpandConstant('{app}\') + FindRec.Name;
+          Log('RemoveUnusedLocales: checking ' + Dir);
+          if IsLocalizationOnlyDir(Dir) then
+          begin
+            Log('RemoveUnusedLocales: deleting ' + Dir);
+            if not DelTree(Dir, True, True, True) then
+              Log('RemoveUnusedLocales: delete failed ' + Dir);
+          end;
+        end;
+      end;
     until not FindNext(FindRec);
   finally
     FindClose(FindRec);
