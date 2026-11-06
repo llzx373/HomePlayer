@@ -7,24 +7,32 @@ namespace HomePlayer.AI;
 
 /// <summary>
 /// 实时配音：常驻语音合成服务，按播放头逐句合成译文并写入 <see cref="LiveDubbingTrack"/>。
-/// 识别和翻译由上层驱动，这里只负责排队、合成和适配时长。
+/// 识别和翻译由上层驱动，这里负责排队、说话人音色和时长适配。
 /// </summary>
 public sealed class LiveDubbingService : IAsyncDisposable
 {
     private const double LookaheadSeconds = 20;
     private const double EvictBeforeSeconds = 5;
     private const double PollSeconds = 0.12;
+    private const double SpeakerGraceSeconds = 2;
 
     private readonly AiModelManager _models;
     private readonly Func<string> _mirror;
     private readonly AiComputeDevice _device;
     private readonly DubbingEngine _engine;
-    private readonly VoiceProfile _voice;
+    private readonly IReadOnlyList<VoiceProfile> _voices;
+    private readonly VoiceProfile _defaultVoice;
     private readonly Func<double> _playhead;
     private readonly LiveDubbingScheduler _scheduler = new();
     private readonly LiveDubbingTrack _track = new();
     private readonly CancellationTokenSource _cancel = new();
     private readonly object _gate = new();
+    private readonly object _speakerGate = new();
+    private readonly List<LiveDubbingCue> _cues = [];
+    private readonly HashSet<long> _assigned = [];
+    private readonly Dictionary<int, string> _speakerVoices = [];
+    private LiveSpeakerTimeline? _speakerTimeline;
+    private bool _separateSpeakers;
     private string? _workDirectory;
     private CosyVoiceService? _cosyVoice;
     private TtsService? _zipVoice;
@@ -39,14 +47,18 @@ public sealed class LiveDubbingService : IAsyncDisposable
         Func<string> mirror,
         AiComputeDevice device,
         DubbingEngine engine,
-        VoiceProfile voice,
+        IReadOnlyList<VoiceProfile> voices,
+        VoiceProfile defaultVoice,
+        bool separateSpeakers,
         Func<double> playhead)
     {
         _models = models;
         _mirror = mirror;
         _device = device;
         _engine = engine;
-        _voice = voice;
+        _voices = voices;
+        _defaultVoice = defaultVoice;
+        _separateSpeakers = separateSpeakers;
         _playhead = playhead;
     }
 
@@ -71,18 +83,51 @@ public sealed class LiveDubbingService : IAsyncDisposable
     public void Register(IReadOnlyList<SubtitleCue> cues)
     {
         foreach (var cue in cues)
-            _scheduler.Track(KeyOf(cue), cue.Start.TotalSeconds, cue.End.TotalSeconds);
+        {
+            var key = KeyOf(cue);
+            var start = cue.Start.TotalSeconds;
+            var end = cue.End.TotalSeconds;
+            _scheduler.Track(key, start, end);
+            lock (_speakerGate)
+            {
+                if (!_cues.Any(item => item.Key == key))
+                    _cues.Add(new LiveDubbingCue(key, start, end));
+            }
+        }
+
+        SyncSpeakers();
     }
 
     public void SubmitTranslated(SubtitleCue cue) => _scheduler.Translate(KeyOf(cue), cue.Translation);
 
     public void SkipCue(SubtitleCue cue) => _scheduler.Skip(KeyOf(cue));
 
+    public void SetSpeakerTimeline(LiveSpeakerTimeline? timeline)
+    {
+        lock (_speakerGate)
+            _speakerTimeline = timeline;
+        SyncSpeakers();
+    }
+
+    public void SetSeparateSpeakers(bool enabled)
+    {
+        lock (_speakerGate)
+            _separateSpeakers = enabled;
+        SyncSpeakers();
+    }
+
     public void Reset(double position)
     {
         Interlocked.Increment(ref _generation);
         _scheduler.Reset(position);
         _track.Reset(position);
+        lock (_speakerGate)
+        {
+            _cues.Clear();
+            _assigned.Clear();
+            _speakerVoices.Clear();
+            _speakerTimeline = null;
+        }
         lock (_gate)
             _lastError = null;
     }
@@ -177,13 +222,13 @@ public sealed class LiveDubbingService : IAsyncDisposable
 
     private async Task<string> PrepareVoiceAsync(CosyVoiceService service, CancellationToken cancellationToken)
     {
-        var cacheKey = VoiceKey(_voice);
+        var cacheKey = VoiceKey(_defaultVoice);
         var cacheDirectory = Path.Combine(AppPaths.DubbingCache, "voices");
         Directory.CreateDirectory(cacheDirectory);
         var cached = Path.Combine(cacheDirectory, cacheKey + ".gguf");
         if (File.Exists(cached))
             return cached;
-        var prepared = await service.PrepareVoiceAsync(cacheKey, _voice.AudioPath, _voice.ReferenceText, cancellationToken);
+        var prepared = await service.PrepareVoiceAsync(cacheKey, _defaultVoice.AudioPath, _defaultVoice.ReferenceText, cancellationToken);
         if (!string.Equals(prepared, cached, StringComparison.OrdinalIgnoreCase) && File.Exists(prepared))
             File.Move(prepared, cached, true);
         return cached;
@@ -191,7 +236,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
 
     private async Task StartZipVoiceAsync(IProgress<AiSubtitleProgress>? progress, CancellationToken cancellationToken)
     {
-        var service = new TtsService(_models, _device, _mirror, Path.GetDirectoryName(_voice.AudioPath)!);
+        var service = new TtsService(_models, _device, _mirror, Path.GetDirectoryName(_defaultVoice.AudioPath)!);
         _zipVoice = service;
         await service.StartAsync(progress, cancellationToken);
     }
@@ -201,6 +246,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
         var index = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
+            SyncSpeakers();
             var playhead = _playhead();
             var job = _scheduler.Next(playhead, LookaheadSeconds);
             if (job == null)
@@ -217,7 +263,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
             var generation = Volatile.Read(ref _generation);
             try
             {
-                await SynthesizeAsync(job.Text, path, cancellationToken);
+                await SynthesizeAsync(job.Text, VoiceIdFor(job.Speaker), path, cancellationToken);
                 if (generation != Volatile.Read(ref _generation))
                     continue;
                 var (samples, sampleRate, channels) = WavFile.ReadPcm16(path);
@@ -258,10 +304,98 @@ public sealed class LiveDubbingService : IAsyncDisposable
         }
     }
 
-    private Task<(int SampleRate, long Samples)> SynthesizeAsync(string text, string path, CancellationToken cancellationToken) =>
+    private void SyncSpeakers()
+    {
+        List<LiveDubbingCue> unassigned;
+        LiveSpeakerTimeline? timeline;
+        bool separate;
+        lock (_speakerGate)
+        {
+            timeline = _speakerTimeline;
+            separate = _separateSpeakers;
+            unassigned = _cues.Where(cue => !_assigned.Contains(cue.Key)).ToList();
+        }
+
+        if (separate && timeline == null)
+            return;
+
+        foreach (var cue in unassigned)
+        {
+            var speaker = -1;
+            if (separate)
+            {
+                speaker = timeline!.DominantSpeaker(cue.Start, cue.End);
+                if (speaker < 0)
+                    continue;
+            }
+
+            _scheduler.AssignSpeaker(cue.Key, speaker);
+            lock (_speakerGate)
+            {
+                _assigned.Add(cue.Key);
+                if (speaker >= 0)
+                    EnsureVoiceLocked(speaker);
+            }
+        }
+
+        if (!separate || timeline == null)
+            return;
+        if (_scheduler.ExpireSpeakers(timeline.DiarizedThrough, SpeakerGraceSeconds) > 0)
+        {
+            lock (_speakerGate)
+            {
+                foreach (var cue in _cues)
+                {
+                    if (!_assigned.Contains(cue.Key) && cue.End + SpeakerGraceSeconds <= timeline.DiarizedThrough)
+                        _assigned.Add(cue.Key);
+                }
+            }
+        }
+    }
+
+    private void EnsureVoiceLocked(int speaker)
+    {
+        if (_speakerVoices.ContainsKey(speaker))
+            return;
+        _speakerVoices[speaker] = _engine == DubbingEngine.CosyVoice
+            ? "default"
+            : PickPresetLocked(speaker);
+    }
+
+    private string PickPresetLocked(int speaker)
+    {
+        if (_voices.Count == 0)
+            return _defaultVoice.Id;
+        var used = new HashSet<string>(_speakerVoices.Values, StringComparer.Ordinal);
+        var start = Math.Abs(speaker) % _voices.Count;
+        for (var offset = 0; offset < _voices.Count; offset++)
+        {
+            var voice = _voices[(start + offset) % _voices.Count];
+            if (!used.Contains(voice.Id))
+                return voice.Id;
+        }
+
+        return _voices[start].Id;
+    }
+
+    private string VoiceIdFor(int speaker)
+    {
+        if (speaker >= 0)
+        {
+            lock (_speakerGate)
+            {
+                if (_separateSpeakers && _speakerVoices.TryGetValue(speaker, out var id))
+                    return id;
+            }
+        }
+
+        return _engine == DubbingEngine.CosyVoice ? "default" : _defaultVoice.Id;
+    }
+
+    private Task<(int SampleRate, long Samples)> SynthesizeAsync(string text, string voiceId, string path, CancellationToken cancellationToken) =>
         _cosyVoice != null
-            ? _cosyVoice.SynthesizeAsync(text, "default", path, cancellationToken)
-            : _zipVoice!.SynthesizeAsync(text, _voice.Id, path, 2, cancellationToken);
+            ? _cosyVoice.SynthesizeAsync(text, voiceId, path, cancellationToken)
+            : _zipVoice!.SynthesizeAsync(text, voiceId, path, 2, cancellationToken);
 
     private static long KeyOf(SubtitleCue cue) => (long)Math.Round(cue.Start.TotalMilliseconds);
 
@@ -279,4 +413,6 @@ public sealed class LiveDubbingService : IAsyncDisposable
 
     private static void Report(IProgress<AiSubtitleProgress>? progress, string stage, double value) =>
         progress?.Report(new AiSubtitleProgress(stage, Math.Clamp(value, 0, 1)));
+
+    private sealed record LiveDubbingCue(long Key, double Start, double End);
 }

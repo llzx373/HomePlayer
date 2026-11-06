@@ -25,6 +25,7 @@ public sealed partial class PlayerPage
     private bool _dubbingRunning;
     private LiveDubbingService? _liveDubbing;
     private LiveDubbingMixSource? _liveDubbingMix;
+    private LiveSpeakerService? _liveSpeaker;
     private bool _liveDubbingPreparing;
     private bool _liveDubbingBuffering;
     private bool _liveDubbingPaused;
@@ -309,11 +310,12 @@ public sealed partial class PlayerPage
     {
         if (_liveSubtitles == null)
             return;
-        if (_liveDubbing != null)
+        var position = Playback.Position.TotalSeconds;
+        var dubbing = _liveDubbing != null;
+        if (dubbing)
         {
-            var position = Playback.Position.TotalSeconds;
             _liveRecognizedThrough = position;
-            _liveDubbing.SetRecognizedThrough(position);
+            _liveDubbing!.SetRecognizedThrough(position);
             _liveDubbing.Reset(position);
             _liveDubbingBuffering = true;
             _liveDubbingBufferingSince = DateTime.UtcNow;
@@ -329,8 +331,11 @@ public sealed partial class PlayerPage
         try
         {
             await Task.Delay(350);
-            if (generation == _liveSubtitleGeneration && path != null && _liveSubtitles != null)
-                StartLiveSubtitles(path);
+            if (generation != _liveSubtitleGeneration || path == null || _liveSubtitles == null)
+                return;
+            StartLiveSubtitles(path, forceTranslation: dubbing);
+            if (dubbing)
+                _ = RestartLiveSpeakerAsync(path, position);
         }
         catch
         {
@@ -550,10 +555,23 @@ public sealed partial class PlayerPage
             Text = "按说话人区分音色（实验）",
             IsChecked = settings.DubbingSeparateSpeakers
         };
-        separate.Click += (_, _) =>
+        separate.Click += async (_, _) =>
         {
             App.Host.Settings.DubbingSeparateSpeakers = separate.IsChecked;
             App.Host.SaveSettings();
+            if (_liveDubbing == null)
+                return;
+            if (separate.IsChecked)
+            {
+                if (Playback.Playlist.Current?.Path is { } path)
+                    await RestartLiveSpeakerAsync(path, Playback.Position.TotalSeconds);
+            }
+            else
+            {
+                StopLiveSpeaker();
+                _liveDubbing.SetSeparateSpeakers(false);
+                _liveDubbing.SetSpeakerTimeline(null);
+            }
         };
         menu.Items.Add(separate);
         var start = new MenuFlyoutItem { Text = "开始生成配音" };
@@ -640,11 +658,19 @@ public sealed partial class PlayerPage
         ShowStatusHold("正在准备实时配音（加载模型与音色）…");
         try
         {
-            var service = App.Host.AiSubtitles.CreateLiveDubbing(device, settings.DubbingEngine, voice,
+            var service = App.Host.AiSubtitles.CreateLiveDubbing(
+                device,
+                settings.DubbingEngine,
+                voices,
+                voice,
+                settings.DubbingSeparateSpeakers,
                 () => Playback.Position.TotalSeconds);
             _liveDubbing = service;
             _liveDubbingMix = new LiveDubbingMixSource(service.Track);
             Playback.SetAudioMix(_liveDubbingMix);
+
+            if (settings.DubbingSeparateSpeakers)
+                _ = RestartLiveSpeakerAsync(path, Playback.Position.TotalSeconds);
 
             _subtitles.UseLive();
             FinishSubtitleChoice();
@@ -675,6 +701,7 @@ public sealed partial class PlayerPage
 
     private void StopLiveDubbing(bool resume)
     {
+        StopLiveSpeaker();
         var service = _liveDubbing;
         var mix = _liveDubbingMix;
         _liveDubbing = null;
@@ -698,11 +725,67 @@ public sealed partial class PlayerPage
             Playback.TogglePlay();
     }
 
+    private void StopLiveSpeaker()
+    {
+        var speaker = _liveSpeaker;
+        _liveSpeaker = null;
+        if (speaker != null)
+            _ = speaker.DisposeAsync().AsTask();
+    }
+
+    private async Task RestartLiveSpeakerAsync(string path, double position)
+    {
+        StopLiveSpeaker();
+        var service = _liveDubbing;
+        if (service == null)
+            return;
+        if (!App.Host.Settings.DubbingSeparateSpeakers)
+        {
+            service.SetSeparateSpeakers(false);
+            service.SetSpeakerTimeline(null);
+            return;
+        }
+
+        var speaker = App.Host.AiSubtitles.CreateLiveSpeaker();
+        _liveSpeaker = speaker;
+        service.SetSeparateSpeakers(true);
+        service.SetSpeakerTimeline(speaker.Timeline);
+        var device = AiComputeDeviceExtensions.Parse(App.Host.Settings.AiComputeDevice);
+        ShowStatusHold("正在分析说话人…");
+        try
+        {
+            await speaker.StartAsync(
+                path,
+                Playback.AudioTrackIndex,
+                Math.Max(0, position - 0.25),
+                device,
+                null,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            if (!ReferenceEquals(_liveSpeaker, speaker))
+                return;
+            _liveSpeaker = null;
+            _ = speaker.DisposeAsync().AsTask();
+            service.SetSeparateSpeakers(false);
+            service.SetSpeakerTimeline(null);
+            ShowStatusHold("说话人分析不可用，使用单音色：" + ex.Message);
+        }
+    }
+
     private void PumpLiveDubbing()
     {
         var service = _liveDubbing;
         if (service == null || _liveDubbingPreparing || !Playback.IsOpen)
             return;
+        if (_liveSpeaker is { LastError: { } speakerError })
+        {
+            StopLiveSpeaker();
+            service.SetSeparateSpeakers(false);
+            service.SetSpeakerTimeline(null);
+            ShowStatusHold("说话人分析中断，已使用单音色：" + speakerError);
+        }
         if (!Playback.SupportsAudioMix)
         {
             StopLiveDubbing(resume: true);

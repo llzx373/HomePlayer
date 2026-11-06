@@ -8,10 +8,10 @@ public enum LiveDubbingCueState
     Skipped = 3
 }
 
-public sealed record LiveDubbingJob(long Key, double StartSeconds, double EndSeconds, string Text);
+public sealed record LiveDubbingJob(long Key, double StartSeconds, double EndSeconds, string Text, int Speaker = -1);
 
 /// <summary>
-/// 实时配音逐句状态机：识别定稿先登记，译文就绪后排队合成，
+/// 实时配音逐句状态机：识别定稿先登记，译文和说话人都就绪后才排队合成，
 /// 覆盖率用于判断播放器需要缓冲到哪个时间点。
 /// </summary>
 public sealed class LiveDubbingScheduler
@@ -23,6 +23,9 @@ public sealed class LiveDubbingScheduler
         public double Start { get; } = start;
         public double End { get; } = end;
         public string? Text { get; set; }
+        public bool TranslationReady { get; set; }
+        public bool SpeakerReady { get; set; }
+        public int Speaker { get; set; } = -1;
         public LiveDubbingCueState State { get; set; } = LiveDubbingCueState.Pending;
     }
 
@@ -68,7 +71,45 @@ public sealed class LiveDubbingScheduler
             }
 
             entry.Text = text.Trim();
-            entry.State = LiveDubbingCueState.Ready;
+            entry.TranslationReady = true;
+            RefreshLocked(entry);
+        }
+    }
+
+    public void AssignSpeaker(long key, int speaker)
+    {
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(key, out var entry) || entry.State is LiveDubbingCueState.Done or LiveDubbingCueState.Skipped)
+                return;
+            entry.Speaker = speaker;
+            entry.SpeakerReady = true;
+            RefreshLocked(entry);
+        }
+    }
+
+    /// <summary>
+    /// 分离已经越过句子末尾仍没有匹配到说话人时，用默认音色继续，避免缓冲无限等待。
+    /// </summary>
+    public int ExpireSpeakers(double diarizedThrough, double graceSeconds)
+    {
+        lock (_gate)
+        {
+            var count = 0;
+            foreach (var (_, key) in _order)
+            {
+                var entry = _entries[key];
+                if (entry.State is LiveDubbingCueState.Done or LiveDubbingCueState.Skipped)
+                    continue;
+                if (entry.SpeakerReady || entry.End + graceSeconds > diarizedThrough)
+                    continue;
+                entry.Speaker = -1;
+                entry.SpeakerReady = true;
+                RefreshLocked(entry);
+                count++;
+            }
+
+            return count;
         }
     }
 
@@ -146,10 +187,16 @@ public sealed class LiveDubbingScheduler
                     continue;
                 if (entry.End <= playheadSeconds - LateTolerance)
                     continue;
-                return new LiveDubbingJob(key, entry.Start, entry.End, entry.Text);
+                return new LiveDubbingJob(key, entry.Start, entry.End, entry.Text, entry.Speaker);
             }
 
             return null;
         }
+    }
+
+    private static void RefreshLocked(Entry entry)
+    {
+        if (entry.TranslationReady && entry.SpeakerReady)
+            entry.State = LiveDubbingCueState.Ready;
     }
 }

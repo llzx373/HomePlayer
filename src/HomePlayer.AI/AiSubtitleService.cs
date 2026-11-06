@@ -72,9 +72,13 @@ public sealed class AiSubtitleService
     public LiveDubbingService CreateLiveDubbing(
         AiComputeDevice device,
         DubbingEngine engine,
-        VoiceProfile voice,
+        IReadOnlyList<VoiceProfile> voices,
+        VoiceProfile defaultVoice,
+        bool separateSpeakers,
         Func<double> playhead) =>
-        new(_models, _mirror, device, engine, voice, playhead);
+        new(_models, _mirror, device, engine, voices, defaultVoice, separateSpeakers, playhead);
+
+    public LiveSpeakerService CreateLiveSpeaker() => new(_models, _mirror);
 
     public bool DubbingInstalled =>
         _models.IsArchiveInstalled(AiSubtitleCatalog.Model("zipvoice-model"))
