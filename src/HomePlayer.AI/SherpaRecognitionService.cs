@@ -73,11 +73,11 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                     if (result.Final == false)
                     {
                         if (formatted.Count > 0)
-                            segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, false, formatted));
+                            segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, false, formatted, end.TotalSeconds));
                         return;
                     }
                     finalSegments[result.Id] = formatted;
-                    segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, true, formatted));
+                    segmentReady?.Invoke(new SubtitleSegmentUpdate(result.Id, true, formatted, end.TotalSeconds));
                     if (formatted.Count > 0)
                     {
                         var count = finalSegments.Values.Sum(cues => cues.Count);

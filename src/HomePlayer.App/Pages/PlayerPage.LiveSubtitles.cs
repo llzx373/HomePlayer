@@ -1,5 +1,6 @@
 using HomePlayer.AI;
 using HomePlayer.Core;
+using HomePlayer.Playback;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -22,6 +23,15 @@ public sealed partial class PlayerPage
     private double _aiGenerationProgress;
     private int _aiGenerationVersion;
     private bool _dubbingRunning;
+    private LiveDubbingService? _liveDubbing;
+    private LiveDubbingMixSource? _liveDubbingMix;
+    private bool _liveDubbingPreparing;
+    private bool _liveDubbingBuffering;
+    private bool _liveDubbingPaused;
+    private bool _liveDubbingWasPlaying;
+    private DateTime _liveDubbingBufferingSince;
+    private double _liveRecognizedThrough;
+    private string? _liveDubbingAttemptedPath;
 
     private void SelectLiveSubtitles()
     {
@@ -46,7 +56,7 @@ public sealed partial class PlayerPage
         StartLiveSubtitles(path);
     }
 
-    private void StartLiveSubtitles(string path)
+    private void StartLiveSubtitles(string path, bool forceTranslation = false)
     {
         StopLiveSubtitles();
         var generation = ++_liveSubtitleGeneration;
@@ -60,7 +70,7 @@ public sealed partial class PlayerPage
         _subtitles.UseLive();
         var settings = App.Host.Settings;
         var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
-        var translate = settings.AiTranslateLiveSubtitles;
+        var translate = settings.AiTranslateLiveSubtitles || forceTranslation;
         var drafts = settings.AiLiveDraftSubtitles;
         var translation = translate
             ? App.Host.AiSubtitles.CreateLiveTranslator(
@@ -92,6 +102,8 @@ public sealed partial class PlayerPage
         }
         var audioTrack = Playback.AudioTrackIndex;
         var startSeconds = Math.Max(0, Playback.Position.TotalSeconds - 0.25);
+        _liveRecognizedThrough = startSeconds;
+        _liveDubbing?.SetRecognizedThrough(startSeconds);
         _ = Task.Run(async () =>
         {
             try
@@ -130,6 +142,12 @@ public sealed partial class PlayerPage
         if (generation != _liveSubtitleGeneration || _liveSubtitles == null
             || !string.Equals(Playback.Playlist.Current?.Path, path, StringComparison.OrdinalIgnoreCase))
             return;
+        if (update.Final)
+        {
+            _liveRecognizedThrough = Math.Max(_liveRecognizedThrough, update.EndSeconds);
+            _liveDubbing?.SetRecognizedThrough(_liveRecognizedThrough);
+            _liveDubbing?.Register(update.Cues);
+        }
         if (!_liveBuffer.Apply(update))
             return;
         foreach (var old in _liveEntries.Where(entry => entry.SegmentId == update.SegmentId).ToArray())
@@ -165,7 +183,10 @@ public sealed partial class PlayerPage
         {
             var translated = await translation.TranslateAsync(entry.OriginalText, cancellationToken);
             if (string.IsNullOrWhiteSpace(translated))
+            {
+                _liveDubbing?.SkipCue(entry.Cue);
                 return;
+            }
             DispatcherQueue.TryEnqueue(() =>
             {
                 if (generation != _liveSubtitleGeneration || entry.Superseded)
@@ -177,6 +198,7 @@ public sealed partial class PlayerPage
                     Bitmaps = [],
                     AssEvent = null
                 };
+                _liveDubbing?.SubmitTranslated(entry.Cue);
                 RefreshLiveCues();
             });
         }
@@ -185,6 +207,7 @@ public sealed partial class PlayerPage
         }
         catch
         {
+            _liveDubbing?.SkipCue(entry.Cue);
         }
     }
 
@@ -286,6 +309,21 @@ public sealed partial class PlayerPage
     {
         if (_liveSubtitles == null)
             return;
+        if (_liveDubbing != null)
+        {
+            var position = Playback.Position.TotalSeconds;
+            _liveRecognizedThrough = position;
+            _liveDubbing.SetRecognizedThrough(position);
+            _liveDubbing.Reset(position);
+            _liveDubbingBuffering = true;
+            _liveDubbingBufferingSince = DateTime.UtcNow;
+            if (Playback.IsPlaying)
+            {
+                Playback.Pause();
+                _liveDubbingPaused = true;
+            }
+            ShowStatusHold("正在缓冲实时配音…");
+        }
         var generation = ++_liveSubtitleGeneration;
         var path = Playback.Playlist.Current?.Path;
         try
@@ -451,14 +489,39 @@ public sealed partial class PlayerPage
     private MenuFlyoutSubItem CreateDubbingMenu()
     {
         var menu = new MenuFlyoutSubItem { Text = "中文配音（实验）" };
+        var settings = App.Host.Settings;
         var voices = VoicePresets.Ensure(App.Host.Voices);
+        var hasAudio = Playback.GetAudioTracks().Count > 0;
+        var liveSupported = Playback.SupportsAudioMix && hasAudio && settings.AiSubtitlesEnabled && voices.Count > 0;
+
+        var live = new ToggleMenuFlyoutItem
+        {
+            Text = "实时配音（边播边生成）",
+            IsChecked = settings.DubbingLive,
+            IsEnabled = liveSupported
+        };
+        live.Click += async (_, _) => await ToggleLiveDubbingAsync(live.IsChecked);
+        menu.Items.Add(live);
+        if (!liveSupported)
+        {
+            menu.Items.Add(new MenuFlyoutItem
+            {
+                Text = !Playback.SupportsAudioMix ? "当前播放路线不支持实时配音"
+                    : !hasAudio ? "当前视频没有音轨"
+                    : !settings.AiSubtitlesEnabled ? "请先在设置中启用 AI 字幕"
+                    : "没有可用音色",
+                IsEnabled = false
+            });
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
         if (voices.Count == 0)
         {
             menu.Items.Add(new MenuFlyoutItem { Text = "没有可用音色", IsEnabled = false });
             return menu;
         }
 
-        var selected = App.Host.Settings.DubbingVoice;
+        var selected = settings.DubbingVoice;
         if (string.IsNullOrWhiteSpace(selected) || voices.All(voice => voice.Id != selected))
             selected = voices[0].Id;
         foreach (var voice in voices)
@@ -485,7 +548,7 @@ public sealed partial class PlayerPage
         var separate = new ToggleMenuFlyoutItem
         {
             Text = "按说话人区分音色（实验）",
-            IsChecked = App.Host.Settings.DubbingSeparateSpeakers
+            IsChecked = settings.DubbingSeparateSpeakers
         };
         separate.Click += (_, _) =>
         {
@@ -513,6 +576,174 @@ public sealed partial class PlayerPage
             App.Host.SaveSettings();
         };
         menu.Items.Add(item);
+    }
+
+    private async Task ToggleLiveDubbingAsync(bool enabled)
+    {
+        App.Host.Settings.DubbingLive = enabled;
+        App.Host.SaveSettings();
+        if (enabled)
+            await StartLiveDubbingAsync();
+        else
+            StopLiveDubbing(resume: true);
+    }
+
+    private async Task StartLiveDubbingAsync()
+    {
+        if (_liveDubbing != null || _liveDubbingPreparing)
+            return;
+        var path = Playback.Playlist.Current?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            ShowStatusHold("请先打开一个媒体文件。");
+            return;
+        }
+
+        var settings = App.Host.Settings;
+        _liveDubbingAttemptedPath = path;
+        if (!settings.AiSubtitlesEnabled)
+        {
+            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
+            return;
+        }
+
+        if (!Playback.SupportsAudioMix)
+        {
+            ShowStatusHold("当前播放路线不支持实时配音，请使用 Native/FFmpeg 路线。");
+            return;
+        }
+
+        if (Playback.GetAudioTracks().Count == 0)
+        {
+            ShowStatusHold("当前视频没有可识别的音轨。");
+            return;
+        }
+
+        var voices = VoicePresets.Ensure(App.Host.Voices);
+        if (voices.Count == 0)
+        {
+            ShowStatusHold("没有可用音色，请先导入参考音频。");
+            return;
+        }
+
+        _liveDubbingPreparing = true;
+        _liveDubbingWasPlaying = Playback.IsPlaying;
+        _liveDubbingPaused = false;
+        if (Playback.IsPlaying)
+        {
+            Playback.Pause();
+            _liveDubbingPaused = true;
+        }
+
+        var voice = voices.FirstOrDefault(item => item.Id == settings.DubbingVoice) ?? voices[0];
+        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
+        ShowStatusHold("正在准备实时配音（加载模型与音色）…");
+        try
+        {
+            var service = App.Host.AiSubtitles.CreateLiveDubbing(device, settings.DubbingEngine, voice,
+                () => Playback.Position.TotalSeconds);
+            _liveDubbing = service;
+            _liveDubbingMix = new LiveDubbingMixSource(service.Track);
+            Playback.SetAudioMix(_liveDubbingMix);
+
+            _subtitles.UseLive();
+            FinishSubtitleChoice();
+            StartLiveSubtitles(path, forceTranslation: true);
+
+            var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold("实时配音准备：" + value.Stage));
+            await service.StartAsync(progress, CancellationToken.None);
+            _liveDubbingPreparing = false;
+            _liveDubbingBuffering = true;
+            _liveDubbingBufferingSince = DateTime.UtcNow;
+            ShowStatusHold("正在缓冲实时配音…");
+        }
+        catch (OperationCanceledException)
+        {
+            _liveDubbingPreparing = false;
+            StopLiveDubbing(resume: true);
+        }
+        catch (Exception ex)
+        {
+            _liveDubbingPreparing = false;
+            App.Host.Settings.DubbingLive = false;
+            App.Host.SaveSettings();
+            CrashLog.Write("实时配音启动失败", ex.ToString());
+            StopLiveDubbing(resume: true);
+            ShowStatusHold("实时配音不可用：" + ex.Message);
+        }
+    }
+
+    private void StopLiveDubbing(bool resume)
+    {
+        var service = _liveDubbing;
+        var mix = _liveDubbingMix;
+        _liveDubbing = null;
+        _liveDubbingMix = null;
+        _liveDubbingPreparing = false;
+        _liveDubbingBuffering = false;
+        _liveRecognizedThrough = 0;
+        var shouldResume = resume && _liveDubbingPaused && _liveDubbingWasPlaying;
+        _liveDubbingPaused = false;
+        _liveDubbingWasPlaying = false;
+        if (mix != null)
+        {
+            Playback.SetAudioMix(null);
+            mix.Dispose();
+        }
+
+        if (service != null)
+            _ = service.DisposeAsync().AsTask();
+        ApplyDubbing();
+        if (shouldResume && Playback.IsOpen && !Playback.IsPlaying)
+            Playback.TogglePlay();
+    }
+
+    private void PumpLiveDubbing()
+    {
+        var service = _liveDubbing;
+        if (service == null || _liveDubbingPreparing || !Playback.IsOpen)
+            return;
+        if (!Playback.SupportsAudioMix)
+        {
+            StopLiveDubbing(resume: true);
+            ShowStatusHold("当前播放路线不支持实时配音，已切回原声。");
+            return;
+        }
+
+        var position = Playback.Position.TotalSeconds;
+        var covered = service.CoveredThrough;
+        if (!_liveDubbingBuffering && covered < position + 1.5)
+        {
+            _liveDubbingBuffering = true;
+            _liveDubbingBufferingSince = DateTime.UtcNow;
+            if (Playback.IsPlaying)
+            {
+                Playback.Pause();
+                _liveDubbingPaused = true;
+            }
+            ShowStatusHold("正在缓冲实时配音…");
+        }
+
+        if (!_liveDubbingBuffering)
+            return;
+        if (covered >= position + 5)
+        {
+            _liveDubbingBuffering = false;
+            if (_liveDubbingPaused)
+            {
+                _liveDubbingPaused = false;
+                if (!Playback.IsPlaying)
+                    Playback.TogglePlay();
+            }
+            ShowStatusHold("实时配音已就绪");
+            return;
+        }
+
+        if ((DateTime.UtcNow - _liveDubbingBufferingSince).TotalSeconds > 30)
+        {
+            StopLiveDubbing(resume: true);
+            ShowStatusHold("实时配音跟不上，已切回原声。可尝试在设置中换用更轻量的翻译模型。");
+        }
     }
 
     private async Task StartDubbingAsync()

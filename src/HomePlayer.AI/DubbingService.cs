@@ -28,9 +28,6 @@ public sealed record DubbingResult(
 /// </summary>
 public sealed class DubbingService(AiModelManager models, Func<string> mirror, string voicesDirectory)
 {
-    private const double MaxCompression = 1.25;
-    private const double FitTolerance = 1.02;
-
     public async Task<DubbingResult> GenerateAsync(
         DubbingRequest request,
         AiComputeDevice device,
@@ -244,42 +241,9 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
         if (rate != sampleRate || channels != 1 || targetSeconds <= 0)
             return (samples.Length, false);
 
-        var targetSamples = (int)Math.Round(targetSeconds * sampleRate);
-        var duration = samples.Length / (double)sampleRate;
-        if (duration > targetSeconds * FitTolerance && duration > 0.4)
-        {
-            var factor = Math.Min(duration / Math.Max(targetSeconds, 0.3), MaxCompression);
-            if (factor > 1.01)
-            {
-                var bytes = ToBytes(samples);
-                var stretcher = new PcmTimeStretcher();
-                samples = ToShorts(stretcher.Process(bytes, bytes.Length, 1, factor), stretcher.Flush(1, factor));
-            }
-        }
-
-        var truncated = false;
-        if (samples.Length > targetSamples && targetSamples > sampleRate / 20)
-        {
-            samples = Fade(samples, targetSamples, sampleRate);
-            truncated = true;
-        }
-
-        WavFile.WritePcm16(path, samples, sampleRate, 1);
-        return (samples.Length, truncated);
-    }
-
-    private static short[] Fade(short[] samples, int length, int sampleRate)
-    {
-        var result = new short[length];
-        Array.Copy(samples, result, length);
-        var fade = Math.Min(length, Math.Max(1, sampleRate * 15 / 1000));
-        for (var i = 0; i < fade; i++)
-        {
-            var gain = (fade - i) / (double)fade;
-            result[length - fade + i] = (short)Math.Round(result[length - fade + i] * gain);
-        }
-
-        return result;
+        var (fitted, truncated) = DubbingAudio.FitSamples(samples, sampleRate, targetSeconds);
+        WavFile.WritePcm16(path, fitted, sampleRate, 1);
+        return (fitted.Length, truncated);
     }
 
     private static int WriteTrack(string path, IReadOnlyList<DubbingSegment> segments)
@@ -325,21 +289,6 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
             writer.Write(buffer, 0, chunk * 2);
             samples -= chunk;
         }
-    }
-
-    private static byte[] ToBytes(short[] samples)
-    {
-        var bytes = new byte[samples.Length * 2];
-        Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
-        return bytes;
-    }
-
-    private static short[] ToShorts(byte[] first, byte[] second)
-    {
-        var result = new short[(first.Length + second.Length) / 2];
-        Buffer.BlockCopy(first, 0, result, 0, first.Length);
-        Buffer.BlockCopy(second, 0, result, first.Length, second.Length);
-        return result;
     }
 
     private static string MediaKey(string mediaPath)

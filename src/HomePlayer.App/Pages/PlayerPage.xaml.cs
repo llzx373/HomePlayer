@@ -123,6 +123,7 @@ public sealed partial class PlayerPage : Page
             _presenter.Clear();
             _assPresenter.Reset();
             StopLiveSubtitles();
+            StopLiveDubbing(resume: false);
             SyncSnapshotButton();
         });
         PlaylistView.ItemsSource = playback.Playlist.Items;
@@ -157,6 +158,15 @@ public sealed partial class PlayerPage : Page
             SyncSnapshotButton();
             Playback.EnforceLoop();
             UpdateSubtitleOverlay();
+            PumpLiveDubbing();
+            if (App.Host.Settings.DubbingLive && App.Host.Settings.AiSubtitlesEnabled
+                && _liveDubbing == null && !_liveDubbingPreparing
+                && Playback.IsPlaying && Playback.SupportsAudioMix
+                && Playback.Playlist.Current?.Path is { } livePath
+                && !string.Equals(livePath, _liveDubbingAttemptedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _ = StartLiveDubbingAsync();
+            }
             if (_statusHold != null)
                 ApplyStatusText();
             if (++_pipelineTicks % 10 == 0)
@@ -1160,7 +1170,15 @@ public sealed partial class PlayerPage : Page
     private void FinishSubtitleChoice()
     {
         if (_subtitles.Mode != SubtitleSession.Choice.Live)
+        {
             StopLiveSubtitles();
+            if (_liveDubbing != null || _liveDubbingPreparing)
+            {
+                App.Host.Settings.DubbingLive = false;
+                App.Host.SaveSettings();
+                StopLiveDubbing(resume: true);
+            }
+        }
         SaveSubtitlePreference();
         if (!string.IsNullOrEmpty(_subtitles.Error) && !_subtitles.IsOff)
             ShowStatusHold(_subtitles.Error);
@@ -1203,6 +1221,9 @@ public sealed partial class PlayerPage : Page
         var path = Playback.Playlist.Current?.Path;
         if (string.Equals(path, _dubbingPath, StringComparison.OrdinalIgnoreCase))
             return;
+        if (_liveDubbing != null || _liveDubbingPreparing)
+            StopLiveDubbing(resume: false);
+        _liveDubbingAttemptedPath = null;
         _dubbingPath = path;
         _dubbingMode = App.Host.Settings.DubbingMode;
         if (path != null && App.Host.Repository.LoadPreference(path)?.DubbingMode is { } saved)
@@ -1212,6 +1233,8 @@ public sealed partial class PlayerPage : Page
 
     private void ApplyDubbing()
     {
+        if (_liveDubbingMix != null)
+            return;
         _dubbingMix?.Dispose();
         _dubbingMix = DubbingMixSource.TryCreate(_dubbingPath, _dubbingMode);
         Playback.SetAudioMix(_dubbingMix);

@@ -55,5 +55,6 @@ public sealed partial class AppSettings
     public string DubbingVoice { get; set; } = "";
     public DubbingMode DubbingMode { get; set; } = DubbingMode.Off;
     public bool DubbingSeparateSpeakers { get; set; }
+    public bool DubbingLive { get; set; }
     public DubbingEngine DubbingEngine { get; set; } = DubbingEngine.ZipVoice;
 }

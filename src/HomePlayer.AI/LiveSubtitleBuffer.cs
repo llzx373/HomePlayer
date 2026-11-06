@@ -2,7 +2,7 @@ using HomePlayer.Core;
 
 namespace HomePlayer.AI;
 
-public sealed record SubtitleSegmentUpdate(int SegmentId, bool Final, IReadOnlyList<SubtitleCue> Cues);
+public sealed record SubtitleSegmentUpdate(int SegmentId, bool Final, IReadOnlyList<SubtitleCue> Cues, double EndSeconds = 0);
 
 public sealed class LiveSubtitleBuffer
 {

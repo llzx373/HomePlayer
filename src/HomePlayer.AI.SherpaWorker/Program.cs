@@ -108,15 +108,12 @@ void EmitFinal(List<float> buffer, int count, long startSample)
     buffer.CopyTo(0, samples, 0, count);
     if (segmenter.SpeechBounds(samples) is not { } speech)
     {
-        if (draftStart >= 0)
-        {
-            Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
-                currentId++,
-                job.StartSeconds + (double)startSample / 16000,
-                job.StartSeconds + (double)(startSample + count) / 16000,
-                "",
-                true)));
-        }
+        Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
+            currentId++,
+            job.StartSeconds + (double)startSample / 16000,
+            job.StartSeconds + (double)(startSample + count) / 16000,
+            "",
+            true)));
         ResetDraftState();
         return;
     }
