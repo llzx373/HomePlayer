@@ -19,10 +19,10 @@ public sealed unsafe partial class FfmpegPlayer
     public bool EnableD3D11Va { get; set; } = true;
     public D3D11SharedDevice? D3D11Device { get; set; }
 
-    private bool TryConfigureD3D11(AVCodecContext* context)
+    private bool TryConfigureD3D11(AVCodecContext* context, AVCodecID codec)
     {
         _usingD3D11 = false;
-        if (!EnableD3D11Va || D3D11Device == null)
+        if (!EnableD3D11Va || D3D11Device == null || PrefersSoftwareDecode(codec))
             return false;
         try
         {

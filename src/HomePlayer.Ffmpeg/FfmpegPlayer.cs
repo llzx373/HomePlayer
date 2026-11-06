@@ -1008,6 +1008,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         OpenVideoDecoder(decoder, _videoDecoderThreads, strictErrors: false);
     }
 
+    // VC-1 的 D3D11VA 输出视图在部分驱动上创建失败（返回 ENOMEM），
+    // 每帧都会触发解码器重建并造成持续卡顿；与 LAV 路线保持一致，VC-1 走软解。
+    private static bool PrefersSoftwareDecode(AVCodecID codec) =>
+        codec is AVCodecID.AV_CODEC_ID_VC1 or AVCodecID.AV_CODEC_ID_WMV3;
+
     private void OpenVideoDecoder(AVCodec* decoder, int threadCount, bool strictErrors = false)
     {
         if (decoder == null)
@@ -1018,7 +1023,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             FfmpegError.Check(ffmpeg.avcodec_parameters_to_context(context, _format->streams[_videoIndex]->codecpar), "复制视频参数");
             context->thread_count = threadCount;
             context->err_recognition = strictErrors ? 8 : 0;
-            var hardware = TryConfigureD3D11(context);
+            var hardware = TryConfigureD3D11(context, decoder->id);
             try
             {
                 FfmpegError.Check(ffmpeg.avcodec_open2(context, decoder, null), "打开视频解码器");
