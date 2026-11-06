@@ -1,6 +1,6 @@
 # 更新日志
 
-## 0.3.0-16 - 2026-11-06（Preview）
+## 0.3.0 - 2026-11-06
 
 - 移除实时/批量配音、音色克隆与说话人分析；相关实现归档到 `docs/archive/voice-cloning/`
 - 移除 CosyVoice、ZipVoice、TTS Worker 运行时和相关模型，安装包明显缩小
