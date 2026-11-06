@@ -26,6 +26,7 @@ public sealed partial class PlayerPage
     private LiveDubbingService? _liveDubbing;
     private LiveDubbingMixSource? _liveDubbingMix;
     private LiveSpeakerService? _liveSpeaker;
+    private bool _liveSpeakerNotified;
     private bool _liveDubbingPreparing;
     private bool _liveDubbingBuffering;
     private bool _liveDubbingPaused;
@@ -727,6 +728,7 @@ public sealed partial class PlayerPage
 
     private void StopLiveSpeaker()
     {
+        _liveSpeakerNotified = false;
         var speaker = _liveSpeaker;
         _liveSpeaker = null;
         if (speaker != null)
@@ -786,6 +788,16 @@ public sealed partial class PlayerPage
             service.SetSeparateSpeakers(false);
             service.SetSpeakerTimeline(null);
             ShowStatusHold("说话人分析中断，已使用单音色：" + speakerError);
+        }
+        if (_liveSpeaker != null && !_liveSpeakerNotified)
+        {
+            var segments = _liveSpeaker.Timeline.Snapshot();
+            if (segments.Count > 0)
+            {
+                _liveSpeakerNotified = true;
+                var count = segments.Select(segment => segment.Speaker).Distinct().Count();
+                ShowStatusHold($"实时配音已启用说话人区分（已识别 {count} 个角色）");
+            }
         }
         if (!Playback.SupportsAudioMix)
         {
