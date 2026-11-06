@@ -20,9 +20,10 @@ public sealed record AiModelInfo(
     long Size,
     string Sha256,
     string License,
-    string? DownloadUrl = null)
+    string? DownloadUrl = null,
+    string? LocalName = null)
 {
-    public string LocalFileName => FileName;
+    public string LocalFileName => LocalName ?? FileName;
 }
 
 public sealed record AiLanguage(string Code, string DisplayName)
@@ -79,7 +80,19 @@ public static class AiSubtitleCatalog
         new("speaker-embedding", AiModelKind.SpeakerAnalysis, "声纹嵌入模型 Campplus（28 MB）",
             "k2-fsa/sherpa-onnx", "speaker-recongition-models", "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx", 28_281_138,
             "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11", "Apache-2.0",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx")
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"),
+        new("cosyvoice3-model", AiModelKind.SpeechSynthesis, "CosyVoice3 语音克隆模型（0.9 GB）",
+            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "CosyVoice3-2512_Q8_0.gguf", 943_933_536,
+            "be133cb6154ca73cd1d213b1c9496def99ba9c1f7c14cd99f6b350af2eb7963d", "Apache-2.0",
+            LocalName: "CosyVoice3-2512_Q8_0.gguf"),
+        new("cosyvoice-tokenizer", AiModelKind.SpeechSynthesis, "CosyVoice 语音分词器（0.9 GB）",
+            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "frontend-onnx/speech_tokenizer_v3.onnx", 969_451_503,
+            "23236a74175dbdda47afc66dbadd5bcb41303c467a57c261cb8539ad9db9208d", "Apache-2.0",
+            LocalName: "speech_tokenizer_v3.onnx"),
+        new("cosyvoice-campplus", AiModelKind.SpeechSynthesis, "Campplus 声纹前端（28 MB）",
+            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "frontend-onnx/campplus.onnx", 28_303_423,
+            "a6ac6a63997761ae2997373e2ee1c47040854b4b759ea41ec48e4e42df0f4d73", "Apache-2.0",
+            LocalName: "campplus.onnx")
     ];
 
     public static IReadOnlyList<AiLanguage> Languages { get; } =

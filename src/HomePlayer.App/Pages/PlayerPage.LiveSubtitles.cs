@@ -478,6 +478,10 @@ public sealed partial class PlayerPage
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
+        var engineMenu = new MenuFlyoutSubItem { Text = "配音引擎" };
+        AddEngineItem(engineMenu, "ZipVoice（中文参考音色）", DubbingEngine.ZipVoice);
+        AddEngineItem(engineMenu, "CosyVoice3（跨语言克隆）", DubbingEngine.CosyVoice);
+        menu.Items.Add(engineMenu);
         var separate = new ToggleMenuFlyoutItem
         {
             Text = "按说话人区分音色（实验）",
@@ -493,6 +497,22 @@ public sealed partial class PlayerPage
         start.Click += async (_, _) => await StartDubbingAsync();
         menu.Items.Add(start);
         return menu;
+    }
+
+    private void AddEngineItem(MenuFlyoutSubItem menu, string text, DubbingEngine engine)
+    {
+        var item = new RadioMenuFlyoutItem
+        {
+            Text = text,
+            GroupName = "DubbingEngine",
+            IsChecked = App.Host.Settings.DubbingEngine == engine
+        };
+        item.Click += (_, _) =>
+        {
+            App.Host.Settings.DubbingEngine = engine;
+            App.Host.SaveSettings();
+        };
+        menu.Items.Add(item);
     }
 
     private async Task StartDubbingAsync()
@@ -538,9 +558,10 @@ public sealed partial class PlayerPage
         try
         {
             var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold(value.Stage + " · " + value.Value.ToString("P0")));
-            var result = await App.Host.AiSubtitles.CreateDubbing().GenerateAsync(
+            var service = App.Host.AiSubtitles.CreateDubbing();
+            var result = await service.GenerateAsync(
                 new DubbingRequest(path, cues, voice.Id, AudioTrackIndex: Playback.AudioTrackIndex,
-                    SeparateSpeakers: settings.DubbingSeparateSpeakers),
+                    SeparateSpeakers: settings.DubbingSeparateSpeakers, Engine: settings.DubbingEngine),
                 device,
                 progress,
                 CancellationToken.None);

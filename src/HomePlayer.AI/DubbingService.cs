@@ -11,7 +11,8 @@ public sealed record DubbingRequest(
     string VoiceId,
     int Steps = 2,
     int AudioTrackIndex = 0,
-    bool SeparateSpeakers = false);
+    bool SeparateSpeakers = false,
+    DubbingEngine Engine = DubbingEngine.ZipVoice);
 
 public sealed record DubbingResult(
     DubbingManifest Manifest,
@@ -52,24 +53,53 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
 
         SpeakerAnalysis? analysis = null;
         IReadOnlyDictionary<int, string>? speakerVoices = null;
+        IReadOnlyDictionary<int, SpeakerReference>? speakerReferences = null;
+        SpeakerReference? defaultReference = null;
+        string? cosyModel = null;
+        string? cosyTokenizer = null;
+        string? cosyCampplus = null;
         var startProgress = 0.0;
+        if (request.Engine == DubbingEngine.CosyVoice)
+        {
+            cosyModel = await models.EnsureAsync(AiSubtitleCatalog.Model("cosyvoice3-model"), mirror(),
+                new Progress<double>(value => Report(progress, "下载语音克隆模型", value * 0.03)), cancellationToken);
+            cosyTokenizer = await models.EnsureAsync(AiSubtitleCatalog.Model("cosyvoice-tokenizer"), mirror(),
+                new Progress<double>(value => Report(progress, "下载语音分词器", 0.03 + value * 0.03)), cancellationToken);
+            cosyCampplus = await models.EnsureAsync(AiSubtitleCatalog.Model("cosyvoice-campplus"), mirror(),
+                new Progress<double>(value => Report(progress, "下载声纹模型", 0.06 + value * 0.02)), cancellationToken);
+            var preset = new VoiceLibrary(voicesDirectory).List()
+                .FirstOrDefault(voice => voice.Id == request.VoiceId);
+            if (preset != null)
+                defaultReference = new SpeakerReference(-1, preset.AudioPath, preset.ReferenceText);
+            startProgress = 0.08;
+        }
+
         if (request.SeparateSpeakers)
         {
-            startProgress = 0.35;
+            startProgress = request.Engine == DubbingEngine.CosyVoice ? 0.4 : 0.35;
             analysis = await new SpeakerAnalysisService(models, mirror).AnalyzeAsync(
                 request.MediaPath,
                 request.AudioTrackIndex,
                 device,
-                new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, value.Value * startProgress)),
+                new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, startProgress * value.Value)),
                 cancellationToken);
-            var presets = new VoiceLibrary(voicesDirectory).List();
-            speakerVoices = SpeakerVoicePlanner.Assign(cues, analysis, presets);
+            if (request.Engine == DubbingEngine.CosyVoice)
+            {
+                speakerReferences = SpeakerVoicePlanner.AssignReferences(cues, analysis, Path.Combine(work, "speakers"));
+            }
+            else
+            {
+                var presets = new VoiceLibrary(voicesDirectory).List();
+                speakerVoices = SpeakerVoicePlanner.Assign(cues, analysis, presets);
+            }
+
             Report(progress, $"识别到 {analysis.SpeakerCount} 个说话人", startProgress);
         }
 
         try
         {
-            return await GenerateCoreAsync(request, cues, work, device, speakerVoices, startProgress, progress, cancellationToken);
+            return await GenerateCoreAsync(
+                request, cues, work, device, speakerVoices, speakerReferences, defaultReference, cosyModel, cosyTokenizer, cosyCampplus, startProgress, progress, cancellationToken);
         }
         finally
         {
@@ -83,20 +113,54 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
         string work,
         AiComputeDevice device,
         IReadOnlyDictionary<int, string>? speakerVoices,
+        IReadOnlyDictionary<int, SpeakerReference>? speakerReferences,
+        SpeakerReference? defaultReference,
+        string? cosyModel,
+        string? cosyTokenizer,
+        string? cosyCampplus,
         double startProgress,
         IProgress<AiSubtitleProgress>? progress,
         CancellationToken cancellationToken)
     {
         var span = 1 - startProgress;
+        var startup = new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, startProgress + value.Value * 0.12 * span));
 
-        await using var tts = new TtsService(models, device, mirror, voicesDirectory);
-        await tts.StartAsync(
-            new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, startProgress + value.Value * 0.12 * span)),
-            cancellationToken);
+        await using var zipVoice = request.Engine == DubbingEngine.CosyVoice
+            ? null
+            : new TtsService(models, device, mirror, voicesDirectory);
+        await using var cosyVoice = request.Engine == DubbingEngine.CosyVoice
+            && cosyModel != null && cosyTokenizer != null && cosyCampplus != null
+            ? new CosyVoiceService(cosyModel, cosyTokenizer, cosyCampplus, device != AiComputeDevice.Cpu, Path.Combine(work, "voices"))
+            : null;
+
+        if (zipVoice != null)
+        {
+            await zipVoice.StartAsync(startup, cancellationToken);
+        }
+        else if (cosyVoice != null)
+        {
+            var voices = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (defaultReference != null)
+                voices["default"] = await cosyVoice.PrepareVoiceAsync("default", defaultReference.AudioPath, defaultReference.Transcript, cancellationToken);
+            var distinct = (speakerReferences?.Values.DistinctBy(reference => reference.Speaker)
+                ?? Enumerable.Empty<SpeakerReference>()).ToArray();
+            for (var index = 0; index < distinct.Length; index++)
+            {
+                var reference = distinct[index];
+                Report(progress, $"准备音色 {index + 1}/{distinct.Length}", startProgress + 0.04 * span);
+                var id = $"speaker-{reference.Speaker}";
+                voices[id] = await cosyVoice.PrepareVoiceAsync(id, reference.AudioPath, reference.Transcript, cancellationToken);
+            }
+
+            if (voices.Count == 0)
+                throw new InvalidOperationException("没有可用于克隆的参考音色。");
+            await cosyVoice.StartAsync(voices, startup, cancellationToken);
+        }
 
         var segments = new List<DubbingSegment>(cues.Length);
         var failed = 0;
         var truncated = 0;
+        var failures = new List<string>();
         for (var index = 0; index < cues.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -104,12 +168,25 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
             Report(progress, $"合成配音 {index + 1}/{cues.Length}", startProgress + (0.12 + 0.78 * index / cues.Length) * span);
             var path = Path.Combine(work, index.ToString("D5", CultureInfo.InvariantCulture) + ".wav");
             var text = cue.Translation!.Trim();
-            var voiceId = speakerVoices != null && speakerVoices.TryGetValue(index, out var assigned)
-                ? assigned
-                : request.VoiceId;
+            var voiceId = request.VoiceId;
             try
             {
-                var (sampleRate, _) = await tts.SynthesizeAsync(text, voiceId, path, request.Steps, cancellationToken);
+                int sampleRate;
+                if (cosyVoice != null)
+                {
+                    var reference = speakerReferences != null && speakerReferences.TryGetValue(index, out var assignedReference)
+                        ? assignedReference
+                        : defaultReference;
+                    voiceId = reference is { Speaker: >= 0 } ? $"speaker-{reference.Speaker}" : "default";
+                    (sampleRate, _) = await cosyVoice.SynthesizeAsync(text, voiceId, path, cancellationToken);
+                }
+                else
+                {
+                    if (speakerVoices != null && speakerVoices.TryGetValue(index, out var assigned))
+                        voiceId = assigned;
+                    (sampleRate, _) = await zipVoice!.SynthesizeAsync(text, voiceId, path, request.Steps, cancellationToken);
+                }
+
                 var (samples, wasTruncated) = Fit(path, sampleRate, (cue.End - cue.Start).TotalSeconds);
                 if (wasTruncated)
                     truncated++;
@@ -128,14 +205,17 @@ public sealed class DubbingService(AiModelManager models, Func<string> mirror, s
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 failed++;
+                if (failures.Count < 3)
+                    failures.Add(ex.Message);
             }
         }
 
         if (segments.Count == 0)
-            throw new InvalidOperationException("所有句子都合成失败，请检查音色和语音合成模型。");
+            throw new InvalidOperationException("所有句子都合成失败，请检查音色和语音合成模型。"
+                + (failures.Count > 0 ? " " + string.Join(" | ", failures) : ""));
 
         Report(progress, "写入配音音轨", startProgress + 0.93 * span);
         var audioPath = DubbingFile.AudioPathFor(request.MediaPath);

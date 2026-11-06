@@ -2,6 +2,8 @@ using HomePlayer.Core;
 
 namespace HomePlayer.AI;
 
+public sealed record SpeakerReference(int Speaker, string AudioPath, string Transcript);
+
 /// <summary>
 /// 把字幕句分配到说话人，并按音高给每个说话人挑一个预设音色。
 /// 跨语言音色克隆在本模型的 ONNX 版本上效果不可用，所以这里先用预设音色区分角色。
@@ -46,6 +48,81 @@ public static class SpeakerVoicePlanner
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// VoxCPM 用：给每个说话人切一段参考音频（最长的那句），并带上该句原文作为逐字稿。
+    /// </summary>
+    public static IReadOnlyDictionary<int, SpeakerReference> AssignReferences(
+        IReadOnlyList<SubtitleCue> cues,
+        SpeakerAnalysis analysis,
+        string directory)
+    {
+        var result = new Dictionary<int, SpeakerReference>();
+        var groups = GroupBySpeaker(cues, analysis.Segments);
+        if (groups.Count == 0)
+            return result;
+
+        Directory.CreateDirectory(directory);
+        foreach (var (speaker, indices) in groups.OrderBy(pair => pair.Key))
+        {
+            var longest = indices
+                .OrderByDescending(index => (cues[index].End - cues[index].Start).TotalSeconds)
+                .First();
+            var path = Path.Combine(directory, $"speaker-{speaker}.wav");
+            if (!CutReference(analysis.AudioPath, cues[longest].Start, cues[longest].End, path))
+                continue;
+            var reference = new SpeakerReference(speaker, path, cues[longest].Text.Trim());
+            foreach (var index in indices)
+                result[index] = reference;
+        }
+
+        return result;
+    }
+
+    private static Dictionary<int, List<int>> GroupBySpeaker(IReadOnlyList<SubtitleCue> cues, IReadOnlyList<SpeakerSegment> segments)
+    {
+        var groups = new Dictionary<int, List<int>>();
+        for (var index = 0; index < cues.Count; index++)
+        {
+            var speaker = DominantSpeaker(cues[index], segments);
+            if (speaker < 0)
+                continue;
+            if (!groups.TryGetValue(speaker, out var list))
+                groups[speaker] = list = [];
+            list.Add(index);
+        }
+
+        return groups;
+    }
+
+    private static bool CutReference(string audioPath, TimeSpan from, TimeSpan to, string outputPath, double maxSeconds = 10)
+    {
+        try
+        {
+            var info = WavFile.ReadInfo(audioPath);
+            if (info.Channels != 1 || info.SampleRate < 8000)
+                return false;
+            var rate = info.SampleRate;
+            var first = Math.Max(0, (int)(from.TotalSeconds * rate));
+            var last = Math.Min((int)info.Frames, (int)(to.TotalSeconds * rate));
+            last = Math.Min(last, first + (int)(maxSeconds * rate));
+            if (last - first < rate / 2)
+                return false;
+
+            using var stream = new FileStream(audioPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            stream.Position = info.DataOffset + first * 2L;
+            var bytes = new byte[(last - first) * 2];
+            stream.ReadExactly(bytes);
+            var samples = new short[bytes.Length / 2];
+            Buffer.BlockCopy(bytes, 0, samples, 0, bytes.Length);
+            WavFile.WritePcm16(outputPath, samples, rate, 1);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static int DominantSpeaker(SubtitleCue cue, IReadOnlyList<SpeakerSegment> segments)
