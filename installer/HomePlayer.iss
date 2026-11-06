@@ -185,6 +185,62 @@ Filename: "{app}\{#AppExe}"; Description: "运行 HomePlayer"; Flags: nowait pos
 Filename: "ms-settings:defaultapps?registeredAppMachine={#AppName}"; Description: "打开系统设置，将 HomePlayer 设为默认播放器"; Flags: nowait postinstall skipifsilent unchecked shellexec
 
 [Code]
+const
+  // 与 scripts\Trim-LocalizedResources.ps1 的 -KeepCulture 保持一致。
+  KeepLocales = '|en-us|zh-CN|zh-Hans|zh-Hant|zh-TW|';
+
+function IsLocalizationOnlyDir(const Dir: String): Boolean;
+var
+  FindRec: TFindRec;
+  Found: Boolean;
+begin
+  Result := False;
+  Found := False;
+  if FindFirst(AddBackslash(Dir) + '*', FindRec) then
+  try
+    repeat
+      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+        Exit;
+      Found := True;
+      if (CompareText(ExtractFileExt(FindRec.Name), '.mui') <> 0) and
+         not ((CompareText(ExtractFileExt(FindRec.Name), '.dll') = 0) and
+              (Pos('.resources.dll', LowerCase(FindRec.Name)) > 0)) then
+        Exit;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+  Result := Found;
+end;
+
+procedure RemoveUnusedLocales;
+var
+  FindRec: TFindRec;
+  Dir: String;
+begin
+  if not FindFirst(ExpandConstant('{app}\*'), FindRec) then
+    Exit;
+  try
+    repeat
+      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
+        continue;
+      if Pos('|' + FindRec.Name + '|', KeepLocales) > 0 then
+        continue;
+      Dir := ExpandConstant('{app}\') + FindRec.Name;
+      if IsLocalizationOnlyDir(Dir) then
+        DelTree(Dir, True, True, True);
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    RemoveUnusedLocales;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep <> usPostUninstall then

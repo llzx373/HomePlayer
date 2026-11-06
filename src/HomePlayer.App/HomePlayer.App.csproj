@@ -15,6 +15,7 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>zh-Hans;zh-Hant;en</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
@@ -51,6 +52,7 @@
     <SherpaRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-Sherpa.ps1'))</SherpaRestoreScript>
     <FfmpegRestoreScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Restore-Ffmpeg.ps1'))</FfmpegRestoreScript>
     <DependencyVerifyScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Verify-PrivateDependencies.ps1'))</DependencyVerifyScript>
+    <TrimLocalizationScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Trim-LocalizedResources.ps1'))</TrimLocalizationScript>
   </PropertyGroup>
   <Target Name="BuildAIWorkers" BeforeTargets="BeforeBuild;Publish">
     <MSBuild Projects="..\HomePlayer.AI.Worker\HomePlayer.AI.Worker.csproj;..\HomePlayer.AI.SherpaWorker\HomePlayer.AI.SherpaWorker.csproj;..\HomePlayer.AI.TtsWorker\HomePlayer.AI.TtsWorker.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64" />
@@ -74,6 +76,9 @@
     <Copy SourceFiles="@(_AIWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_AISherpaWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\sherpa-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_AITtsWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\tts-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="TrimUnusedLocalization" AfterTargets="Publish">
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(TrimLocalizationScript)&quot; -Path &quot;$(PublishDir).&quot;" />
   </Target>
   <Target Name="RestoreFfmpeg" BeforeTargets="VerifyPrivateDependencies">
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(FfmpegRestoreScript)&quot;" Condition="!Exists('$(FfmpegDir)\avcodec-63.dll')" />
