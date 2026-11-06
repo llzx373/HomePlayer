@@ -27,6 +27,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private readonly LiveDubbingScheduler _scheduler = new();
     private readonly LiveDubbingTrack _track = new();
     private readonly CancellationTokenSource _cancel = new();
+    private readonly SemaphoreSlim _promptGate = new(1, 1);
     private readonly object _gate = new();
     private readonly object _speakerGate = new();
     private readonly List<LiveDubbingCue> _cues = [];
@@ -435,8 +436,11 @@ public sealed class LiveDubbingService : IAsyncDisposable
 
     private async Task PrepareSpeakerVoiceAsync(int speaker, LiveDubbingCue cue)
     {
+        var acquired = false;
         try
         {
+            await _promptGate.WaitAsync(_cancel.Token);
+            acquired = true;
             string? workDirectory;
             Func<double, double, string, bool>? cut;
             CosyVoiceService? service;
@@ -478,6 +482,8 @@ public sealed class LiveDubbingService : IAsyncDisposable
         }
         finally
         {
+            if (acquired)
+                _promptGate.Release();
             lock (_speakerGate)
                 _promptPreparing.Remove(speaker);
         }

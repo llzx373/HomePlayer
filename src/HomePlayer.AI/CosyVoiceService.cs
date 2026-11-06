@@ -74,6 +74,7 @@ public sealed class CosyVoiceService : IAsyncDisposable
         using var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         if (!process.Start())
             throw new InvalidOperationException("无法启动 CosyVoice 前端编码。");
+        AiProcess.Track(process);
         var errors = new StringBuilder();
         process.ErrorDataReceived += (_, args) =>
         {
@@ -81,7 +82,15 @@ public sealed class CosyVoiceService : IAsyncDisposable
                 errors.AppendLine(args.Data);
         };
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            AiProcess.TryKill(process);
+            throw;
+        }
         if (process.ExitCode != 0 || !File.Exists(output))
             throw new InvalidOperationException("音色参考编码失败：" + Tail(errors.ToString()));
         return output;
