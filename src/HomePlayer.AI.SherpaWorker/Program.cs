@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using HomePlayer.Core;
 using SherpaOnnx;
 
 if (args.Length == 2 && args[0] == "--diarize")
@@ -268,7 +269,6 @@ public sealed record DiarizeJob(string AudioPath, string SegmentationModel, stri
 
 internal static class DiarizationRunner
 {
-    private const float MatchThreshold = 0.65f;
     private const double ProbeSeconds = 8;
 
     public static void Run(DiarizeJob job)
@@ -297,7 +297,7 @@ internal static class DiarizationRunner
         var dataOffset = FindDataOffset(audio);
         var blockSamples = (int)Math.Round(Math.Max(30, job.BlockSeconds) * rate);
         var buffer = new byte[blockSamples * 2];
-        var known = new List<float[]>();
+        var tracker = new SpeakerProfileTracker();
         var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         var blockIndex = 0;
 
@@ -323,7 +323,8 @@ internal static class DiarizationRunner
 
             foreach (var segment in segments)
             {
-                var speaker = Match(known, probes[segment.Speaker]);
+                var duration = segments.Where(item => item.Speaker == segment.Speaker).Sum(item => item.End - item.Start);
+                var speaker = tracker.Match(probes[segment.Speaker], duration);
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     type = "segment",
@@ -338,7 +339,7 @@ internal static class DiarizationRunner
                 break;
         }
 
-        Console.WriteLine(JsonSerializer.Serialize(new { type = "done", speakers = known.Count }, options));
+        Console.WriteLine(JsonSerializer.Serialize(new { type = "done", speakers = tracker.Count }, options));
     }
 
     private static float[] Probe(float[] samples, int rate, OfflineSpeakerDiarizationSegment[] segments, int speaker, SpeakerEmbeddingExtractor extractor)
@@ -362,58 +363,6 @@ internal static class DiarizationRunner
         using var stream = extractor.CreateStream();
         stream.AcceptWaveform(rate, parts.ToArray());
         return extractor.IsReady(stream) ? extractor.Compute(stream) : [];
-    }
-
-    private static int Match(List<float[]> known, float[] embedding)
-    {
-        if (embedding.Length == 0)
-            return known.Count == 0 ? -1 : 0;
-
-        var best = -1;
-        var bestScore = (double)MatchThreshold;
-        for (var index = 0; index < known.Count; index++)
-        {
-            var score = Cosine(known[index], embedding);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best = index;
-            }
-        }
-
-        if (best >= 0)
-        {
-            known[best] = Average(known[best], embedding);
-            return best;
-        }
-
-        known.Add(embedding);
-        return known.Count - 1;
-    }
-
-    private static float[] Average(float[] first, float[] second)
-    {
-        if (first.Length != second.Length)
-            return second;
-        var result = new float[first.Length];
-        for (var index = 0; index < result.Length; index++)
-            result[index] = (first[index] + second[index]) / 2;
-        return result;
-    }
-
-    private static double Cosine(float[] first, float[] second)
-    {
-        if (first.Length != second.Length || first.Length == 0)
-            return -1;
-        double dot = 0, left = 0, right = 0;
-        for (var index = 0; index < first.Length; index++)
-        {
-            dot += first[index] * second[index];
-            left += first[index] * first[index];
-            right += second[index] * second[index];
-        }
-
-        return dot / (Math.Sqrt(left) * Math.Sqrt(right) + 1e-9);
     }
 
     private static int ReadBlock(FileStream stream, byte[] buffer)
