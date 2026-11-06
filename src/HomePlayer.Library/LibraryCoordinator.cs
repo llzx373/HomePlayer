@@ -12,6 +12,7 @@ public sealed partial class LibraryCoordinator : IAsyncDisposable
     private readonly TmdbClient _tmdb;
     private readonly Func<string?> _apiKey;
     private readonly Func<string, VideoScanResult> _scan;
+    private readonly Action<string, string> _reportCrash;
     private readonly ConcurrentDictionary<string, string> _scanWarnings = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, LibraryScanStatus> _scanStatuses = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PendingLibraryChanges> _changes = new(StringComparer.OrdinalIgnoreCase);
@@ -44,12 +45,14 @@ public sealed partial class LibraryCoordinator : IAsyncDisposable
     public LibraryCoordinator(
         LibraryRepository repository,
         Func<string?> apiKey,
-        Func<string, VideoScanResult>? scan = null)
+        Func<string, VideoScanResult>? scan = null,
+        Action<string, string>? reportCrash = null)
     {
         _repository = repository;
         _tmdb = new TmdbClient(repository);
         _apiKey = apiKey;
         _scan = scan ?? VideoFiles.Scan;
+        _reportCrash = reportCrash ?? ((kind, details) => CrashLog.Write(kind, details));
     }
 
     public event EventHandler? Changed;
@@ -648,7 +651,7 @@ public sealed partial class LibraryCoordinator : IAsyncDisposable
         SetScanStatus(library.Id, LibraryScanStage.Incomplete, discovered, failures, message);
         try
         {
-            CrashLog.Write(
+            _reportCrash(
                 "扫描不完整",
                 library.Name + Environment.NewLine + string.Join(Environment.NewLine, failures.Select(failure => $"{failure.Path}: {failure.Error}")));
         }

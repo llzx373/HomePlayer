@@ -329,7 +329,7 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            ShowWindow(WindowNative.GetWindowHandle(this), 0);
+            AppWindow.Hide();
         }
         catch
         {
@@ -1064,9 +1064,6 @@ public sealed partial class MainWindow : Window
             next.Value.Width,
             next.Value.Height));
     }
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hwnd, int command);
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out PointNative point);

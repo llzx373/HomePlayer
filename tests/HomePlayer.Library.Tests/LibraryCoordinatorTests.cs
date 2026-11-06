@@ -104,7 +104,7 @@ public class LibraryCoordinatorTests
         {
             using var repository = new LibraryRepository(Path.Combine(directory, "library.db"));
             var scan = new VideoScanResult([], [new DirectoryScanFailure(directory, "访问被拒绝")]);
-            await using var coordinator = new LibraryCoordinator(repository, () => null, _ => scan);
+            await using var coordinator = new LibraryCoordinator(repository, () => null, _ => scan, (_, _) => { });
             var library = new MediaLibrary
             {
                 Id = "library",
