@@ -66,25 +66,6 @@ public sealed class AiSubtitleService
         AiComputeDevice device) =>
         new(_models, modelId, sourceLanguage, targetLanguage, device, _mirror);
 
-    public DubbingService CreateDubbing() =>
-        new(_models, _mirror, AppPaths.Voices);
-
-    public LiveDubbingService CreateLiveDubbing(
-        AiComputeDevice device,
-        DubbingEngine engine,
-        IReadOnlyList<VoiceProfile> voices,
-        VoiceProfile defaultVoice,
-        bool separateSpeakers,
-        Func<double> playhead) =>
-        new(_models, _mirror, device, engine, voices, defaultVoice, separateSpeakers, playhead);
-
-    public LiveSpeakerService CreateLiveSpeaker() => new(_models, _mirror);
-
-    public bool DubbingInstalled =>
-        _models.IsArchiveInstalled(AiSubtitleCatalog.Model("zipvoice-model"))
-        && _models.IsInstalled(AiSubtitleCatalog.Model("zipvoice-vocoder"))
-        && File.Exists(Path.Combine(AppContext.BaseDirectory, "ai", "tts-worker", "HomePlayer.AI.TtsWorker.exe"));
-
     public bool SenseVoiceInstalled =>
         IsInstalled("sensevoice-model") && IsInstalled("sensevoice-tokens")
         && File.Exists(Path.Combine(AppContext.BaseDirectory, "ai", "sherpa-worker", "HomePlayer.AI.SherpaWorker.exe"));

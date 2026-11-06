@@ -25,7 +25,6 @@ public sealed class AppHost : IAsyncDisposable
         Libraries = libraries;
         Playback = playback;
         AiSubtitles = new AiSubtitleService(AppPaths.ResolveAiModels(settings.AiModelDirectory), () => settings.AiModelMirror, () => settings.AiDownloadProxy);
-        Voices = new VoiceLibrary(AppPaths.Voices);
         _codecPlans = codecPlans;
         _settingsStore = settingsStore;
         SettingsWarning = settingsWarning;
@@ -37,7 +36,6 @@ public sealed class AppHost : IAsyncDisposable
     public LibraryCoordinator Libraries { get; }
     public PlaybackController Playback { get; }
     public AiSubtitleService AiSubtitles { get; }
-    public VoiceLibrary Voices { get; }
     public string? SettingsWarning { get; private set; }
     public bool Exiting { get; set; }
 

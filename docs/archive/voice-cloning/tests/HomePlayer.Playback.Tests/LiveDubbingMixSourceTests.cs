@@ -60,6 +60,32 @@ public class LiveDubbingMixSourceTests
         Assert.All(output, value => Assert.InRange(value, 11990, 12010));
     }
 
+    [Fact]
+    public void Ducks_original_during_recognized_speech_without_dub_segment()
+    {
+        var track = new LiveDubbingTrack();
+        track.AddSpeech(0, 2);
+        using var source = new LiveDubbingMixSource(track);
+
+        var pcm = BuildPcm(frames: 14400, sample: 1000);
+        source.Process(0, pcm, pcm.Length, 48000, 1);
+
+        Assert.All(Samples(pcm)[^480..], value => Assert.InRange(value, 0, 120));
+    }
+
+    [Fact]
+    public void Leaves_original_untouched_outside_recognized_speech()
+    {
+        var track = new LiveDubbingTrack();
+        track.AddSpeech(0, 1);
+        using var source = new LiveDubbingMixSource(track);
+
+        var pcm = BuildPcm(frames: 480, sample: 1000);
+        source.Process(3.0, pcm, pcm.Length, 48000, 1);
+
+        Assert.All(Samples(pcm), value => Assert.Equal(1000, value));
+    }
+
     private static LiveDubbingSegment Segment(long key, double start, double end, short sample)
     {
         var samples = new short[(int)Math.Round((end - start) * 24000)];

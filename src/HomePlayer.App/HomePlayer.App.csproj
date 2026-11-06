@@ -21,7 +21,6 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
-    <PackageReference Include="System.Speech" Version="10.0.0" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>
   <ItemGroup>
@@ -41,9 +40,6 @@
     <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper\**\*.*" Link="ai\whisper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper-cuda\**\*.*" Link="ai\whisper-cuda\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cosyvoice\**\*.*" Link="ai\cosyvoice\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda13.1-cudart\*.dll" Link="ai\cosyvoice\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\third_party\ai\cuda13.1-cublas\*.dll" Link="ai\cosyvoice\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <FfmpegDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\third_party\ffmpeg'))</FfmpegDir>
@@ -55,27 +51,23 @@
     <TrimLocalizationScript>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\scripts\Trim-LocalizedResources.ps1'))</TrimLocalizationScript>
   </PropertyGroup>
   <Target Name="BuildAIWorkers" BeforeTargets="BeforeBuild;Publish">
-    <MSBuild Projects="..\HomePlayer.AI.Worker\HomePlayer.AI.Worker.csproj;..\HomePlayer.AI.SherpaWorker\HomePlayer.AI.SherpaWorker.csproj;..\HomePlayer.AI.TtsWorker\HomePlayer.AI.TtsWorker.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64" />
+    <MSBuild Projects="..\HomePlayer.AI.Worker\HomePlayer.AI.Worker.csproj;..\HomePlayer.AI.SherpaWorker\HomePlayer.AI.SherpaWorker.csproj" Targets="Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64" />
   </Target>
   <Target Name="CopyAIWorkers" AfterTargets="Build">
     <ItemGroup>
       <_AIWorkerFiles Include="..\HomePlayer.AI.Worker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
       <_AISherpaWorkerFiles Include="..\HomePlayer.AI.SherpaWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
-      <_AITtsWorkerFiles Include="..\HomePlayer.AI.TtsWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_AIWorkerFiles)" DestinationFolder="$(TargetDir)ai\worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_AISherpaWorkerFiles)" DestinationFolder="$(TargetDir)ai\sherpa-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_AITtsWorkerFiles)" DestinationFolder="$(TargetDir)ai\tts-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="PublishAIWorkers" AfterTargets="Publish">
     <ItemGroup>
       <_AIWorkerPublishFiles Include="..\HomePlayer.AI.Worker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
       <_AISherpaWorkerPublishFiles Include="..\HomePlayer.AI.SherpaWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
-      <_AITtsWorkerPublishFiles Include="..\HomePlayer.AI.TtsWorker\bin\$(Configuration)\net10.0-windows\win-x64\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(_AIWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_AISherpaWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\sherpa-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_AITtsWorkerPublishFiles)" DestinationFolder="$(PublishDir)ai\tts-worker\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="TrimUnusedLocalization" AfterTargets="Publish">
     <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(TrimLocalizationScript)&quot; -Path &quot;$(PublishDir).&quot;" />

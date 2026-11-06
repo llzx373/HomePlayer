@@ -66,9 +66,6 @@ public sealed partial class PlayerPage : Page
     private int _subtitleEmbed;
     private int _subtitleLoad;
     private string? _shownSubtitle;
-    private string? _dubbingPath;
-    private DubbingMode _dubbingMode = DubbingMode.Off;
-    private DubbingMixSource? _dubbingMix;
     private SubtitleDisplayMode CurrentSubtitleDisplay =>
         _subtitles.DisplayMode ?? App.Host.Settings.SubtitleDisplayMode;
     private (string? Path, string Engine)? _audioTracksKey;
@@ -123,7 +120,6 @@ public sealed partial class PlayerPage : Page
             _presenter.Clear();
             _assPresenter.Reset();
             StopLiveSubtitles();
-            StopLiveDubbing(resume: false);
             SyncSnapshotButton();
         });
         PlaylistView.ItemsSource = playback.Playlist.Items;
@@ -158,15 +154,6 @@ public sealed partial class PlayerPage : Page
             SyncSnapshotButton();
             Playback.EnforceLoop();
             UpdateSubtitleOverlay();
-            PumpLiveDubbing();
-            if (App.Host.Settings.DubbingLive && App.Host.Settings.AiSubtitlesEnabled
-                && _liveDubbing == null && !_liveDubbingPreparing
-                && Playback.IsPlaying && Playback.SupportsAudioMix
-                && Playback.Playlist.Current?.Path is { } livePath
-                && !string.Equals(livePath, _liveDubbingAttemptedPath, StringComparison.OrdinalIgnoreCase))
-            {
-                _ = StartLiveDubbingAsync();
-            }
             if (_statusHold != null)
                 ApplyStatusText();
             if (++_pipelineTicks % 10 == 0)
@@ -430,7 +417,6 @@ public sealed partial class PlayerPage : Page
         UpdateSpeedChrome();
         UpdateAudioChrome();
         SyncSubtitleSource();
-        SyncDubbing();
         UpdateSubtitleChrome();
         UpdateSubtitleOverlay();
         FitWindowButton.IsChecked = App.Host.Settings.FitWindow;
@@ -833,25 +819,6 @@ public sealed partial class PlayerPage : Page
             AudioFlyout.Items.Add(item);
         }
 
-        var mediaPath = Playback.Playlist.Current?.Path;
-        var dubExists = mediaPath != null && File.Exists(DubbingFile.AudioPathFor(mediaPath));
-        var canMix = Playback.SupportsAudioMix;
-        var hasDub = dubExists && canMix;
-        var dubbing = new MenuFlyoutSubItem { Text = "中文配音" };
-        AddDubbingItem(dubbing, "关闭（仅原声）", DubbingMode.Off, hasDub);
-        AddDubbingItem(dubbing, "混合（压低原声）", DubbingMode.Mixed, hasDub);
-        AddDubbingItem(dubbing, "仅配音", DubbingMode.DubOnly, hasDub);
-        if (!hasDub)
-        {
-            dubbing.Items.Add(new MenuFlyoutSeparator());
-            dubbing.Items.Add(new MenuFlyoutItem
-            {
-                Text = dubExists ? "当前播放路线不支持配音混音" : "尚未生成配音",
-                IsEnabled = false
-            });
-        }
-        AudioFlyout.Items.Add(dubbing);
-
         AudioFlyout.Items.Add(new MenuFlyoutSeparator());
         var automatic = new MenuFlyoutItem { Text = "下次打开时恢复自动选择" };
         automatic.Click += (_, _) => Playback.ClearAudioPreference();
@@ -871,19 +838,6 @@ public sealed partial class PlayerPage : Page
         earlier.IsEnabled = enhancementsAvailable;
         later.IsEnabled = enhancementsAvailable;
         reset.IsEnabled = enhancementsAvailable;
-    }
-
-    private void AddDubbingItem(MenuFlyoutSubItem menu, string text, DubbingMode mode, bool enabled)
-    {
-        var item = new RadioMenuFlyoutItem
-        {
-            Text = text,
-            GroupName = "DubbingMode",
-            IsChecked = _dubbingMode == mode,
-            IsEnabled = enabled
-        };
-        item.Click += (_, _) => SetDubbingMode(mode);
-        menu.Items.Add(item);
     }
 
     private void AudioItem_Click(object sender, RoutedEventArgs e)
@@ -1001,7 +955,6 @@ public sealed partial class PlayerPage : Page
         open.Click += OpenSubtitleFile_Click;
         SubtitleFlyout.Items.Add(open);
         SubtitleFlyout.Items.Add(CreateAiGenerationMenuItem());
-        SubtitleFlyout.Items.Add(CreateDubbingMenu());
 
         SubtitleFlyout.Items.Add(new MenuFlyoutSeparator());
         SubtitleFlyout.Items.Add(new MenuFlyoutItem
@@ -1170,15 +1123,7 @@ public sealed partial class PlayerPage : Page
     private void FinishSubtitleChoice()
     {
         if (_subtitles.Mode != SubtitleSession.Choice.Live)
-        {
             StopLiveSubtitles();
-            if (_liveDubbing != null || _liveDubbingPreparing)
-            {
-                App.Host.Settings.DubbingLive = false;
-                App.Host.SaveSettings();
-                StopLiveDubbing(resume: true);
-            }
-        }
         SaveSubtitlePreference();
         if (!string.IsNullOrEmpty(_subtitles.Error) && !_subtitles.IsOff)
             ShowStatusHold(_subtitles.Error);
@@ -1214,58 +1159,6 @@ public sealed partial class PlayerPage : Page
         }
 
         _subtitleOpen = open;
-    }
-
-    private void SyncDubbing()
-    {
-        var path = Playback.Playlist.Current?.Path;
-        if (string.Equals(path, _dubbingPath, StringComparison.OrdinalIgnoreCase))
-            return;
-        if (_liveDubbing != null || _liveDubbingPreparing)
-            StopLiveDubbing(resume: false);
-        _liveDubbingAttemptedPath = null;
-        _dubbingPath = path;
-        _dubbingMode = App.Host.Settings.DubbingMode;
-        if (path != null && App.Host.Repository.LoadPreference(path)?.DubbingMode is { } saved)
-            _dubbingMode = saved;
-        ApplyDubbing();
-    }
-
-    private void ApplyDubbing()
-    {
-        if (_liveDubbingMix != null)
-            return;
-        _dubbingMix?.Dispose();
-        _dubbingMix = DubbingMixSource.TryCreate(_dubbingPath, _dubbingMode);
-        Playback.SetAudioMix(_dubbingMix);
-    }
-
-    private void SetDubbingMode(DubbingMode mode)
-    {
-        _dubbingMode = mode;
-        ApplyDubbing();
-        SaveDubbingPreference();
-        ShowStatusHold(mode switch
-        {
-            DubbingMode.Mixed => "中文配音：混合播放",
-            DubbingMode.DubOnly => "中文配音：仅配音",
-            _ => "中文配音：关闭，仅播放原声"
-        });
-    }
-
-    private void SaveDubbingPreference()
-    {
-        if (_dubbingPath is not string path)
-            return;
-        try
-        {
-            var preference = App.Host.Repository.LoadPreference(path) ?? MediaPreference.Empty(path);
-            App.Host.Repository.SavePreference(preference with { DubbingMode = _dubbingMode });
-        }
-        catch (Exception ex)
-        {
-            ShowStatusHold("配音偏好保存失败：" + ex.Message);
-        }
     }
 
     /// <summary>

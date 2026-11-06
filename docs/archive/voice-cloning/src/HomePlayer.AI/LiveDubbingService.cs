@@ -24,6 +24,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private readonly IReadOnlyList<VoiceProfile> _voices;
     private readonly VoiceProfile _defaultVoice;
     private readonly Func<double> _playhead;
+    private readonly bool _cloneVoice;
     private readonly LiveDubbingScheduler _scheduler = new();
     private readonly LiveDubbingTrack _track = new();
     private readonly CancellationTokenSource _cancel = new();
@@ -40,6 +41,10 @@ public sealed class LiveDubbingService : IAsyncDisposable
     private Func<double, double, string, bool>? _cutReference;
     private bool _separateSpeakers;
     private bool _voicePromptsDirty;
+    private bool _defaultCloneStarted;
+    private bool _defaultCloneReady;
+    private DateTime _defaultCloneRetryAt;
+    private DateTime _startedAt;
     private string? _workDirectory;
     private CosyVoiceService? _cosyVoice;
     private TtsService? _zipVoice;
@@ -57,6 +62,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
         IReadOnlyList<VoiceProfile> voices,
         VoiceProfile defaultVoice,
         bool separateSpeakers,
+        bool cloneVoice,
         Func<double> playhead)
     {
         _models = models;
@@ -66,6 +72,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
         _voices = voices;
         _defaultVoice = defaultVoice;
         _separateSpeakers = separateSpeakers;
+        _cloneVoice = cloneVoice;
         _playhead = playhead;
     }
 
@@ -100,6 +107,18 @@ public sealed class LiveDubbingService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 默认音色是否已经换成从视频原声克隆的 prompt。
+    /// </summary>
+    public bool DefaultVoiceCloned
+    {
+        get
+        {
+            lock (_speakerGate)
+                return _defaultCloneReady;
+        }
+    }
+
     public Task StartAsync(IProgress<AiSubtitleProgress>? progress, CancellationToken cancellationToken) =>
         _start ??= StartCoreAsync(progress, cancellationToken);
 
@@ -113,6 +132,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
             var start = cue.Start.TotalSeconds;
             var end = cue.End.TotalSeconds;
             _scheduler.Track(key, start, end);
+            _track.AddSpeech(start, end);
             lock (_speakerGate)
             {
                 if (!_cues.Any(item => item.Key == key))
@@ -125,7 +145,11 @@ public sealed class LiveDubbingService : IAsyncDisposable
 
     public void SubmitTranslated(SubtitleCue cue) => _scheduler.Translate(KeyOf(cue), cue.Translation);
 
-    public void SkipCue(SubtitleCue cue) => _scheduler.Skip(KeyOf(cue));
+    public void SkipCue(SubtitleCue cue)
+    {
+        _scheduler.Skip(KeyOf(cue));
+        _track.RemoveSpeech(cue.Start.TotalSeconds, cue.End.TotalSeconds);
+    }
 
     public void SetSpeakerTimeline(LiveSpeakerTimeline? timeline)
     {
@@ -160,6 +184,9 @@ public sealed class LiveDubbingService : IAsyncDisposable
             _cueSpeakers.Clear();
             _promptPreparing.Clear();
             _speakerTimeline = null;
+            _defaultCloneStarted = false;
+            _defaultCloneReady = false;
+            _defaultCloneRetryAt = default;
         }
         lock (_gate)
             _lastError = null;
@@ -231,6 +258,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
             await StartCosyVoiceAsync(directory, progress, linked.Token);
         else
             await StartZipVoiceAsync(progress, linked.Token);
+        _startedAt = DateTime.UtcNow;
         _pump = Task.Run(() => PumpAsync(_cancel.Token), CancellationToken.None);
     }
 
@@ -248,9 +276,20 @@ public sealed class LiveDubbingService : IAsyncDisposable
         _cosyVoice = service;
         Report(progress, "准备参考音色", 0.65);
         var prompt = await PrepareVoiceAsync(service, cancellationToken);
+        string defaultPrompt;
         lock (_speakerGate)
-            _voicePrompts["default"] = prompt;
-        await service.StartAsync(new Dictionary<string, string>(StringComparer.Ordinal) { ["default"] = prompt },
+        {
+            if (_defaultCloneReady && _voicePrompts.TryGetValue("default", out var cloned))
+            {
+                defaultPrompt = cloned;
+            }
+            else
+            {
+                defaultPrompt = prompt;
+                _voicePrompts["default"] = prompt;
+            }
+        }
+        await service.StartAsync(new Dictionary<string, string>(StringComparer.Ordinal) { ["default"] = defaultPrompt },
             new Progress<AiSubtitleProgress>(value => Report(progress, value.Stage, 0.7 + value.Value * 0.3)),
             cancellationToken);
     }
@@ -284,6 +323,13 @@ public sealed class LiveDubbingService : IAsyncDisposable
             SyncSpeakers();
             if (_engine == DubbingEngine.CosyVoice)
                 await SyncVoicesAsync(cancellationToken);
+            if (ShouldWaitForDefaultClone())
+            {
+                _track.EvictBefore(_playhead() - EvictBeforeSeconds);
+                await Task.Delay(TimeSpan.FromSeconds(PollSeconds), cancellationToken);
+                continue;
+            }
+
             var playhead = _playhead();
             var job = _scheduler.Next(playhead, LookaheadSeconds);
             if (job == null)
@@ -307,6 +353,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
                 if (channels != 1 || sampleRate <= 0)
                 {
                     _scheduler.Skip(job.Key);
+                    _track.RemoveSpeech(job.StartSeconds, job.EndSeconds);
                     continue;
                 }
 
@@ -324,6 +371,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
                 lock (_gate)
                     _lastError = ex.Message;
                 _scheduler.Skip(job.Key);
+                _track.RemoveSpeech(job.StartSeconds, job.EndSeconds);
             }
             finally
             {
@@ -354,7 +402,10 @@ public sealed class LiveDubbingService : IAsyncDisposable
         }
 
         if (separate && timeline == null)
+        {
+            EnsureDefaultClone();
             return;
+        }
 
         foreach (var cue in unassigned)
         {
@@ -395,6 +446,114 @@ public sealed class LiveDubbingService : IAsyncDisposable
             foreach (var speaker in _cueSpeakers.Values.Where(value => value >= 0).Distinct())
                 EnsureVoiceLocked(speaker);
         }
+
+        EnsureDefaultClone();
+    }
+
+    /// <summary>
+    /// 音色模仿：不等说话人分离出结果，先用播放头附近第一句够长的台词切一段参考音频，
+    /// 把它作为默认音色。这样开场几句不会一直用系统预设音色，分离结果稍后再覆盖。
+    /// </summary>
+    private void EnsureDefaultClone()
+    {
+        if (!_cloneVoice || _engine != DubbingEngine.CosyVoice)
+            return;
+
+        LiveDubbingCue? cue;
+        lock (_speakerGate)
+        {
+            if (_defaultCloneReady || _defaultCloneStarted || _cutReference == null
+                || _cosyVoice == null || _workDirectory == null || DateTime.UtcNow < _defaultCloneRetryAt)
+                return;
+            cue = _cues
+                .OrderBy(item => item.Start)
+                .FirstOrDefault(IsGoodCloneCue);
+            if (cue == null)
+                return;
+            _defaultCloneStarted = true;
+        }
+
+        _ = Task.Run(() => PrepareDefaultVoiceAsync(cue), _cancel.Token);
+    }
+
+    /// <summary>
+    /// 太长的段落经常夹着大段静音或音乐，文本又很少，不适合当音色参考；
+    /// 优先用长度和文字量都合理的句子。
+    /// </summary>
+    private static bool IsGoodCloneCue(LiveDubbingCue cue)
+    {
+        if (string.IsNullOrWhiteSpace(cue.Text))
+            return false;
+        var duration = cue.End - cue.Start;
+        if (duration < 1.5 || duration > 10)
+            return false;
+        var compact = cue.Text.Count(char.IsLetterOrDigit);
+        if (compact < 4)
+            return false;
+        return compact / duration >= 1.5 || duration <= 4;
+    }
+
+    private async Task PrepareDefaultVoiceAsync(LiveDubbingCue cue)
+    {
+        try
+        {
+            string? workDirectory;
+            Func<double, double, string, bool>? cut;
+            CosyVoiceService? service;
+            lock (_speakerGate)
+            {
+                workDirectory = _workDirectory;
+                cut = _cutReference;
+                service = _cosyVoice;
+            }
+
+            if (workDirectory == null || cut == null || service == null)
+                return;
+            var reference = Path.Combine(workDirectory, "ref-default.wav");
+            if (!cut(cue.Start, cue.End, reference))
+                return;
+
+            await _promptGate.WaitAsync(_cancel.Token);
+            try
+            {
+                var cacheId = "live-default-" + Fingerprint(reference, cue.Text);
+                var prompt = Path.Combine(AppPaths.DubbingCache, "voices", cacheId + ".gguf");
+                if (!File.Exists(prompt))
+                {
+                    var prepared = await service.PrepareVoiceAsync(cacheId, reference, cue.Text, _cancel.Token);
+                    if (!string.Equals(prepared, prompt, StringComparison.OrdinalIgnoreCase) && File.Exists(prepared))
+                        File.Move(prepared, prompt, true);
+                }
+
+                lock (_speakerGate)
+                {
+                    _voicePrompts["default"] = prompt;
+                    _voicePromptsDirty = true;
+                    _defaultCloneReady = true;
+                }
+            }
+            finally
+            {
+                _promptGate.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+                _lastError = "准备模仿音色失败：" + ex.Message;
+        }
+        finally
+        {
+            lock (_speakerGate)
+            {
+                _defaultCloneStarted = false;
+                if (!_defaultCloneReady)
+                    _defaultCloneRetryAt = DateTime.UtcNow.AddSeconds(2);
+            }
+        }
     }
 
     private void EnsureVoiceLocked(int speaker)
@@ -425,7 +584,7 @@ public sealed class LiveDubbingService : IAsyncDisposable
         {
             if (!_cueSpeakers.TryGetValue(cue.Key, out var assigned) || assigned != speaker)
                 continue;
-            if (string.IsNullOrWhiteSpace(cue.Text) || cue.End - cue.Start < 1.5)
+            if (!IsGoodCloneCue(cue))
                 continue;
             if (best == null || cue.End - cue.Start > best.End - best.Start)
                 best = cue;
@@ -572,6 +731,17 @@ public sealed class LiveDubbingService : IAsyncDisposable
             : _zipVoice!.SynthesizeAsync(text, voiceId, path, 2, cancellationToken);
 
     private static long KeyOf(SubtitleCue cue) => (long)Math.Round(cue.Start.TotalMilliseconds);
+
+    /// <summary>
+    /// 选择了音色模仿时，先等第一段克隆音色准备好，避免开场几句先用系统预设音色。
+    /// 等不到（例如没有合适台词）就按预设音色继续，后台仍然会继续尝试。
+    /// </summary>
+    private bool ShouldWaitForDefaultClone() =>
+        _cloneVoice
+        && _engine == DubbingEngine.CosyVoice
+        && _cutReference != null
+        && !_defaultCloneReady
+        && DateTime.UtcNow - _startedAt < TimeSpan.FromSeconds(8);
 
     private static string VoiceKey(VoiceProfile voice)
     {

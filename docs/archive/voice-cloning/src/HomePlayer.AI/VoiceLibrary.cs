@@ -7,6 +7,8 @@ namespace HomePlayer.AI;
 /// </summary>
 public sealed class VoiceLibrary(string directory)
 {
+    public const string CloneVoiceId = "clone";
+
     public string Directory { get; } = directory;
 
     public IReadOnlyList<VoiceProfile> List()

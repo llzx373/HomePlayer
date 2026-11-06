@@ -1,6 +1,5 @@
 using HomePlayer.AI;
 using HomePlayer.Core;
-using HomePlayer.Playback;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -22,18 +21,6 @@ public sealed partial class PlayerPage
     private string _aiGenerationStage = "";
     private double _aiGenerationProgress;
     private int _aiGenerationVersion;
-    private bool _dubbingRunning;
-    private LiveDubbingService? _liveDubbing;
-    private LiveDubbingMixSource? _liveDubbingMix;
-    private LiveSpeakerService? _liveSpeaker;
-    private bool _liveSpeakerNotified;
-    private bool _liveDubbingPreparing;
-    private bool _liveDubbingBuffering;
-    private bool _liveDubbingPaused;
-    private bool _liveDubbingWasPlaying;
-    private DateTime _liveDubbingBufferingSince;
-    private double _liveRecognizedThrough;
-    private string? _liveDubbingAttemptedPath;
 
     private void SelectLiveSubtitles()
     {
@@ -58,7 +45,7 @@ public sealed partial class PlayerPage
         StartLiveSubtitles(path);
     }
 
-    private void StartLiveSubtitles(string path, bool forceTranslation = false)
+    private void StartLiveSubtitles(string path)
     {
         StopLiveSubtitles();
         var generation = ++_liveSubtitleGeneration;
@@ -72,7 +59,7 @@ public sealed partial class PlayerPage
         _subtitles.UseLive();
         var settings = App.Host.Settings;
         var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
-        var translate = settings.AiTranslateLiveSubtitles || forceTranslation;
+        var translate = settings.AiTranslateLiveSubtitles;
         var drafts = settings.AiLiveDraftSubtitles;
         var translation = translate
             ? App.Host.AiSubtitles.CreateLiveTranslator(
@@ -104,8 +91,6 @@ public sealed partial class PlayerPage
         }
         var audioTrack = Playback.AudioTrackIndex;
         var startSeconds = Math.Max(0, Playback.Position.TotalSeconds - 0.25);
-        _liveRecognizedThrough = startSeconds;
-        _liveDubbing?.SetRecognizedThrough(startSeconds);
         _ = Task.Run(async () =>
         {
             try
@@ -144,12 +129,6 @@ public sealed partial class PlayerPage
         if (generation != _liveSubtitleGeneration || _liveSubtitles == null
             || !string.Equals(Playback.Playlist.Current?.Path, path, StringComparison.OrdinalIgnoreCase))
             return;
-        if (update.Final)
-        {
-            _liveRecognizedThrough = Math.Max(_liveRecognizedThrough, update.EndSeconds);
-            _liveDubbing?.SetRecognizedThrough(_liveRecognizedThrough);
-            _liveDubbing?.Register(update.Cues);
-        }
         if (!_liveBuffer.Apply(update))
             return;
         foreach (var old in _liveEntries.Where(entry => entry.SegmentId == update.SegmentId).ToArray())
@@ -185,10 +164,7 @@ public sealed partial class PlayerPage
         {
             var translated = await translation.TranslateAsync(entry.OriginalText, cancellationToken);
             if (string.IsNullOrWhiteSpace(translated))
-            {
-                _liveDubbing?.SkipCue(entry.Cue);
                 return;
-            }
             DispatcherQueue.TryEnqueue(() =>
             {
                 if (generation != _liveSubtitleGeneration || entry.Superseded)
@@ -200,7 +176,6 @@ public sealed partial class PlayerPage
                     Bitmaps = [],
                     AssEvent = null
                 };
-                _liveDubbing?.SubmitTranslated(entry.Cue);
                 RefreshLiveCues();
             });
         }
@@ -209,7 +184,6 @@ public sealed partial class PlayerPage
         }
         catch
         {
-            _liveDubbing?.SkipCue(entry.Cue);
         }
     }
 
@@ -311,22 +285,6 @@ public sealed partial class PlayerPage
     {
         if (_liveSubtitles == null)
             return;
-        var position = Playback.Position.TotalSeconds;
-        var dubbing = _liveDubbing != null;
-        if (dubbing)
-        {
-            _liveRecognizedThrough = position;
-            _liveDubbing!.SetRecognizedThrough(position);
-            _liveDubbing.Reset(position);
-            _liveDubbingBuffering = true;
-            _liveDubbingBufferingSince = DateTime.UtcNow;
-            if (Playback.IsPlaying)
-            {
-                Playback.Pause();
-                _liveDubbingPaused = true;
-            }
-            ShowStatusHold("正在缓冲实时配音…");
-        }
         var generation = ++_liveSubtitleGeneration;
         var path = Playback.Playlist.Current?.Path;
         try
@@ -334,9 +292,7 @@ public sealed partial class PlayerPage
             await Task.Delay(350);
             if (generation != _liveSubtitleGeneration || path == null || _liveSubtitles == null)
                 return;
-            StartLiveSubtitles(path, forceTranslation: dubbing);
-            if (dubbing)
-                _ = RestartLiveSpeakerAsync(path, position);
+            StartLiveSubtitles(path);
         }
         catch
         {
@@ -490,437 +446,6 @@ public sealed partial class PlayerPage
             : "正在为其他视频生成字幕";
         _aiGenerationMenuItem.Text = $"{prefix} · {_aiGenerationProgress:P0}";
         ToolTipService.SetToolTip(_aiGenerationMenuItem, _aiGenerationStage);
-    }
-
-    private MenuFlyoutSubItem CreateDubbingMenu()
-    {
-        var menu = new MenuFlyoutSubItem { Text = "中文配音（实验）" };
-        var settings = App.Host.Settings;
-        var voices = VoicePresets.Ensure(App.Host.Voices);
-        var hasAudio = Playback.GetAudioTracks().Count > 0;
-        var liveSupported = Playback.SupportsAudioMix && hasAudio && settings.AiSubtitlesEnabled && voices.Count > 0;
-
-        var live = new ToggleMenuFlyoutItem
-        {
-            Text = "实时配音（边播边生成）",
-            IsChecked = settings.DubbingLive,
-            IsEnabled = liveSupported
-        };
-        live.Click += async (_, _) => await ToggleLiveDubbingAsync(live.IsChecked);
-        menu.Items.Add(live);
-        if (!liveSupported)
-        {
-            menu.Items.Add(new MenuFlyoutItem
-            {
-                Text = !Playback.SupportsAudioMix ? "当前播放路线不支持实时配音"
-                    : !hasAudio ? "当前视频没有音轨"
-                    : !settings.AiSubtitlesEnabled ? "请先在设置中启用 AI 字幕"
-                    : "没有可用音色",
-                IsEnabled = false
-            });
-        }
-
-        menu.Items.Add(new MenuFlyoutSeparator());
-        if (voices.Count == 0)
-        {
-            menu.Items.Add(new MenuFlyoutItem { Text = "没有可用音色", IsEnabled = false });
-            return menu;
-        }
-
-        var selected = settings.DubbingVoice;
-        if (string.IsNullOrWhiteSpace(selected) || voices.All(voice => voice.Id != selected))
-            selected = voices[0].Id;
-        foreach (var voice in voices)
-        {
-            var item = new RadioMenuFlyoutItem
-            {
-                Text = voice.DisplayName,
-                GroupName = "DubbingVoice",
-                IsChecked = voice.Id == selected
-            };
-            item.Click += (_, _) =>
-            {
-                App.Host.Settings.DubbingVoice = voice.Id;
-                App.Host.SaveSettings();
-            };
-            menu.Items.Add(item);
-        }
-
-        menu.Items.Add(new MenuFlyoutSeparator());
-        var engineMenu = new MenuFlyoutSubItem { Text = "配音引擎" };
-        AddEngineItem(engineMenu, "ZipVoice（中文参考音色）", DubbingEngine.ZipVoice);
-        AddEngineItem(engineMenu, "CosyVoice3（跨语言克隆）", DubbingEngine.CosyVoice);
-        menu.Items.Add(engineMenu);
-        var separate = new ToggleMenuFlyoutItem
-        {
-            Text = "按说话人区分音色（实验）",
-            IsChecked = settings.DubbingSeparateSpeakers
-        };
-        separate.Click += async (_, _) =>
-        {
-            App.Host.Settings.DubbingSeparateSpeakers = separate.IsChecked;
-            App.Host.SaveSettings();
-            if (_liveDubbing == null)
-                return;
-            if (separate.IsChecked)
-            {
-                if (Playback.Playlist.Current?.Path is { } path)
-                    await RestartLiveSpeakerAsync(path, Playback.Position.TotalSeconds);
-            }
-            else
-            {
-                StopLiveSpeaker();
-                _liveDubbing.SetSeparateSpeakers(false);
-                _liveDubbing.SetSpeakerTimeline(null);
-            }
-        };
-        menu.Items.Add(separate);
-        var start = new MenuFlyoutItem { Text = "开始生成配音" };
-        start.Click += async (_, _) => await StartDubbingAsync();
-        menu.Items.Add(start);
-        return menu;
-    }
-
-    private void AddEngineItem(MenuFlyoutSubItem menu, string text, DubbingEngine engine)
-    {
-        var item = new RadioMenuFlyoutItem
-        {
-            Text = text,
-            GroupName = "DubbingEngine",
-            IsChecked = App.Host.Settings.DubbingEngine == engine
-        };
-        item.Click += (_, _) =>
-        {
-            App.Host.Settings.DubbingEngine = engine;
-            App.Host.SaveSettings();
-        };
-        menu.Items.Add(item);
-    }
-
-    private async Task ToggleLiveDubbingAsync(bool enabled)
-    {
-        App.Host.Settings.DubbingLive = enabled;
-        App.Host.SaveSettings();
-        if (enabled)
-            await StartLiveDubbingAsync();
-        else
-            StopLiveDubbing(resume: true);
-    }
-
-    private async Task StartLiveDubbingAsync()
-    {
-        if (_liveDubbing != null || _liveDubbingPreparing)
-            return;
-        var path = Playback.Playlist.Current?.Path;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            ShowStatusHold("请先打开一个媒体文件。");
-            return;
-        }
-
-        var settings = App.Host.Settings;
-        _liveDubbingAttemptedPath = path;
-        if (!settings.AiSubtitlesEnabled)
-        {
-            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
-            return;
-        }
-
-        if (!Playback.SupportsAudioMix)
-        {
-            ShowStatusHold("当前播放路线不支持实时配音，请使用 Native/FFmpeg 路线。");
-            return;
-        }
-
-        if (Playback.GetAudioTracks().Count == 0)
-        {
-            ShowStatusHold("当前视频没有可识别的音轨。");
-            return;
-        }
-
-        var voices = VoicePresets.Ensure(App.Host.Voices);
-        if (voices.Count == 0)
-        {
-            ShowStatusHold("没有可用音色，请先导入参考音频。");
-            return;
-        }
-
-        _liveDubbingPreparing = true;
-        _liveDubbingWasPlaying = Playback.IsPlaying;
-        _liveDubbingPaused = false;
-        if (Playback.IsPlaying)
-        {
-            Playback.Pause();
-            _liveDubbingPaused = true;
-        }
-
-        var voice = voices.FirstOrDefault(item => item.Id == settings.DubbingVoice) ?? voices[0];
-        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
-        ShowStatusHold("正在准备实时配音（加载模型与音色）…");
-        try
-        {
-            var service = App.Host.AiSubtitles.CreateLiveDubbing(
-                device,
-                settings.DubbingEngine,
-                voices,
-                voice,
-                settings.DubbingSeparateSpeakers,
-                () => Playback.Position.TotalSeconds);
-            _liveDubbing = service;
-            _liveDubbingMix = new LiveDubbingMixSource(service.Track);
-            Playback.SetAudioMix(_liveDubbingMix);
-
-            if (settings.DubbingSeparateSpeakers)
-                _ = RestartLiveSpeakerAsync(path, Playback.Position.TotalSeconds);
-
-            _subtitles.UseLive();
-            FinishSubtitleChoice();
-            StartLiveSubtitles(path, forceTranslation: true);
-
-            var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold("实时配音准备：" + value.Stage));
-            await service.StartAsync(progress, CancellationToken.None);
-            _liveDubbingPreparing = false;
-            _liveDubbingBuffering = true;
-            _liveDubbingBufferingSince = DateTime.UtcNow;
-            ShowStatusHold("正在缓冲实时配音…");
-        }
-        catch (OperationCanceledException)
-        {
-            _liveDubbingPreparing = false;
-            StopLiveDubbing(resume: true);
-        }
-        catch (Exception ex)
-        {
-            _liveDubbingPreparing = false;
-            App.Host.Settings.DubbingLive = false;
-            App.Host.SaveSettings();
-            CrashLog.Write("实时配音启动失败", ex.ToString());
-            StopLiveDubbing(resume: true);
-            ShowStatusHold("实时配音不可用：" + ex.Message);
-        }
-    }
-
-    private void StopLiveDubbing(bool resume)
-    {
-        StopLiveSpeaker();
-        var service = _liveDubbing;
-        var mix = _liveDubbingMix;
-        _liveDubbing = null;
-        _liveDubbingMix = null;
-        _liveDubbingPreparing = false;
-        _liveDubbingBuffering = false;
-        _liveRecognizedThrough = 0;
-        var shouldResume = resume && _liveDubbingPaused && _liveDubbingWasPlaying;
-        _liveDubbingPaused = false;
-        _liveDubbingWasPlaying = false;
-        if (mix != null)
-        {
-            Playback.SetAudioMix(null);
-            mix.Dispose();
-        }
-
-        if (service != null)
-            _ = service.DisposeAsync().AsTask();
-        ApplyDubbing();
-        if (shouldResume && Playback.IsOpen && !Playback.IsPlaying)
-            Playback.TogglePlay();
-    }
-
-    private void StopLiveSpeaker()
-    {
-        _liveSpeakerNotified = false;
-        var speaker = _liveSpeaker;
-        _liveSpeaker = null;
-        if (speaker != null)
-            _ = speaker.DisposeAsync().AsTask();
-    }
-
-    private async Task RestartLiveSpeakerAsync(string path, double position)
-    {
-        StopLiveSpeaker();
-        var service = _liveDubbing;
-        if (service == null)
-            return;
-        if (!App.Host.Settings.DubbingSeparateSpeakers)
-        {
-            service.SetSeparateSpeakers(false);
-            service.SetSpeakerTimeline(null);
-            return;
-        }
-
-        var speaker = App.Host.AiSubtitles.CreateLiveSpeaker();
-        _liveSpeaker = speaker;
-        service.SetSeparateSpeakers(true);
-        service.SetSpeakerTimeline(speaker.Timeline);
-        service.SetReferenceCutter(speaker.TryCutReference);
-        var device = AiComputeDeviceExtensions.Parse(App.Host.Settings.AiComputeDevice);
-        ShowStatusHold("正在分析说话人…");
-        try
-        {
-            await speaker.StartAsync(
-                path,
-                Playback.AudioTrackIndex,
-                Math.Max(0, position - 0.25),
-                device,
-                null,
-                CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            if (!ReferenceEquals(_liveSpeaker, speaker))
-                return;
-            _liveSpeaker = null;
-            _ = speaker.DisposeAsync().AsTask();
-            service.SetSeparateSpeakers(false);
-            service.SetSpeakerTimeline(null);
-            ShowStatusHold("说话人分析不可用，使用单音色：" + ex.Message);
-        }
-    }
-
-    private void PumpLiveDubbing()
-    {
-        var service = _liveDubbing;
-        if (service == null || _liveDubbingPreparing || !Playback.IsOpen)
-            return;
-        if (_liveSpeaker is { LastError: { } speakerError })
-        {
-            StopLiveSpeaker();
-            service.SetSeparateSpeakers(false);
-            service.SetSpeakerTimeline(null);
-            ShowStatusHold("说话人分析中断，已使用单音色：" + speakerError);
-        }
-        if (_liveSpeaker != null && !_liveSpeakerNotified)
-        {
-            var segments = _liveSpeaker.Timeline.Snapshot();
-            if (segments.Count > 0)
-            {
-                _liveSpeakerNotified = true;
-                var count = segments.Select(segment => segment.Speaker).Distinct().Count();
-                ShowStatusHold($"实时配音已启用说话人区分（已识别 {count} 个角色）");
-            }
-        }
-        if (!Playback.SupportsAudioMix)
-        {
-            StopLiveDubbing(resume: true);
-            ShowStatusHold("当前播放路线不支持实时配音，已切回原声。");
-            return;
-        }
-
-        var position = Playback.Position.TotalSeconds;
-        var covered = service.CoveredThrough;
-        if (!_liveDubbingBuffering && covered < position + 1.5)
-        {
-            _liveDubbingBuffering = true;
-            _liveDubbingBufferingSince = DateTime.UtcNow;
-            if (Playback.IsPlaying)
-            {
-                Playback.Pause();
-                _liveDubbingPaused = true;
-            }
-            ShowStatusHold("正在缓冲实时配音…");
-        }
-
-        if (!_liveDubbingBuffering)
-            return;
-        if (covered >= position + 5)
-        {
-            _liveDubbingBuffering = false;
-            if (_liveDubbingPaused)
-            {
-                _liveDubbingPaused = false;
-                if (!Playback.IsPlaying)
-                    Playback.TogglePlay();
-            }
-            ShowStatusHold("实时配音已就绪");
-            return;
-        }
-
-        if ((DateTime.UtcNow - _liveDubbingBufferingSince).TotalSeconds > 30)
-        {
-            StopLiveDubbing(resume: true);
-            ShowStatusHold("实时配音跟不上，已切回原声。可尝试在设置中换用更轻量的翻译模型。");
-        }
-    }
-
-    private async Task StartDubbingAsync()
-    {
-        if (_dubbingRunning)
-        {
-            ShowStatusHold("正在生成配音，请稍候。");
-            return;
-        }
-
-        var path = Playback.Playlist.Current?.Path;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            ShowStatusHold("请先打开一个媒体文件。");
-            return;
-        }
-
-        if (!App.Host.Settings.AiSubtitlesEnabled)
-        {
-            ShowStatusHold("请先在设置的“AI 字幕”标签页中启用 AI 字幕。");
-            return;
-        }
-
-        var cues = _subtitles.Cues;
-        if (cues.Count == 0 || !_subtitles.HasTranslations)
-        {
-            ShowStatusHold("当前字幕没有译文，请先生成或选择带译文的 AI 字幕。");
-            return;
-        }
-
-        var voices = VoicePresets.Ensure(App.Host.Voices);
-        if (voices.Count == 0)
-        {
-            ShowStatusHold("没有可用音色，请先导入参考音频。");
-            return;
-        }
-
-        var settings = App.Host.Settings;
-        var voice = voices.FirstOrDefault(item => item.Id == settings.DubbingVoice) ?? voices[0];
-        var device = AiComputeDeviceExtensions.Parse(settings.AiComputeDevice);
-        _dubbingRunning = true;
-        ShowStatusHold($"开始生成配音（{voice.DisplayName}）…");
-        try
-        {
-            var progress = new Progress<AiSubtitleProgress>(value => ShowStatusHold(value.Stage + " · " + value.Value.ToString("P0")));
-            var service = App.Host.AiSubtitles.CreateDubbing();
-            var result = await service.GenerateAsync(
-                new DubbingRequest(path, cues, voice.Id, AudioTrackIndex: Playback.AudioTrackIndex,
-                    SeparateSpeakers: settings.DubbingSeparateSpeakers, Engine: settings.DubbingEngine),
-                device,
-                progress,
-                CancellationToken.None);
-            if (string.Equals(_dubbingPath, path, StringComparison.OrdinalIgnoreCase))
-            {
-                if (_dubbingMode == DubbingMode.Off)
-                {
-                    _dubbingMode = DubbingMode.Mixed;
-                    SaveDubbingPreference();
-                }
-                ApplyDubbing();
-            }
-            var message = $"配音已生成：{System.IO.Path.GetFileName(result.Manifest.AudioPath)}（{result.Generated} 句";
-            if (result.Speakers > 1)
-                message += $" · {result.Speakers} 个音色";
-            if (result.Failed > 0)
-                message += $"，{result.Failed} 句失败";
-            if (result.Truncated > 0)
-                message += $"，{result.Truncated} 句压缩";
-            if (result.Overlapped > 0)
-                message += $"，{result.Overlapped} 句重叠截断";
-            ShowStatusHold(message + "）");
-        }
-        catch (Exception ex)
-        {
-            ShowStatusHold("配音生成失败：" + ex.Message);
-            CrashLog.Write("AI 配音生成失败", ex.ToString());
-        }
-        finally
-        {
-            _dubbingRunning = false;
-        }
     }
 
     private void RefreshGeneratedSubtitles(string mediaPath)

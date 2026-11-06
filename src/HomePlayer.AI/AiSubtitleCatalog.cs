@@ -5,9 +5,7 @@ public enum AiModelKind
     Recognition,
     Translation,
     VoiceActivityDetection,
-    SenseVoiceComponent,
-    SpeechSynthesis,
-    SpeakerAnalysis
+    SenseVoiceComponent
 }
 
 public sealed record AiModelInfo(
@@ -64,35 +62,7 @@ public static class AiSubtitleCatalog
             "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51", "MIT"),
         new("sensevoice-tokens", AiModelKind.SenseVoiceComponent, "SenseVoice 词表",
             "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", "2365baeacb507f821a0c8120fcee3d484dba7a07", "tokens.txt", 315_894,
-            "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc", "MIT"),
-        new("zipvoice-model", AiModelKind.SpeechSynthesis, "ZipVoice 语音克隆模型 · 中英（110 MB）",
-            "k2-fsa/sherpa-onnx", "tts-models", "sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2", 109_162_785,
-            "77219c8b40f4ee8d73a7f902305ff6c1128ef9b54461c41b4ca6ed890b6c2803", "Apache-2.0",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2"),
-        new("zipvoice-vocoder", AiModelKind.SpeechSynthesis, "Vocos 24 kHz 声码器（54 MB）",
-            "k2-fsa/sherpa-onnx", "vocoder-models", "vocos_24khz.onnx", 54_157_409,
-            "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0", "MIT",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"),
-        new("diarization-segmentation", AiModelKind.SpeakerAnalysis, "说话人分割模型（7 MB）",
-            "k2-fsa/sherpa-onnx", "speaker-segmentation-models", "sherpa-onnx-pyannote-segmentation-3-0.tar.bz2", 6_958_444,
-            "24615ee884c897d9d2ba09bb4d30da6bb1b15e685065962db5b02e76e4996488", "MIT",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"),
-        new("speaker-embedding", AiModelKind.SpeakerAnalysis, "声纹嵌入模型 Campplus（28 MB）",
-            "k2-fsa/sherpa-onnx", "speaker-recongition-models", "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx", 28_281_138,
-            "f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11", "Apache-2.0",
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"),
-        new("cosyvoice3-model", AiModelKind.SpeechSynthesis, "CosyVoice3 语音克隆模型（0.9 GB）",
-            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "CosyVoice3-2512_Q8_0.gguf", 943_933_536,
-            "be133cb6154ca73cd1d213b1c9496def99ba9c1f7c14cd99f6b350af2eb7963d", "Apache-2.0",
-            LocalName: "CosyVoice3-2512_Q8_0.gguf"),
-        new("cosyvoice-tokenizer", AiModelKind.SpeechSynthesis, "CosyVoice 语音分词器（0.9 GB）",
-            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "frontend-onnx/speech_tokenizer_v3.onnx", 969_451_503,
-            "23236a74175dbdda47afc66dbadd5bcb41303c467a57c261cb8539ad9db9208d", "Apache-2.0",
-            LocalName: "speech_tokenizer_v3.onnx"),
-        new("cosyvoice-campplus", AiModelKind.SpeechSynthesis, "Campplus 声纹前端（28 MB）",
-            "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF", "main", "frontend-onnx/campplus.onnx", 28_303_423,
-            "a6ac6a63997761ae2997373e2ee1c47040854b4b759ea41ec48e4e42df0f4d73", "Apache-2.0",
-            LocalName: "campplus.onnx")
+            "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc", "MIT")
     ];
 
     public static IReadOnlyList<AiLanguage> Languages { get; } =

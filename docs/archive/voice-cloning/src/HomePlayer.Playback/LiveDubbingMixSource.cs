@@ -4,9 +4,9 @@ namespace HomePlayer.Playback;
 
 /// <summary>
 /// 把实时生成的配音段落混进原声。段落表和播放头都由外部维护，
-/// 这里只在音频线程按媒体时间读取并压低原声。
+/// 这里按“已识别的人声区间”压低原声，避免还没合成或合成失败的句子漏出原音。
 /// </summary>
-public sealed class LiveDubbingMixSource(LiveDubbingTrack track, double duckLevel = 0.25) : IAudioMixSource, IDisposable
+public sealed class LiveDubbingMixSource(LiveDubbingTrack track, double duckLevel = 0.05) : IAudioMixSource, IDisposable
 {
     private const double DuckLead = 0.15;
 
@@ -29,6 +29,7 @@ public sealed class LiveDubbingMixSource(LiveDubbingTrack track, double duckLeve
             try
             {
                 var segments = Track.Snapshot();
+                var speech = Track.SpeechSnapshot();
                 var epoch = Track.Epoch;
                 if (epoch != _epoch)
                 {
@@ -36,21 +37,27 @@ public sealed class LiveDubbingMixSource(LiveDubbingTrack track, double duckLeve
                     _duckGain = 1;
                 }
 
-                if (segments.Length == 0)
+                if (segments.Length == 0 && speech.Length == 0)
                     return;
 
                 var frames = count / (2 * channels);
-                var blockSeconds = frames / (double)sampleRate;
-                var target = TargetDuck(segments, mediaSeconds + blockSeconds / 2);
-                var smoothing = 1 - Math.Exp(-1.0 / (0.08 * sampleRate));
                 var cursor = FirstSegmentAt(segments, mediaSeconds);
+                var speechCursor = FirstSpanAt(speech, mediaSeconds);
+                var smoothing = 1 - Math.Exp(-1.0 / (0.08 * sampleRate));
                 for (var frame = 0; frame < frames; frame++)
                 {
-                    _duckGain += (target - _duckGain) * smoothing;
                     var seconds = mediaSeconds + frame / (double)sampleRate;
                     while (cursor < segments.Length && segments[cursor].EndSeconds <= seconds)
                         cursor++;
+                    while (speechCursor < speech.Length && speech[speechCursor].EndSeconds <= seconds)
+                        speechCursor++;
                     var dub = cursor < segments.Length ? SampleAt(segments[cursor], seconds) : 0;
+                    var inSpeech = speechCursor < speech.Length
+                        && seconds >= speech[speechCursor].StartSeconds - DuckLead;
+                    var target = speech.Length > 0
+                        ? inSpeech || dub != 0 ? _duckLevel : 1
+                        : TargetDuck(segments, seconds);
+                    _duckGain += (target - _duckGain) * smoothing;
                     var baseIndex = frame * channels;
                     for (var channel = 0; channel < channels; channel++)
                     {
@@ -77,6 +84,22 @@ public sealed class LiveDubbingMixSource(LiveDubbingTrack track, double duckLeve
         {
             var middle = (low + high) / 2;
             if (segments[middle].EndSeconds <= seconds)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    private static int FirstSpanAt(LiveDubbingSpeechSpan[] spans, double seconds)
+    {
+        var low = 0;
+        var high = spans.Length;
+        while (low < high)
+        {
+            var middle = (low + high) / 2;
+            if (spans[middle].EndSeconds <= seconds)
                 low = middle + 1;
             else
                 high = middle;

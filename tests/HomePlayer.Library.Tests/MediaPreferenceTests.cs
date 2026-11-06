@@ -24,10 +24,9 @@ public class MediaPreferenceTests
 
             repository.SavePreference(new MediaPreference(
                 path, null, null, null, SubtitlePreferenceMode.Sidecar, null, null, null,
-                Path.Combine(directory, "movie.srt"), 0, DubbingMode: DubbingMode.Mixed));
+                Path.Combine(directory, "movie.srt"), 0));
 
             Assert.Null(repository.LoadPreference(path)?.SubtitleDisplayMode);
-            Assert.Equal(DubbingMode.Mixed, repository.LoadPreference(path)?.DubbingMode);
         }
         finally
         {

@@ -314,8 +314,6 @@ public static class AppPaths
         string.IsNullOrWhiteSpace(customDirectory) ? AiModels : Path.GetFullPath(customDirectory);
     public static string AiSubtitles => Path.Combine(Root, "ai-subtitles");
     public static string AiTemp => Path.Combine(Cache, "ai-temp");
-    public static string Voices => Path.Combine(Root, "voices");
-    public static string DubbingCache => Path.Combine(Cache, "dubbing");
     public static string SessionLock => Path.Combine(Root, "session.lock");
     public static string LegacyCrashLog => Path.Combine(Root, "crash.log");
 
@@ -327,8 +325,6 @@ public static class AppPaths
         Directory.CreateDirectory(FolderThumbs);
         Directory.CreateDirectory(Crashes);
         Directory.CreateDirectory(AiTemp);
-        Directory.CreateDirectory(Voices);
-        Directory.CreateDirectory(DubbingCache);
     }
 }
 

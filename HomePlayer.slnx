@@ -1,7 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/HomePlayer.AI.SherpaWorker/HomePlayer.AI.SherpaWorker.csproj" />
-    <Project Path="src/HomePlayer.AI.TtsWorker/HomePlayer.AI.TtsWorker.csproj" />
     <Project Path="src/HomePlayer.AI.Worker/HomePlayer.AI.Worker.csproj" />
     <Project Path="src/HomePlayer.AI/HomePlayer.AI.csproj" />
     <Project Path="src/HomePlayer.App/HomePlayer.App.csproj" />

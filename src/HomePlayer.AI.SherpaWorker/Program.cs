@@ -1,29 +1,10 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
-using HomePlayer.Core;
 using SherpaOnnx;
 
-if (args.Length == 2 && args[0] == "--diarize")
-{
-    DiarizationRunner.Run(JsonSerializer.Deserialize<DiarizeJob>(
-        File.ReadAllText(args[1]),
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-        ?? throw new InvalidDataException("Empty diarization job."));
-    return;
-}
-
-if (args.Length == 2 && args[0] == "--diarize-live")
-{
-    LiveDiarizationRunner.Run(JsonSerializer.Deserialize<DiarizeLiveJob>(
-        File.ReadAllText(args[1]),
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-        ?? throw new InvalidDataException("Empty live diarization job."));
-    return;
-}
-
 if (args.Length != 1)
-    throw new ArgumentException("Usage: HomePlayer.AI.SherpaWorker <job.json> | --diarize <diarize.json> | --diarize-live <diarize.json>");
+    throw new ArgumentException("Usage: HomePlayer.AI.SherpaWorker <job.json>");
 var job = JsonSerializer.Deserialize<SherpaJob>(File.ReadAllText(args[0]))
     ?? throw new InvalidDataException("Empty Sherpa job.");
 var config = new OfflineRecognizerConfig();
@@ -274,114 +255,6 @@ static string Sanitize(string? text)
 
 public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime, bool Drafts, double DraftIntervalSeconds);
 public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool Final);
-public sealed record DiarizeJob(string AudioPath, string SegmentationModel, string EmbeddingModel, bool UseCuda, double BlockSeconds);
-
-internal static class DiarizationRunner
-{
-    public static void Run(DiarizeJob job)
-    {
-        var config = new OfflineSpeakerDiarizationConfig();
-        config.Segmentation.Pyannote.Model = job.SegmentationModel;
-        config.Segmentation.Provider = job.UseCuda ? "cuda" : "cpu";
-        config.Segmentation.NumThreads = Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
-        config.Embedding.Model = job.EmbeddingModel;
-        config.Embedding.Provider = "cpu";
-        config.Embedding.NumThreads = Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
-        config.Clustering.Threshold = 0.65f;
-        config.MinDurationOn = 0.4f;
-        config.MinDurationOff = 0.5f;
-
-        using var diarization = new OfflineSpeakerDiarization(config);
-        using var extractor = new SpeakerEmbeddingExtractor(new SpeakerEmbeddingExtractorConfig
-        {
-            Model = job.EmbeddingModel,
-            Provider = "cpu",
-            NumThreads = Math.Clamp(Environment.ProcessorCount / 2, 2, 8)
-        });
-
-        var rate = diarization.SampleRate;
-        using var audio = new FileStream(job.AudioPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var dataOffset = FindDataOffset(audio);
-        var blockSamples = (int)Math.Round(Math.Max(30, job.BlockSeconds) * rate);
-        var buffer = new byte[blockSamples * 2];
-        var tracker = new SpeakerProfileTracker();
-        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        var blockIndex = 0;
-
-        audio.Position = dataOffset;
-        while (true)
-        {
-            var bytes = ReadBlock(audio, buffer);
-            if (bytes < 2)
-                break;
-            var frames = bytes / 2;
-            var samples = new float[frames];
-            for (var index = 0; index < frames; index++)
-                samples[index] = BitConverter.ToInt16(buffer, index * 2) / 32768f;
-
-            var offsetSeconds = blockIndex * (blockSamples / (double)rate);
-            var segments = diarization.Process(samples);
-            var probes = new Dictionary<int, float[]>();
-            foreach (var segment in segments)
-            {
-                if (!probes.ContainsKey(segment.Speaker))
-                    probes[segment.Speaker] = SpeakerProbe.Extract(samples, rate, segments, segment.Speaker, extractor);
-            }
-
-            foreach (var segment in segments)
-            {
-                var duration = SpeakerProbe.TotalSeconds(segments, segment.Speaker);
-                var speaker = tracker.Match(probes[segment.Speaker], duration);
-                Console.WriteLine(JsonSerializer.Serialize(new
-                {
-                    type = "segment",
-                    speaker,
-                    start = offsetSeconds + segment.Start,
-                    end = offsetSeconds + segment.End
-                }, options));
-            }
-
-            blockIndex++;
-            if (frames < blockSamples)
-                break;
-        }
-
-        Console.WriteLine(JsonSerializer.Serialize(new { type = "done", speakers = tracker.Count }, options));
-    }
-
-    private static int ReadBlock(FileStream stream, byte[] buffer)
-    {
-        var total = 0;
-        while (total < buffer.Length)
-        {
-            var read = stream.Read(buffer, total, buffer.Length - total);
-            if (read == 0)
-                break;
-            total += read;
-        }
-
-        return total;
-    }
-
-    private static int FindDataOffset(FileStream stream)
-    {
-        var header = new byte[12];
-        stream.Position = 0;
-        stream.ReadExactly(header, 0, 12);
-        if (Encoding.ASCII.GetString(header, 0, 4) != "RIFF" || Encoding.ASCII.GetString(header, 8, 4) != "WAVE")
-            throw new InvalidDataException("说话人分析音频不是有效 WAV。");
-        while (true)
-        {
-            var chunk = new byte[8];
-            stream.ReadExactly(chunk, 0, 8);
-            var length = BitConverter.ToUInt32(chunk, 4);
-            if (Encoding.ASCII.GetString(chunk, 0, 4) == "data")
-                return (int)stream.Position;
-            stream.Position += length + length % 2;
-        }
-    }
-}
-
 internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSeconds, VoiceActivityDetector? vad, bool realtime)
 {
     private const int SampleRate = 16000;

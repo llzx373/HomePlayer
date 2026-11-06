@@ -22,7 +22,6 @@ public sealed partial class PlaybackController : IDisposable
     private double _volume = 0.8;
     private double _rate = 1.0;
     private bool _muted;
-    private IAudioMixSource? _audioMix;
     private int _videoWidth;
     private int _videoHeight;
     private DateTime _openStartedUtc;
@@ -80,14 +79,6 @@ public sealed partial class PlaybackController : IDisposable
     public int VideoHeight => _videoHeight;
     public bool UsesExternalVideoOutput => _engine != null && InnerEngine(_engine) is LavPlaybackEngine { ExternalOutput: not null };
     public bool SupportsExternalAudio => _engine != null && InnerEngine(_engine) is IExternalAudioTrack;
-    public bool SupportsAudioMix => _engine == null || InnerEngine(_engine) is IPlaybackAudioMix;
-
-    public void SetAudioMix(IAudioMixSource? source)
-    {
-        _audioMix = source;
-        if (_engine != null && InnerEngine(_engine) is IPlaybackAudioMix mix)
-            mix.SetAudioMix(source);
-    }
     public string? ExternalAudioPath => _engine != null && InnerEngine(_engine) is IExternalAudioTrack tracks ? tracks.ExternalAudioPath : null;
     public void SetExternalAudio(string? path)
     {
@@ -599,8 +590,6 @@ public sealed partial class PlaybackController : IDisposable
             faults.Faulted += OnFaulted;
         if (inner is IPlaybackAudioOutputEvents audioEvents)
             audioEvents.AudioOutputFailed += OnAudioOutputFailed;
-        if (inner is IPlaybackAudioMix mix)
-            mix.SetAudioMix(_audioMix);
     }
 
     private void Discard(IPlaybackEngine engine)

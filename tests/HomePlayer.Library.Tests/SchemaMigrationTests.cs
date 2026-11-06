@@ -74,6 +74,27 @@ public class SchemaMigrationTests
     }
 
     [Fact]
+    public void Version11_database_drops_removed_dubbing_column()
+    {
+        using var temp = new TempDatabase();
+        using (var first = new LibraryRepository(temp.DatabasePath))
+        {
+        }
+
+        temp.Execute("""
+            ALTER TABLE MediaPreference ADD COLUMN DubbingMode INTEGER NULL;
+            PRAGMA user_version = 11;
+            """);
+
+        using (var second = new LibraryRepository(temp.DatabasePath))
+        {
+        }
+
+        Assert.False(temp.HasColumn("MediaPreference", "DubbingMode"));
+        Assert.Equal(LibraryRepository.SchemaVersion, temp.UserVersion());
+    }
+
+    [Fact]
     public void InsertItem_persists_relative_columns_and_added_time()
     {
         using var temp = new TempDatabase();
@@ -220,6 +241,15 @@ public class SchemaMigrationTests
             using var command = connection.CreateCommand();
             command.CommandText = sql;
             return Convert.ToInt64(command.ExecuteScalar());
+        }
+
+        public void Execute(string sql)
+        {
+            using var connection = new SqliteConnection($"Data Source={DatabasePath}");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            command.ExecuteNonQuery();
         }
 
         public void Dispose()
