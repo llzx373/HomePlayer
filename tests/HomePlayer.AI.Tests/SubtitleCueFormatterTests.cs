@@ -53,6 +53,31 @@ public class SubtitleCueFormatterTests
     }
 
     [Fact]
+    public void Cue_boundaries_snap_to_real_speech_pauses()
+    {
+        var cues = SubtitleCueFormatter.Build(
+            "这是一句需要拆分的很长中文字幕它应该在阅读速度。和两行限制之间取得平衡而不是直接塞进一整块。",
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20),
+            [(TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15.6))]);
+
+        Assert.Equal(2, cues.Count);
+        Assert.Equal(TimeSpan.FromSeconds(15), cues[0].End);
+        Assert.Equal(TimeSpan.FromSeconds(15.6), cues[1].Start);
+    }
+
+    [Fact]
+    public void Distant_pauses_do_not_move_cue_boundaries()
+    {
+        var cues = SubtitleCueFormatter.Build(
+            "这是一句需要拆分的很长中文字幕它应该在阅读速度。和两行限制之间取得平衡而不是直接塞进一整块。",
+            TimeSpan.Zero, TimeSpan.FromSeconds(10),
+            [(TimeSpan.FromSeconds(8.5), TimeSpan.FromSeconds(9))]);
+
+        Assert.Equal(2, cues.Count);
+        Assert.Equal(cues[0].End, cues[1].Start);
+    }
+
+    [Fact]
     public void Empty_or_invalid_input_returns_no_cues()
     {
         Assert.Empty(SubtitleCueFormatter.Build(" ", TimeSpan.Zero, TimeSpan.FromSeconds(1)));

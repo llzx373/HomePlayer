@@ -97,7 +97,7 @@ void EmitFinal(List<float> buffer, int count, long startSample)
 {
     var samples = new float[count];
     buffer.CopyTo(0, samples, 0, count);
-    if (segmenter.SpeechBounds(samples) is not { } speech)
+    if (segmenter.Analyze(samples) is not { } speech)
     {
         Console.WriteLine(JsonSerializer.Serialize(new SherpaResult(
             currentId++,
@@ -115,8 +115,23 @@ void EmitFinal(List<float> buffer, int count, long startSample)
         job.StartSeconds + (double)(startSample + speech.Start) / 16000,
         job.StartSeconds + (double)(startSample + speech.End) / 16000,
         Decode(audioChunk),
-        true)));
+        true,
+        PauseRanges(speech.Pauses, startSample))));
     ResetDraftState();
+}
+
+double[][] PauseRanges(IReadOnlyList<(int Start, int End)> pauses, long startSample)
+{
+    if (pauses.Count == 0)
+        return [];
+    var result = new double[pauses.Count][];
+    for (var index = 0; index < pauses.Count; index++)
+        result[index] =
+        [
+            job.StartSeconds + (double)(startSample + pauses[index].Start) / 16000,
+            job.StartSeconds + (double)(startSample + pauses[index].End) / 16000
+        ];
+    return result;
 }
 
 void MaybeDraft()
@@ -128,7 +143,7 @@ void MaybeDraft()
         return;
     if (lastDraftPending > 0 && pending.Count - lastDraftPending < 16000)
         return;
-    if (segmenter.SpeechBounds(pending) is not { } speech)
+    if (segmenter.Analyze(pending) is not { } speech)
         return;
     if (speech.End - speech.Start < 16000 * 4 / 5)
         return;
@@ -163,7 +178,8 @@ void MaybeDraft()
         job.StartSeconds + (double)(pendingStart + start) / 16000,
         job.StartSeconds + (double)(pendingStart + end) / 16000,
         text,
-        false)));
+        false,
+        PauseRanges(speech.Pauses, pendingStart))));
     if (stopwatch.Elapsed.TotalSeconds * 2 > draftInterval)
         draftInterval = Math.Min(5.0, draftInterval * 1.5);
 }
@@ -254,7 +270,7 @@ static string Sanitize(string? text)
 }
 
 public sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime, bool Drafts, double DraftIntervalSeconds);
-public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool Final);
+public sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool Final, double[][]? Pauses = null);
 internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSeconds, VoiceActivityDetector? vad, bool realtime)
 {
     private const int SampleRate = 16000;
@@ -262,6 +278,32 @@ internal sealed class SilenceSegmenter(double minChunkSeconds, double maxChunkSe
     private const int Window = 400;
     private const int MinimumSilenceFrames = 30;
     private const int ConfirmationFrames = 40;
+    private const int SpeechTailSamples = SampleRate * 3 / 20;
+
+    public (int Start, int End, IReadOnlyList<(int Start, int End)> Pauses)? Analyze(IReadOnlyList<float> samples)
+    {
+        if (vad != null)
+        {
+            var runs = VadSegments(samples);
+            var spans = new List<(int Start, int End)>(runs.Count);
+            foreach (var (start, end) in runs)
+            {
+                var from = Math.Clamp((int)Math.Round(start * SampleRate), 0, samples.Count);
+                var to = Math.Clamp((int)Math.Round(end * SampleRate), 0, samples.Count);
+                if (to > from)
+                    spans.Add((from, to));
+            }
+            if (spans.Count > 0)
+            {
+                var pauses = new List<(int Start, int End)>(spans.Count - 1);
+                for (var index = 1; index < spans.Count; index++)
+                    pauses.Add((spans[index - 1].End, spans[index].Start));
+                var end = Math.Min(samples.Count, spans[^1].End + SpeechTailSamples);
+                return (spans[0].Start, end, pauses);
+            }
+        }
+        return SpeechBounds(samples) is { } bounds ? (bounds.Start, bounds.End, []) : null;
+    }
 
     public int FindCut(List<float> samples, bool endOfAudio)
     {

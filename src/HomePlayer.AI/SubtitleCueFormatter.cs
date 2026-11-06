@@ -5,7 +5,13 @@ namespace HomePlayer.AI;
 
 public static class SubtitleCueFormatter
 {
-    public static IReadOnlyList<SubtitleCue> Build(string text, TimeSpan start, TimeSpan end)
+    private static readonly TimeSpan MaximumSnapDistance = TimeSpan.FromSeconds(3);
+
+    public static IReadOnlyList<SubtitleCue> Build(
+        string text,
+        TimeSpan start,
+        TimeSpan end,
+        IReadOnlyList<(TimeSpan Start, TimeSpan End)>? pauses = null)
     {
         text = string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (text.Length == 0 || end <= start)
@@ -14,20 +20,59 @@ public static class SubtitleCueFormatter
         var maximum = cjk ? 40 : 76;
         var pieces = SplitLongSentences(Sentences(text), maximum);
         var cues = Pack(pieces, maximum);
-        var result = new List<SubtitleCue>(cues.Count);
         var totalCharacters = Math.Max(1, cues.Sum(cue => SignificantLength(cue)));
         var used = 0;
         var span = end - start;
+        var splits = new (TimeSpan PreviousEnd, TimeSpan NextStart)[Math.Max(0, cues.Count - 1)];
+        for (var index = 0; index < splits.Length; index++)
+        {
+            used += SignificantLength(cues[index]);
+            var at = start + TimeSpan.FromSeconds(span.TotalSeconds * used / totalCharacters);
+            splits[index] = (at, at);
+        }
+        if (pauses is { Count: > 0 } && splits.Length > 0)
+            SnapSplits(splits, pauses, start, end);
+        var result = new List<SubtitleCue>(cues.Count);
         for (var index = 0; index < cues.Count; index++)
         {
-            var cueStart = index == 0 ? start : result[index - 1].End;
-            used += SignificantLength(cues[index]);
-            var cueEnd = index == cues.Count - 1
-                ? end
-                : start + TimeSpan.FromSeconds(span.TotalSeconds * used / totalCharacters);
+            var cueStart = index == 0 ? start : splits[index - 1].NextStart;
+            var cueEnd = index == cues.Count - 1 ? end : splits[index].PreviousEnd;
             result.Add(new SubtitleCue(cueStart, cueEnd, Wrap(cues[index], cjk)));
         }
         return result;
+    }
+
+    private static void SnapSplits(
+        (TimeSpan PreviousEnd, TimeSpan NextStart)[] splits,
+        IReadOnlyList<(TimeSpan Start, TimeSpan End)> pauses,
+        TimeSpan start,
+        TimeSpan end)
+    {
+        var last = -1;
+        foreach (var pause in pauses)
+        {
+            if (pause.Start < start || pause.End > end || pause.End <= pause.Start)
+                continue;
+            var center = pause.Start + TimeSpan.FromTicks((pause.End - pause.Start).Ticks / 2);
+            var best = -1;
+            var distance = TimeSpan.MaxValue;
+            for (var index = last + 1; index < splits.Length; index++)
+            {
+                var candidate = (splits[index].PreviousEnd - center).Duration();
+                if (candidate >= distance)
+                    continue;
+                best = index;
+                distance = candidate;
+            }
+            if (best < 0 || distance > MaximumSnapDistance)
+                continue;
+            if (best > 0 && splits[best - 1].NextStart >= pause.Start)
+                continue;
+            if (best + 1 < splits.Length && splits[best + 1].PreviousEnd <= pause.End)
+                continue;
+            splits[best] = (pause.Start, pause.End);
+            last = best;
+        }
     }
 
     private static List<string> Sentences(string text)

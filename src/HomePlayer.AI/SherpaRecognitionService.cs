@@ -69,7 +69,8 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                     var text = MetadataTags().Replace(result.Text, "").Trim();
                     var start = TimeSpan.FromSeconds(result.StartSeconds);
                     var end = TimeSpan.FromSeconds(Math.Max(result.StartSeconds + 0.1, result.EndSeconds));
-                    var formatted = end > start ? SubtitleCueFormatter.Build(text, start, end) : [];
+                    var pauses = Pauses(result.Pauses);
+                    var formatted = end > start ? SubtitleCueFormatter.Build(text, start, end, pauses) : [];
                     if (result.Final == false)
                     {
                         if (formatted.Count > 0)
@@ -120,9 +121,26 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
     private static void Report(IProgress<AiSubtitleProgress>? progress, string stage, double value) =>
         progress?.Report(new AiSubtitleProgress(stage, Math.Clamp(value, 0, 1)));
 
+    private static IReadOnlyList<(TimeSpan Start, TimeSpan End)>? Pauses(double[][]? ranges)
+    {
+        if (ranges == null || ranges.Length == 0)
+            return null;
+        var pauses = new List<(TimeSpan Start, TimeSpan End)>(ranges.Length);
+        foreach (var range in ranges)
+        {
+            if (range is not [var from, var to] || to <= from)
+                continue;
+            pauses.Add((TimeSpan.FromSeconds(from), TimeSpan.FromSeconds(to)));
+        }
+        if (pauses.Count == 0)
+            return null;
+        pauses.Sort((left, right) => left.Start.CompareTo(right.Start));
+        return pauses;
+    }
+
     [GeneratedRegex(@"<\|[^|]+\|>", RegexOptions.CultureInvariant)]
     private static partial Regex MetadataTags();
 
     private sealed record SherpaJob(string ModelDirectory, string AudioPath, double StartSeconds, double MinChunkSeconds, double MaxChunkSeconds, bool UseCuda, bool Realtime, bool Drafts, double DraftIntervalSeconds);
-    private sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool? Final);
+    private sealed record SherpaResult(int Id, double StartSeconds, double EndSeconds, string Text, bool? Final, double[][]? Pauses);
 }
