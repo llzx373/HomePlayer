@@ -166,6 +166,8 @@ public sealed class LiveTranslationService : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         StopWorker();
+        if (_start is { IsFaulted: true })
+            _ = _start.Exception;
         foreach (var pair in _pending)
         {
             if (_pending.TryRemove(pair.Key, out var pending))
@@ -202,6 +204,11 @@ public sealed class LiveTranslationService : IAsyncDisposable
                 await gpuReady.Task.WaitAsync(TimeSpan.FromSeconds(180), cancellationToken);
                 return;
             }
+            catch (OperationCanceledException)
+            {
+                StopWorker();
+                throw;
+            }
             catch (Exception) when (_device == AiComputeDevice.Auto)
             {
                 StopWorker();
@@ -233,6 +240,12 @@ public sealed class LiveTranslationService : IAsyncDisposable
         _process = process;
         _input = new StreamWriter(process.StandardInput.BaseStream, new UTF8Encoding(false)) { AutoFlush = true };
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // 取消时等待方可能已经放弃这个 Task，先观察一次异常，避免它变成未观察任务异常。
+        _ = ready.Task.ContinueWith(
+            static task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         _reader = Task.Run(() => ReadLoopAsync(process, ready));
         _errorReader = Task.Run(() => DrainErrorsAsync(process));
         return ready;

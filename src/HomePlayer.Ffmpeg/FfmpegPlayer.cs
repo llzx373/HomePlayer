@@ -102,6 +102,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     private readonly MediaDecodeRecoveryPolicy _audioRecovery = new();
     private bool _endedRaised;
     private bool _disposed;
+    private readonly object _closeGate = new();
+    private int _closeState; // 0 = 打开中/未关闭, 1 = 正在关闭, 2 = 已释放
     private double _rate = 1.0;
     private volatile bool _isPlaying;
     private bool _playIntent;
@@ -135,7 +137,14 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
 
     public void Open(string path)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         Close();
+        lock (_closeGate)
+        {
+            if (_closeState != 2)
+                throw new InvalidOperationException("同一个播放器实例的上一次会话尚未关闭完成，不能重新打开。");
+            _closeState = 0;
+        }
         FfmpegNative.Ensure();
         _path = path;
         TimelineInfo = MatroskaTimelineInspector.Inspect(path);
@@ -451,10 +460,20 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
 
     public void Close()
     {
-        if (_disposed)
-            return;
+        lock (_closeGate)
+        {
+            if (_closeState != 0)
+                return;
+            _closeState = 1;
+        }
         Interlocked.Exchange(ref _ioInterrupt, 1);
-        _cancel?.Cancel();
+        try
+        {
+            _cancel?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
         _videoPackets?.Complete();
         _audioPackets?.Complete();
         _videoFrames?.Complete();
@@ -465,8 +484,39 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             if (thread is { IsAlive: true } && thread != Thread.CurrentThread)
                 exited &= thread.Join(2000);
         }
-        if (!exited)
+        if (exited)
+        {
+            FinishClose([]);
             return;
+        }
+
+        // 有线程没能在预算内退出。此时绝不能释放它们还在使用的 native 资源，
+        // 否则就是 use-after-free；改为交给后台线程等它们真正退出后再收尾。
+        var remaining = threads
+            .Where(thread => thread is { IsAlive: true } && thread != Thread.CurrentThread)
+            .Select(thread => thread!)
+            .ToArray();
+        var finisher = new Thread(() => FinishClose(remaining))
+        {
+            IsBackground = true,
+            Name = "FFmpeg close"
+        };
+        finisher.Start();
+    }
+
+    private void FinishClose(IReadOnlyList<Thread> remaining)
+    {
+        foreach (var thread in remaining)
+        {
+            if (thread != Thread.CurrentThread)
+                thread.Join();
+        }
+        lock (_closeGate)
+        {
+            if (_closeState == 2)
+                return;
+            _closeState = 2;
+        }
         _demuxThread = null;
         _videoThread = null;
         _audioThread = null;

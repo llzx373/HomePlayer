@@ -28,6 +28,8 @@ public sealed partial class PlaybackController : IDisposable
     private bool _firstFramePending;
     // 关闭窗口/托盘时若正在异步打开，打开完成的回调不能再自动开播。
     private bool _autoPlaySuppressed;
+    private readonly object _disposeGate = new();
+    private Task _pendingDispose = Task.CompletedTask;
 
     public PlaybackController(
         Action<Action> post,
@@ -455,6 +457,17 @@ public sealed partial class PlaybackController : IDisposable
             }
         }
 
+        // Stop() 是火后不管地释放旧引擎的；等它真正退出再开新文件，避免两份解码器
+        // 同时操作共享的 D3D11 设备，表现为新视频卡死或解码失败。
+        var pendingDispose = PendingDispose();
+        if (!pendingDispose.IsCompleted)
+            await pendingDispose;
+        if (token != _token)
+        {
+            routeSwitch?.Complete(false, "路线切换已取消。");
+            return;
+        }
+
         var failures = 0;
         while (token == _token && Playlist.Current != null && failures < Playlist.Items.Count)
         {
@@ -715,7 +728,15 @@ public sealed partial class PlaybackController : IDisposable
         var engine = TakeEngine();
         if (engine == null)
             return;
-        _ = Task.Run(() => Discard(engine));
+        var task = Task.Run(() => Discard(engine));
+        lock (_disposeGate)
+            _pendingDispose = Task.WhenAll(_pendingDispose, task);
+    }
+
+    private Task PendingDispose()
+    {
+        lock (_disposeGate)
+            return _pendingDispose;
     }
 
     private IPlaybackEngine? TakeEngine()

@@ -9,6 +9,8 @@ public sealed partial class PlayerPage
 {
     private CancellationTokenSource? _liveSubtitles;
     private int _liveSubtitleGeneration;
+    private string? _liveSubtitlePath;
+    private Task _liveSubtitleWork = Task.CompletedTask;
     private readonly List<LiveCueEntry> _liveEntries = [];
     private readonly LiveSubtitleBuffer _liveBuffer = new();
     private bool _liveReadyShown;
@@ -51,6 +53,7 @@ public sealed partial class PlayerPage
         var generation = ++_liveSubtitleGeneration;
         var task = new CancellationTokenSource();
         _liveSubtitles = task;
+        _liveSubtitlePath = path;
         _liveEntries.Clear();
         _liveBuffer.Clear();
         _liveReadyShown = false;
@@ -81,7 +84,7 @@ public sealed partial class PlayerPage
                 }
                 catch (Exception ex)
                 {
-                    DispatcherQueue.TryEnqueue(() =>
+                    PostLiveSubtitle(() =>
                     {
                         if (generation == _liveSubtitleGeneration)
                             ShowStatusHold("实时翻译不可用：" + ex.Message + "（继续显示原文字幕）");
@@ -91,14 +94,14 @@ public sealed partial class PlayerPage
         }
         var audioTrack = Playback.AudioTrackIndex;
         var startSeconds = Math.Max(0, Playback.Position.TotalSeconds - 0.25);
-        _ = Task.Run(async () =>
+        _liveSubtitleWork = Task.Run(async () =>
         {
             try
             {
                 var cues = await App.Host.AiSubtitles.RecognizeWithSherpaAsync(
                     path, audioTrack, device, startSeconds,
                     null,
-                    update => DispatcherQueue.TryEnqueue(() => ApplyLiveSegment(generation, path, update, translation, task.Token)),
+                    update => PostLiveSubtitle(() => ApplyLiveSegment(generation, path, update, translation, task.Token)),
                     task.Token,
                     realtime: true,
                     drafts: drafts);
@@ -110,7 +113,7 @@ public sealed partial class PlayerPage
             }
             catch (Exception ex)
             {
-                DispatcherQueue.TryEnqueue(() =>
+                PostLiveSubtitle(() =>
                 {
                     if (generation == _liveSubtitleGeneration)
                         ShowStatusHold("实时字幕失败：" + ex.Message);
@@ -165,7 +168,7 @@ public sealed partial class PlayerPage
             var translated = await translation.TranslateAsync(entry.OriginalText, cancellationToken);
             if (string.IsNullOrWhiteSpace(translated))
                 return;
-            DispatcherQueue.TryEnqueue(() =>
+            PostLiveSubtitle(() =>
             {
                 if (generation != _liveSubtitleGeneration || entry.Superseded)
                     return;
@@ -242,7 +245,7 @@ public sealed partial class PlayerPage
             : "");
         var bilingual = App.Host.Settings.AiBilingualSubtitles;
         await Task.Run(() => App.Host.AiSubtitles.SaveBesideMedia(path, snapshot, description, bilingual), cancellationToken);
-        DispatcherQueue.TryEnqueue(() =>
+        PostLiveSubtitle(() =>
         {
             if (generation != _liveSubtitleGeneration)
                 return;
@@ -304,10 +307,33 @@ public sealed partial class PlayerPage
         ++_liveSubtitleGeneration;
         var task = _liveSubtitles;
         _liveSubtitles = null;
+        _liveSubtitlePath = null;
+        Task[] translations;
+        lock (_liveTranslationLock)
+        {
+            translations = _liveTranslationTasks.ToArray();
+            _liveTranslationTasks.Clear();
+        }
         if (task != null)
         {
-            task.Cancel();
-            task.Dispose();
+            try
+            {
+                task.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            var work = _liveSubtitleWork;
+            _liveSubtitleWork = Task.CompletedTask;
+            var pending = new Task[translations.Length + 1];
+            pending[0] = work;
+            translations.CopyTo(pending, 1);
+            // 后台任务仍持有这个 Token，等它们退出后再释放，避免 ObjectDisposedException。
+            _ = Task.WhenAll(pending).ContinueWith(
+                _ => task.Dispose(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
         _liveBuffer.Clear();
         _liveEntries.Clear();
@@ -316,6 +342,29 @@ public sealed partial class PlayerPage
         _liveTranslation = null;
         if (translation != null)
             _ = translation.DisposeAsync().AsTask();
+    }
+
+    private void StopLiveSubtitlesOnMediaChange()
+    {
+        if (_liveSubtitles == null || _liveSubtitlePath == null)
+            return;
+        if (!string.Equals(_liveSubtitlePath, Playback.Playlist.Current?.Path, StringComparison.OrdinalIgnoreCase))
+            StopLiveSubtitles();
+    }
+
+    private void PostLiveSubtitle(Action action)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write("实时字幕界面更新失败", ex.ToString());
+            }
+        });
     }
 
     private MenuFlyoutItem CreateAiGenerationMenuItem()

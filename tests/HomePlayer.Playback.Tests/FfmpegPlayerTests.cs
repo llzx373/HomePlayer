@@ -181,6 +181,39 @@ public class FfmpegPlayerTests : IDisposable
         Assert.False(player.IsOpen);
     }
 
+    [Fact]
+    public void Close_and_dispose_are_idempotent()
+    {
+        var player = new FfmpegPlayer();
+
+        player.Close();
+        player.Close();
+        player.Dispose();
+        player.Dispose();
+
+        Assert.False(player.IsOpen);
+    }
+
+    [Fact]
+    public void Closed_player_can_open_again()
+    {
+        using var player = new FfmpegPlayer();
+        player.Open(_mediaPath);
+        player.Close();
+        player.Open(_mediaPath);
+
+        Assert.True(player.IsOpen);
+    }
+
+    [Fact]
+    public void Opening_after_dispose_is_rejected()
+    {
+        var player = new FfmpegPlayer();
+        player.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => player.Open(_mediaPath));
+    }
+
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static async Task WaitUntilAsync(Func<bool> condition)

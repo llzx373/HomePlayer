@@ -49,6 +49,11 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                 FfmpegAudioExtractor.ExtractWav(mediaPath, audioTrackIndex, wav, linked.Token, startSeconds);
                 File.WriteAllText(wav + ".done", "");
             }
+            catch (OperationCanceledException)
+            {
+                // 取消时 Worker 正在被一起结束，不要写 .error，否则它会抢先抛出未处理异常。
+                throw;
+            }
             catch
             {
                 File.WriteAllText(wav + ".error", "");
@@ -112,7 +117,7 @@ public sealed partial class SherpaRecognitionService(AiModelManager models)
                 if (Directory.Exists(directory))
                     Directory.Delete(directory, true);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
             }
         }

@@ -122,6 +122,13 @@ public sealed partial class PlayerPage : Page
             StopLiveSubtitles();
             SyncSnapshotButton();
         });
+        // 换集/换片走 PlayCurrentAsync，不会触发 Stopped；这里在旧引擎释放前收掉实时字幕，
+        // 避免旧视频的 ffmpeg/Sherpa/翻译进程继续占着 CPU、GPU 和文件句柄。
+        playback.PlaybackActiveChanged += active =>
+        {
+            if (!active)
+                DispatcherQueue.TryEnqueue(StopLiveSubtitlesOnMediaChange);
+        };
         PlaylistView.ItemsSource = playback.Playlist.Items;
         UpdateRepeatButton();
         SetShuffle(playback.Playlist.Shuffle);
