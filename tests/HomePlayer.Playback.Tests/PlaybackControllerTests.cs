@@ -555,6 +555,90 @@ public class PlaybackControllerTests
         Assert.Contains("系统默认", controller.Status);
     }
 
+    [Fact]
+    public async Task Audio_fallback_failure_does_not_advance_to_the_next_playlist_item()
+    {
+        var first = new FakeEngine();
+        var calls = 0;
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) =>
+            {
+                calls++;
+                if (calls == 1)
+                    return (first, "测试引擎");
+                throw new InvalidOperationException("设备仍不可用");
+            },
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["one.mkv", "two.mkv"], 0);
+
+        first.RaiseAudioOutputFailure(new InvalidOperationException("device removed"));
+        await WaitFor(() => calls >= 2 && controller.Status == "无法播放");
+
+        Assert.Equal(0, controller.Playlist.CurrentIndex);
+        Assert.Equal("one.mkv", controller.Playlist.Current?.Path);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Recovery_preserves_the_current_playback_rate()
+    {
+        var first = new FakeEngine();
+        var recovered = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, recovered]);
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engines.Dequeue(), "测试引擎"),
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        controller.SetRate(1.5);
+
+        first.RaiseFault(new InvalidOperationException("decode failed"));
+        await WaitFor(() => recovered.PlayCount > 0);
+
+        Assert.Equal(1.5, recovered.Rate);
+    }
+
+    [Fact]
+    public async Task Route_switch_preserves_the_current_playback_rate()
+    {
+        var first = new FakeEngine();
+        var switched = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, switched]);
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engines.Dequeue(), "测试引擎"),
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        controller.SetRate(1.5);
+
+        Assert.True(await controller.SwitchRouteAsync(PlaybackRoute.NativeFfmpeg));
+
+        Assert.Equal(1.5, switched.Rate);
+    }
+
+    [Fact]
+    public async Task Repeating_the_same_audio_track_does_not_raise_seek_started()
+    {
+        var engine = new FakeEngine();
+        using var controller = Create(engine);
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        var seeks = 0;
+        controller.SeekStarted += () => seeks++;
+
+        controller.SetAudioTrack(1);
+        controller.SetAudioTrack(1);
+
+        Assert.Equal(1, seeks);
+        Assert.Equal(1, engine.AudioTrackIndex);
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         for (var i = 0; i < 100; i++)

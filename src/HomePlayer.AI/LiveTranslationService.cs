@@ -17,6 +17,7 @@ public sealed class LiveTranslationService : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentDictionary<int, TaskCompletionSource<string>> _pending = new();
     private readonly StringBuilder _errors = new();
+    private readonly object _startGate = new();
     private Process? _process;
     private StreamWriter? _input;
     private Task? _reader;
@@ -41,8 +42,16 @@ public sealed class LiveTranslationService : IAsyncDisposable
         _mirror = mirror;
     }
 
-    public Task StartAsync(IProgress<AiSubtitleProgress>? progress, CancellationToken cancellationToken) =>
-        _start ??= StartCoreAsync(progress, cancellationToken);
+    public Task StartAsync(IProgress<AiSubtitleProgress>? progress, CancellationToken cancellationToken)
+    {
+        lock (_startGate)
+        {
+            // 失败或取消的启动不能永久缓存，否则用户重试也只会拿到同一个异常。
+            if (_start is { IsFaulted: false, IsCanceled: false })
+                return _start;
+            return _start = StartCoreAsync(progress, cancellationToken);
+        }
+    }
 
     public async Task<string> TranslateAsync(string text, CancellationToken cancellationToken)
     {
@@ -166,8 +175,11 @@ public sealed class LiveTranslationService : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
         StopWorker();
-        if (_start is { IsFaulted: true })
-            _ = _start.Exception;
+        Task? start;
+        lock (_startGate)
+            start = _start;
+        if (start is { IsFaulted: true })
+            _ = start.Exception;
         foreach (var pair in _pending)
         {
             if (_pending.TryRemove(pair.Key, out var pending))
@@ -215,7 +227,16 @@ public sealed class LiveTranslationService : IAsyncDisposable
             }
         }
         var ready = StartWorker(modelPath, false);
-        await ready.Task.WaitAsync(cancellationToken);
+        try
+        {
+            await ready.Task.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            // 启动失败时留下半启动的 worker 会让下一次重试复用已退出的进程。
+            StopWorker();
+            throw;
+        }
     }
 
     private TaskCompletionSource StartWorker(string modelPath, bool useGpu)

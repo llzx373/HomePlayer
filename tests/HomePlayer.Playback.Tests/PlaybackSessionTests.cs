@@ -71,8 +71,46 @@ public sealed class PlaybackSessionTests
         Assert.Equal(PlaybackLifecycle.Closed, session.Snapshot.Lifecycle);
     }
 
-    private sealed class FakeEngine : IPlaybackEngine
+    [Fact]
+    public async Task Inner_fault_marks_the_session_failed_and_rejects_further_play()
     {
+        var engine = new FakeEngine();
+        using var session = new PlaybackSession(engine, "media");
+        Exception? fault = null;
+        session.Faulted += error => fault = error;
+        var error = new InvalidOperationException("decode failed");
+
+        engine.RaiseFault(error);
+
+        Assert.Same(error, fault);
+        Assert.Equal(PlaybackLifecycle.Failed, session.Snapshot.Lifecycle);
+        var play = await session.ExecuteAsync(PlaybackCommandType.Play);
+        Assert.Equal(PlaybackCommandStatus.Failed, play.Status);
+        Assert.Equal(0, engine.PlayCount);
+        var stop = await session.ExecuteAsync(PlaybackCommandType.Stop);
+        Assert.Equal(PlaybackCommandStatus.Completed, stop.Status);
+        Assert.Equal(0, engine.StopCount);
+    }
+
+    [Fact]
+    public async Task Stop_after_close_is_idempotent_even_when_the_engine_rejects_it()
+    {
+        var engine = new FakeEngine { ThrowOnStopAfterDispose = true };
+        var session = new PlaybackSession(engine, "media");
+        session.Dispose();
+
+        var stop = await session.ExecuteAsync(PlaybackCommandType.Stop);
+        var close = await session.ExecuteAsync(PlaybackCommandType.Close);
+
+        Assert.Equal(PlaybackCommandStatus.Completed, stop.Status);
+        Assert.Equal(PlaybackCommandStatus.Completed, close.Status);
+        Assert.Equal(1, engine.DisposeCount);
+    }
+
+    private sealed class FakeEngine : IPlaybackEngine, IPlaybackFaultSource
+    {
+        private bool _disposed;
+
         public string Name => "Fake";
         public bool IsOpen { get; private set; } = true;
         public bool IsPlaying { get; private set; }
@@ -82,12 +120,28 @@ public sealed class PlaybackSessionTests
         public int AudioTrackIndex => -1;
         public int SubtitleTrackIndex => -1;
         public int DisposeCount { get; private set; }
+        public int PlayCount { get; private set; }
+        public int StopCount { get; private set; }
+        public bool ThrowOnStopAfterDispose { get; init; }
         public event Action<FrameLease>? FrameArrived;
         public event Action? Ended { add { } remove { } }
+        public event Action<Exception>? Faulted;
         public void Open(string path) { }
-        public void Play() => IsPlaying = true;
+        public void Play()
+        {
+            PlayCount++;
+            IsPlaying = true;
+        }
+
         public void Pause() => IsPlaying = false;
-        public void Stop() => IsPlaying = false;
+        public void Stop()
+        {
+            StopCount++;
+            if (_disposed && ThrowOnStopAfterDispose)
+                throw new ObjectDisposedException(nameof(FakeEngine));
+            IsPlaying = false;
+        }
+
         public void Seek(TimeSpan position) => Position = position;
         public void SetVolume(double linear) { }
         public void SetMuted(bool muted) { }
@@ -98,7 +152,13 @@ public sealed class PlaybackSessionTests
         public IReadOnlyList<MediaTrack> GetSubtitleTracks() => [];
         public void SetSubtitleTrack(int index) { }
         public PipelineInfo GetPipeline() => new() { Engine = Name };
-        public void Dispose() => DisposeCount++;
+        public void Dispose()
+        {
+            _disposed = true;
+            DisposeCount++;
+        }
+
         public void Emit(VideoFrame frame) => FrameArrived?.Invoke(frame);
+        public void RaiseFault(Exception error) => Faulted?.Invoke(error);
     }
 }

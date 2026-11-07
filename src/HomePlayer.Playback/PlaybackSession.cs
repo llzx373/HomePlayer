@@ -17,7 +17,7 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
     private PlaybackLifecycle _lifecycle = PlaybackLifecycle.Ready;
     private PlaybackTransportState _transport = PlaybackTransportState.Stopped;
     private PlaybackOperation _operation;
-    private bool _closed;
+    private volatile bool _closed;
 
     public PlaybackSession(IPlaybackEngine engine, string mediaId)
     {
@@ -28,7 +28,7 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
         InnerEngine.FrameArrived += OnFrame;
         InnerEngine.Ended += OnEnded;
         if (InnerEngine is IPlaybackFaultSource faults)
-            faults.Faulted += error => Faulted?.Invoke(error);
+            faults.Faulted += OnInnerFaulted;
         if (InnerEngine is IPlaybackAudioOutputEvents audioEvents)
             audioEvents.AudioOutputFailed += error => AudioOutputFailed?.Invoke(error);
     }
@@ -72,8 +72,15 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (_closed && command != PlaybackCommandType.Close && command != PlaybackCommandType.Stop)
-                throw new InvalidOperationException("播放会话已关闭。");
+            bool failed;
+            bool closed;
+            lock (_gate)
+            {
+                failed = _lifecycle == PlaybackLifecycle.Failed;
+                closed = _closed;
+            }
+            if ((failed || closed) && command is not (PlaybackCommandType.Close or PlaybackCommandType.Stop))
+                throw new InvalidOperationException(failed ? "播放会话已失败。" : "播放会话已关闭。");
             switch (command)
             {
                 case PlaybackCommandType.Play:
@@ -83,6 +90,10 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
                 case PlaybackCommandType.Pause:
                     InnerEngine.Pause();
                     _transport = PlaybackTransportState.Paused;
+                    break;
+                case PlaybackCommandType.Stop when failed || closed:
+                    // 失败或关闭后的 Stop 必须幂等，不能再触碰可能已释放的引擎。
+                    _transport = PlaybackTransportState.Stopped;
                     break;
                 case PlaybackCommandType.Stop:
                     InnerEngine.Stop();
@@ -154,15 +165,41 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
 
     public void Dispose()
     {
-        if (_closed)
-            return;
-        _closed = true;
-        _lifecycle = PlaybackLifecycle.Closing;
+        lock (_gate)
+        {
+            if (_closed)
+                return;
+            _closed = true;
+            _lifecycle = PlaybackLifecycle.Closing;
+        }
         InnerEngine.FrameArrived -= OnFrame;
         InnerEngine.Ended -= OnEnded;
-        InnerEngine.Dispose();
-        _lifecycle = PlaybackLifecycle.Closed;
-        _transport = PlaybackTransportState.Stopped;
+        var inner = InnerEngine as IPlaybackFaultSource;
+        if (inner != null)
+            inner.Faulted -= OnInnerFaulted;
+        try
+        {
+            InnerEngine.Dispose();
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _lifecycle = PlaybackLifecycle.Closed;
+                _transport = PlaybackTransportState.Stopped;
+            }
+        }
+    }
+
+    private void OnInnerFaulted(Exception error)
+    {
+        lock (_gate)
+        {
+            if (_closed)
+                return;
+            _lifecycle = PlaybackLifecycle.Failed;
+        }
+        Faulted?.Invoke(error);
     }
 
     private void OnFrame(FrameLease frame)

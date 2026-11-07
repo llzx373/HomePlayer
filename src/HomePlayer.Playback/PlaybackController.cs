@@ -301,9 +301,12 @@ public sealed partial class PlaybackController : IDisposable
 
     public void SetAudioTrack(int index)
     {
-        _engine?.SetAudioTrack(index);
-        if (_engine != null)
-            SeekStarted?.Invoke();
+        if (_engine == null)
+            return;
+        if (_engine.AudioTrackIndex == index)
+            return;
+        _engine.SetAudioTrack(index);
+        SeekStarted?.Invoke();
         SaveAudioPreference(index);
         Notify();
     }
@@ -414,7 +417,12 @@ public sealed partial class PlaybackController : IDisposable
         await PlayCurrentAsync(PlaybackRoute.Auto);
     }
 
-    private async Task PlayCurrentAsync(PlaybackRoute route, bool restart = false, bool recovery = false, RouteSwitchOperation? routeSwitch = null)
+    private async Task PlayCurrentAsync(
+        PlaybackRoute route,
+        bool restart = false,
+        bool recovery = false,
+        RouteSwitchOperation? routeSwitch = null,
+        bool advanceOnFailure = true)
     {
         if (routeSwitch == null)
             InvalidateRouteSwitch();
@@ -428,7 +436,10 @@ public sealed partial class PlaybackController : IDisposable
         if (!string.Equals(_playingPath, currentPath, StringComparison.OrdinalIgnoreCase))
             ClearLoop();
         _playingPath = null;
-        _rate = 1.0;
+        if (routeSwitch != null)
+            _rate = PlaybackRates.Clamp(routeSwitch.Transfer.PlaybackRate);
+        else if (!recovery)
+            _rate = 1.0;
         _openStartedUtc = DateTime.UtcNow;
         _firstFramePending = true;
         Notify();
@@ -548,7 +559,7 @@ public sealed partial class PlaybackController : IDisposable
                     route = PlaybackRoute.Auto;
                     continue;
                 }
-                var next = recovery || routeSwitch != null ? null : Playlist.NextIndex(false);
+                var next = !advanceOnFailure || recovery || routeSwitch != null ? null : Playlist.NextIndex(false);
                 _post(() =>
                 {
                     failed.Error = ex.Message;

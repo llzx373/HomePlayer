@@ -32,7 +32,7 @@ public sealed partial class PlaybackController
             SaveAudioPreference(AudioTrackIndex);
         var operationId = ++_routeOperationId;
         _activeRouteSwitch?.Complete(false, "被新的路线切换取代。");
-        var operation = new RouteSwitchOperation(this, operationId, mediaId, route);
+        var operation = new RouteSwitchOperation(this, operationId, mediaId, route, transfer);
         _activeRouteSwitch = operation;
         CurrentRouteTransition = new PlaybackRouteTransition(operationId, mediaId, route, PlaybackRouteTransitionPhase.Preparing, false);
         Status = "正在准备路线切换";
@@ -77,11 +77,13 @@ public sealed partial class PlaybackController
         PlaybackController owner,
         long id,
         string mediaId,
-        PlaybackRoute route)
+        PlaybackRoute route,
+        PlaybackTransferState transfer)
     {
         public long Id { get; } = id;
         public string MediaId { get; } = mediaId;
         public PlaybackRoute Route { get; } = route;
+        public PlaybackTransferState Transfer { get; } = transfer;
         public TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Complete(bool succeeded, string? reason = null)
