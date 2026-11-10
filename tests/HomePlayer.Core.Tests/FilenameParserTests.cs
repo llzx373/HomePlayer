@@ -49,6 +49,31 @@ public class FilenameParserTests
         Assert.Equal(episode, parsed.Episode);
     }
 
+    [Theory]
+    [InlineData("Show EP07.mkv", "Show", 7)]
+    [InlineData("Show 第 12 话.mkv", "Show", 12)]
+    [InlineData("Show 12集.mkv", "Show", 12)]
+    [InlineData("Show 第12话[1080p].mkv", "Show", 12)]
+    public void Parses_anime_episode_markers(string file, string title, int episode)
+    {
+        var parsed = FilenameParser.Parse(file);
+
+        Assert.True(parsed.IsTv);
+        Assert.Equal(title, parsed.Title);
+        Assert.Equal(episode, parsed.Episode);
+    }
+
+    [Fact]
+    public void Strips_full_width_release_groups()
+    {
+        var parsed = FilenameParser.Parse("【字幕组】Show S01E02.mkv");
+
+        Assert.True(parsed.IsTv);
+        Assert.Equal("Show", parsed.Title);
+        Assert.Equal(1, parsed.Season);
+        Assert.Equal(2, parsed.Episode);
+    }
+
     [Fact]
     public void Keeps_ova_in_series_navigation()
     {

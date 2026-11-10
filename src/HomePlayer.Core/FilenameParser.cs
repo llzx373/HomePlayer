@@ -55,6 +55,8 @@ public static partial class FilenameParser
         return new ParsedName(Clean(movie), movieYear, null, null, false);
     }
 
+    public static string CleanTitle(string raw, bool fallbackToRaw = true) => Clean(raw, fallbackToRaw);
+
     private static int? TakeYear(ref string text)
     {
         var matches = YearToken().Matches(text);
@@ -79,7 +81,7 @@ public static partial class FilenameParser
         return text;
     }
 
-    private static string Clean(string raw)
+    private static string Clean(string raw, bool fallbackToRaw = true)
     {
         var withoutGroups = BracketGroup().Replace(raw, " ");
         var kept = new List<string>();
@@ -94,7 +96,7 @@ public static partial class FilenameParser
         }
 
         var title = string.Join(' ', kept).Trim();
-        return title.Length == 0 ? raw.Trim() : title;
+        return title.Length == 0 && fallbackToRaw ? raw.Trim() : title;
     }
 
     [GeneratedRegex(@"\s+")]
@@ -106,7 +108,7 @@ public static partial class FilenameParser
     [GeneratedRegex(@"^(?<title>.+?)\s+(?<s>\d{1,2})x(?<e>\d{2,3})\b", RegexOptions.IgnoreCase)]
     private static partial Regex CrossEpisode();
 
-    [GeneratedRegex(@"^(?<title>.+?)\s+(?:[Ee](?<e>\d{1,3})|第\s*(?<e>\d{1,3})\s*集)(?=\s|$)")]
+    [GeneratedRegex(@"^(?<title>.+?)\s+(?:[Ee][Pp]?\s*(?<e>\d{1,3})|(?:第\s*)?(?<e>\d{1,4})\s*[集话話回])(?=\s|$|[\[\(（【])")]
     private static partial Regex EpisodeOnly();
 
     [GeneratedRegex(@"(?:[\\/]|^)(?:season|s)\s*(?<s>\d{1,2})(?:[\\/]|$)", RegexOptions.IgnoreCase)]
@@ -121,7 +123,7 @@ public static partial class FilenameParser
     [GeneratedRegex(@"\bOVA\b", RegexOptions.IgnoreCase)]
     private static partial Regex Ova();
 
-    private static int? SeasonFromDirectory(string path)
+    public static int? SeasonFromDirectory(string path)
     {
         if (SpecialsDirectory().IsMatch(path))
             return 0;
@@ -134,7 +136,7 @@ public static partial class FilenameParser
     [GeneratedRegex(@"\b(?:19|20)\d{2}\b")]
     private static partial Regex YearToken();
 
-    [GeneratedRegex(@"[\[\(].*?[\]\)]")]
+    [GeneratedRegex(@"[\[\(（【].*?[\]\)）】]")]
     private static partial Regex BracketGroup();
 
     [GeneratedRegex(@"^\d{3,4}p$", RegexOptions.IgnoreCase)]

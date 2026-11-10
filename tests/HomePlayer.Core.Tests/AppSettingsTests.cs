@@ -11,6 +11,7 @@ public class AppSettingsTests
         var settings = new AppSettings
         {
             AutoPlayNextEpisode = false,
+            AutoPlayFolderSiblings = false,
             LibraryView = new LibraryViewState
             {
                 LibraryId = "lib",
@@ -40,6 +41,7 @@ public class AppSettingsTests
         Assert.Equal(LibraryCardSize.Large, loaded.LibraryView.CardSize);
         Assert.Equal(LibraryInfoDisplay.Technical, loaded.LibraryView.InfoDisplay);
         Assert.False(loaded.AutoPlayNextEpisode);
+        Assert.False(loaded.AutoPlayFolderSiblings);
         Assert.Equal(["剧集", "剧集/第 1 季"], loaded.LibraryView.ExpandedFolders);
     }
 
@@ -53,5 +55,6 @@ public class AppSettingsTests
         Assert.Equal(PagedView.DefaultPageSize, loaded.LibraryView.PageSize);
         Assert.Empty(loaded.LibraryView.ExpandedFolders);
         Assert.Null(loaded.LibraryView.LibraryId);
+        Assert.True(loaded.AutoPlayFolderSiblings);
     }
 }

@@ -1622,7 +1622,7 @@ public sealed partial class PlayerPage : Page
             var files = await picker.PickMultipleFilesAsync();
             if (files == null || files.Count == 0)
                 return;
-            await Playback.PlayPathsAsync(files.Select(file => file.Path).ToList(), 0);
+            await App.Host.OpenMediaAsync(files.Select(file => file.Path).ToList(), replace: true);
         }
         catch (Exception ex)
         {

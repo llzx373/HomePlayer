@@ -98,6 +98,8 @@
                                     <ToggleSwitch x:Name="AlwaysOnTopSwitch" Header="窗口置顶" />
                                     <ToggleSwitch x:Name="AutoPlayNextSwitch" Header="播完自动连播" OnContent="自动播放下一条" OffContent="播完停止" Toggled="AutoPlayNext_Toggled" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="从剧集与合集入口播放时，会按季集顺序自动连播。" />
+                                    <ToggleSwitch x:Name="FolderSiblingsSwitch" Header="打开单个视频时自动加入同文件夹剧集" OnContent="按文件名序号整组入队" OffContent="只播放打开的文件" />
+                                    <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="仅在资源管理器、拖放或「打开文件」选择单个视频时生效；只匹配同一文件夹中的相似文件名，不扫描子文件夹。" TextWrapping="Wrap" />
                                     <ToggleSwitch x:Name="HardwareAccelerationSwitch" Header="硬件加速（D3D11）" OnContent="降低稳态 CPU，失败时自动降级" OffContent="使用软件解码" />
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="硬解可减少稳态 CPU，但部分设备的随机 seek 会更慢；关闭后从下一次播放开始使用软件路线。" />
                                     <ComboBox x:Name="RenderQualityBox" Header="渲染质量" SelectedIndex="0">

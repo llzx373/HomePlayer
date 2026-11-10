@@ -18,6 +18,7 @@ public sealed partial class AppSettings
 {
     public int SettingsVersion { get; set; }
     public bool RestorePlaylist { get; set; } = true;
+    public bool AutoPlayFolderSiblings { get; set; } = true;
     public int ResumeRewindSeconds { get; set; } = 5;
     public bool RememberVolumePerFile { get; set; }
     public bool RememberPlaybackRatePerFile { get; set; }

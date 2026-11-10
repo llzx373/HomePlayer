@@ -131,10 +131,7 @@ public sealed partial class MainWindow : Window
         if (paths.Count == 0)
             return;
         SelectPlayer();
-        if (replace)
-            await App.Host.Playback.PlayPathsAsync(paths, 0);
-        else
-            App.Host.Playback.Enqueue(paths);
+        await App.Host.OpenMediaAsync(paths, replace);
     }
 
     private void OnRootLoaded(object sender, RoutedEventArgs e)
@@ -546,7 +543,7 @@ public sealed partial class MainWindow : Window
             var paths = await Task.Run(() => VideoFiles.Expand(itemPaths));
             if (paths.Count == 0)
                 return;
-            await App.Host.Playback.PlayPathsAsync(paths, 0);
+            await App.Host.OpenMediaAsync(paths, replace: true);
             SelectPlayer();
         }
         catch (Exception ex)

@@ -11,6 +11,7 @@ public sealed partial class SettingsPage
         InitializeUpdateSettings();
         var settings = App.Host.Settings;
         RestorePlaylistSwitch.IsOn = settings.RestorePlaylist;
+        FolderSiblingsSwitch.IsOn = settings.AutoPlayFolderSiblings;
         ResumeRewindBox.Value = settings.ResumeRewindSeconds;
         SeekStepBox.Value = settings.SeekStepSeconds;
         LargeSeekStepBox.Value = settings.LargeSeekStepSeconds;
@@ -27,6 +28,7 @@ public sealed partial class SettingsPage
             return;
         _playbackFeatureEvents = true;
         RestorePlaylistSwitch.Toggled += (_, _) => SavePlaybackFeatures();
+        FolderSiblingsSwitch.Toggled += (_, _) => SavePlaybackFeatures();
         ResumeRewindBox.ValueChanged += (_, _) => SavePlaybackFeatures();
         SeekStepBox.ValueChanged += (_, _) => SavePlaybackFeatures();
         LargeSeekStepBox.ValueChanged += (_, _) => SavePlaybackFeatures();
@@ -47,6 +49,7 @@ public sealed partial class SettingsPage
             return;
         var settings = App.Host.Settings;
         settings.RestorePlaylist = RestorePlaylistSwitch.IsOn;
+        settings.AutoPlayFolderSiblings = FolderSiblingsSwitch.IsOn;
         settings.ResumeRewindSeconds = double.IsNaN(ResumeRewindBox.Value) ? settings.ResumeRewindSeconds : (int)ResumeRewindBox.Value;
         settings.SeekStepSeconds = double.IsNaN(SeekStepBox.Value) ? settings.SeekStepSeconds : (int)SeekStepBox.Value;
         settings.LargeSeekStepSeconds = double.IsNaN(LargeSeekStepBox.Value) ? settings.LargeSeekStepSeconds : (int)LargeSeekStepBox.Value;

@@ -140,6 +140,27 @@ public sealed class AppHost : IAsyncDisposable
         });
     }
 
+    public async Task OpenMediaAsync(IReadOnlyList<string> paths, bool replace)
+    {
+        if (paths.Count == 0)
+            return;
+
+        if (replace && paths.Count == 1 && Settings.AutoPlayFolderSiblings)
+        {
+            var group = await Task.Run(() => SiblingEpisodes.Find(paths[0]));
+            if (group.Paths.Count > 1)
+            {
+                await Playback.PlayPathsAsync(group.Paths, group.Index);
+                return;
+            }
+        }
+
+        if (replace)
+            await Playback.PlayPathsAsync(paths, 0);
+        else
+            Playback.Enqueue(paths);
+    }
+
     public void SaveSettings()
     {
         try
