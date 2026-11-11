@@ -235,7 +235,6 @@
                 <Slider
                     x:Name="PositionBar"
                     Grid.Column="1"
-                    Height="22"
                     Minimum="0"
                     Maximum="0"
                     Value="0"
