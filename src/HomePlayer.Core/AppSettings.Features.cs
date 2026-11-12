@@ -31,6 +31,8 @@ public sealed partial class AppSettings
     public bool AudioNightMode { get; set; }
     public bool HardwareAcceleration { get; set; } = true;
     public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
+    public bool RenderRulesEnabled { get; set; }
+    public string RenderProfileOverride { get; set; } = "";
     public VideoOutputRange RgbOutputRange { get; set; } = VideoOutputRange.Full;
     public int DisplayRefreshRate { get; set; }
     public bool SnapshotIncludeSubtitles { get; set; }

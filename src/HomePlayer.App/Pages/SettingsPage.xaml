@@ -109,6 +109,15 @@
                                         <ComboBoxItem Content="高质量（libplacebo high_quality）" />
                                     </ComboBox>
                                     <TextBlock Style="{StaticResource SettingsDescriptionStyle}" Text="libplacebo 只替换渲染后段；初始化或渲染失败时自动回退 Basic。" />
+                                    <ToggleSwitch x:Name="RenderRulesSwitch" Header="自定义渲染规则（高级）" OnContent="按 rules.json 和手动选择加载 Shader" OffContent="仅使用基础渲染质量" />
+                                    <ComboBox x:Name="RenderProfileOverrideBox" Header="手动渲染配置（优先于自动规则）" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="ImportShaderButton" Content="导入 Shader" Click="ImportShader_Click" />
+                                        <Button x:Name="ReloadRenderRulesButton" Content="重新加载" Click="ReloadRenderRules_Click" />
+                                        <Button x:Name="OpenRenderRulesButton" Content="打开目录" Click="OpenRenderRules_Click" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="RenderRulesStatusText" Style="{StaticResource SettingsDescriptionStyle}" TextWrapping="Wrap" />
+                                    <StackPanel x:Name="RenderParametersPanel" Spacing="12" />
                                     <ComboBox x:Name="RgbOutputRangeBox" Header="视频 RGB 输出范围" SelectedIndex="0">
                                         <ComboBoxItem Content="全范围（0–255，PC 默认）" />
                                         <ComboBoxItem Content="有限范围（16–235，电视兼容）" />

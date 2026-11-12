@@ -34,6 +34,10 @@
       <Link>libplacebo\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\third_party\shaders\**\*.*">
+      <Link>render\shaders\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\..\third_party\sbom.json">
       <Link>sbom.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

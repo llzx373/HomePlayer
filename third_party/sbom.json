@@ -5,10 +5,10 @@
   "name": "HomePlayer-0.3.0-21",
   "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-21",
   "creationInfo": {
-    "created": "2026-11-11T03:44:24Z",
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
-    ]
+    ],
+    "created": "2026-11-12T03:38:29Z"
   },
   "packages": [
     {
@@ -220,6 +220,296 @@
             {
               "algorithm": "SHA256",
               "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Anime4K",
+      "SPDXID": "SPDXRef-Package-Anime4K",
+      "versionInfo": "7684e9586f8dcc738af08a1cdceb024cc184f426",
+      "downloadLocation": "https://github.com/bloc97/Anime4K",
+      "filesAnalyzed": true,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/anime4k/Anime4K_Clamp_Highlights.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Clamp-Highlights.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/anime4k/Anime4K_Restore_CNN_M.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Restore-CNN-M.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/anime4k/Anime4K_Upscale_CNN_x2_M.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Upscale-CNN-x2-M.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ArtCNN",
+      "SPDXID": "SPDXRef-Package-ArtCNN",
+      "versionInfo": "0837e5326e710f49e2ab0a8d995da0708047442e",
+      "downloadLocation": "https://github.com/Artoriuz/ArtCNN",
+      "filesAnalyzed": true,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/artcnn/ArtCNN_C4F16_DS.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16-DS.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/artcnn/ArtCNN_C4F16.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CuNNy",
+      "SPDXID": "SPDXRef-Package-CuNNy",
+      "versionInfo": "906031bb00c15dd6a6bbbaa21c0eb0b724ca8437",
+      "downloadLocation": "https://github.com/funnyplanter/CuNNy",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/cunny/CuNNy-fast-DS.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-cunny-CuNNy-fast-DS.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FSRCNNX",
+      "SPDXID": "SPDXRef-Package-FSRCNNX",
+      "versionInfo": "1.1",
+      "downloadLocation": "https://github.com/igv/FSRCNN-TensorFlow/releases/tag/1.1",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/fsrcnnx/FSRCNNX_x2_8-0-4-1.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-fsrcnnx-FSRCNNX-x2-8-0-4-1.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mpv-prescalers",
+      "SPDXID": "SPDXRef-Package-mpv-prescalers",
+      "versionInfo": "b3f0a59d68f33b7162051ea5970a5169558f0ea2",
+      "downloadLocation": "https://github.com/bjin/mpv-prescalers",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/nnedi3/nnedi3-nns32-win8x4.hook",
+          "SPDXID": "SPDXRef-File-third-party-shaders-nnedi3-nnedi3-nns32-win8x4.hook",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/ravu/ravu-lite-ar-r3.hook",
+          "SPDXID": "SPDXRef-File-third-party-shaders-ravu-ravu-lite-ar-r3.hook",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SSim shaders",
+      "SPDXID": "SPDXRef-Package-SSim-shaders",
+      "versionInfo": "gist-2364ffa6e81540f29cb7ab4c9bc05b6b-36508af3ffc84410fe39761d6969be10",
+      "downloadLocation": "https://gist.github.com/igv",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/ssim/SSimDownscaler.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimDownscaler.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/ssim/SSimSuperRes.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimSuperRes.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CfL Prediction",
+      "SPDXID": "SPDXRef-Package-CfL-Prediction",
+      "versionInfo": "066dff964b83aa34e893de25d590874bf8c8e94f",
+      "downloadLocation": "https://github.com/Artoriuz/glsl-chroma-from-luma-prediction",
+      "filesAnalyzed": true,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/chroma/CfL_Prediction.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-chroma-CfL-Prediction.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "KrigBilateral",
+      "SPDXID": "SPDXRef-Package-KrigBilateral",
+      "versionInfo": "gist-a015fc885d5c22e6891820ad89555637",
+      "downloadLocation": "https://gist.github.com/igv/a015fc885d5c22e6891820ad89555637",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-3.0-or-later",
+      "licenseDeclared": "LGPL-3.0-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/chroma/KrigBilateral.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-chroma-KrigBilateral.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "adaptive-sharpen",
+      "SPDXID": "SPDXRef-Package-adaptive-sharpen",
+      "versionInfo": "gist-8a77e4eb8276753b54bb94c1c50c317e",
+      "downloadLocation": "https://gist.github.com/igv/8a77e4eb8276753b54bb94c1c50c317e",
+      "filesAnalyzed": true,
+      "licenseConcluded": "BSD-2-Clause",
+      "licenseDeclared": "BSD-2-Clause",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/sharpening/adaptive-sharpen.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-sharpening-adaptive-sharpen.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AN3223 shaders",
+      "SPDXID": "SPDXRef-Package-AN3223-shaders",
+      "versionInfo": "4413db6c1b47aa70ffce40c5a91158e518881718",
+      "downloadLocation": "https://github.com/AN3223/dotfiles",
+      "filesAnalyzed": true,
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "supplier": "NOASSERTION",
+      "files": [
+        {
+          "fileName": "third_party/shaders/restoration/guided_fast.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-restoration-guided-fast.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/restoration/hdeband.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-restoration-hdeband.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d"
+            }
+          ]
+        },
+        {
+          "fileName": "third_party/shaders/restoration/nlmeans.glsl",
+          "SPDXID": "SPDXRef-File-third-party-shaders-restoration-nlmeans.glsl",
+          "checksums": [
+            {
+              "algorithm": "SHA256",
+              "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21"
             }
           ]
         }
@@ -1806,6 +2096,176 @@
           "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
         }
       ]
+    },
+    {
+      "fileName": "third_party/shaders/anime4k/Anime4K_Clamp_Highlights.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Clamp-Highlights.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/anime4k/Anime4K_Restore_CNN_M.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Restore-CNN-M.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/anime4k/Anime4K_Upscale_CNN_x2_M.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Upscale-CNN-x2-M.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/artcnn/ArtCNN_C4F16_DS.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16-DS.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/artcnn/ArtCNN_C4F16.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/chroma/CfL_Prediction.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-chroma-CfL-Prediction.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/chroma/KrigBilateral.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-chroma-KrigBilateral.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/cunny/CuNNy-fast-DS.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-cunny-CuNNy-fast-DS.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/fsrcnnx/FSRCNNX_x2_8-0-4-1.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-fsrcnnx-FSRCNNX-x2-8-0-4-1.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/nnedi3/nnedi3-nns32-win8x4.hook",
+      "SPDXID": "SPDXRef-File-third-party-shaders-nnedi3-nnedi3-nns32-win8x4.hook",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/ravu/ravu-lite-ar-r3.hook",
+      "SPDXID": "SPDXRef-File-third-party-shaders-ravu-ravu-lite-ar-r3.hook",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/restoration/guided_fast.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-restoration-guided-fast.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/restoration/hdeband.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-restoration-hdeband.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/restoration/nlmeans.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-restoration-nlmeans.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/sharpening/adaptive-sharpen.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-sharpening-adaptive-sharpen.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/ssim/SSimDownscaler.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimDownscaler.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804"
+        }
+      ]
+    },
+    {
+      "fileName": "third_party/shaders/ssim/SSimSuperRes.glsl",
+      "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimSuperRes.glsl",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f"
+        }
+      ]
     }
   ],
   "relationships": [
@@ -1817,6 +2277,56 @@
     {
       "spdxElementId": "SPDXRef-Package-HomePlayer",
       "relatedSpdxElement": "SPDXRef-Package-libplacebo",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-Anime4K",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-ArtCNN",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-CuNNy",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-FSRCNNX",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-mpv-prescalers",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-SSim-shaders",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-CfL-Prediction",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-KrigBilateral",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-adaptive-sharpen",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-HomePlayer",
+      "relatedSpdxElement": "SPDXRef-Package-AN3223-shaders",
       "relationshipType": "DEPENDS_ON"
     },
     {

@@ -14,10 +14,39 @@ using PlCieXy = HomePlayer.Playback.LibplaceboNative.PlCieXy;
 
 namespace HomePlayer.Playback;
 
+public sealed record LibplaceboRenderStatus(
+    string? ProfileId,
+    string? RuleName,
+    IReadOnlyList<LibplaceboLoadedShader> Shaders,
+    string? Warning,
+    bool CandidatePending,
+    double? GpuMilliseconds = null,
+    double? GpuP95Milliseconds = null,
+    int GpuSampleCount = 0);
+
+public sealed class LibplaceboShaderException(string message, Exception? inner = null)
+    : Exception(message, inner);
+
 public sealed unsafe class LibplaceboRenderer : IDisposable
 {
+    private const int HookError = 1 << 10;
     private readonly ID3D11Device _d3dDevice;
     private readonly ID3D11DeviceContext _context;
+    private readonly HashSet<string> _quarantined = new(StringComparer.Ordinal);
+    private readonly Queue<double> _gpuSamples = new();
+    private ID3D11Query? _timestampDisjoint;
+    private ID3D11Query? _timestampStart;
+    private ID3D11Query? _timestampEnd;
+    private bool _gpuTimingPending;
+    private long _gpuFrame;
+    private double? _lastGpuMilliseconds;
+    private LibplaceboShaderSet? _activeHooks;
+    private LibplaceboShaderSet? _pendingHooks;
+    private ResolvedRenderProfile? _activeProfile;
+    private ResolvedRenderProfile? _pendingProfile;
+    private string _activeKey = "";
+    private string _pendingKey = "";
+    private string? _warning;
     private nint _device;
     private nint _gpu;
     private nint _renderer;
@@ -37,9 +66,16 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
             _renderer = LibplaceboNative.CreateRenderer(_gpu);
             if (_renderer == 0)
                 throw new InvalidOperationException("libplacebo 无法创建渲染器。");
+            _timestampDisjoint = device.CreateQuery(new QueryDescription(QueryType.TimestampDisjoint));
+            _timestampStart = device.CreateQuery(new QueryDescription(QueryType.Timestamp));
+            _timestampEnd = device.CreateQuery(new QueryDescription(QueryType.Timestamp));
         }
         catch
         {
+            _timestampEnd?.Dispose();
+            _timestampStart?.Dispose();
+            _timestampDisjoint?.Dispose();
+            LibplaceboNative.DestroyRenderer(ref _renderer);
             LibplaceboNative.DestroyDevice(ref _device);
             throw;
         }
@@ -50,7 +86,48 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
     public static string Version => LibplaceboNative.Version;
 
     public static bool SupportsInput(VideoPixelFormat pixelFormat, bool sharedPlanes) =>
-        !sharedPlanes || pixelFormat == VideoPixelFormat.Bgra32;
+        pixelFormat is VideoPixelFormat.Bgra32 or VideoPixelFormat.Nv12 or VideoPixelFormat.P010;
+
+    public bool LastFailureWasShader { get; private set; }
+
+    public LibplaceboRenderStatus Status
+    {
+        get
+        {
+            var profile = _pendingProfile ?? _activeProfile;
+            var hooks = _pendingHooks ?? _activeHooks;
+            return new LibplaceboRenderStatus(profile?.ProfileId, profile?.RuleName,
+                hooks?.Shaders ?? [], _warning, _pendingProfile != null,
+                _lastGpuMilliseconds, GpuP95(), _gpuSamples.Count);
+        }
+    }
+
+    public void UpdateProfile(ResolvedRenderProfile profile, Func<string, string> readShader)
+    {
+        var key = ProfileKey(profile);
+        if (key == _activeKey || key == _pendingKey || _quarantined.Contains(key))
+            return;
+        _pendingHooks?.Dispose();
+        _pendingHooks = null;
+        _pendingProfile = null;
+        _pendingKey = "";
+        try
+        {
+            var sources = profile.Shaders.Select(shader => new LibplaceboShaderSource(
+                shader.File, readShader(shader.File), shader.Parameters)).ToArray();
+            _pendingHooks = LibplaceboShaderSet.Create(_gpu, sources);
+            _pendingProfile = profile;
+            _pendingKey = key;
+            _warning = null;
+            LibplaceboNative.FlushRenderer(_renderer);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or OverflowException)
+        {
+            _quarantined.Add(key);
+            _warning = ex.Message;
+            throw new LibplaceboShaderException($"自定义渲染配置加载失败：{ex.Message}", ex);
+        }
+    }
 
     public bool Render(
         ID3D11Texture2D source,
@@ -72,8 +149,18 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
         LibplaceboQuality quality,
         VideoOutputRange outputRange = VideoOutputRange.Full)
     {
+        LastFailureWasShader = false;
         if (!SupportsInput(pixelFormat, chroma != null && ReferenceEquals(source, chroma)))
             return false;
+        var hooks = _pendingHooks ?? _activeHooks;
+        var selectedProfile = _pendingProfile ?? _activeProfile;
+        if (selectedProfile != null)
+            quality = selectedProfile.Quality switch
+            {
+                VideoRenderQuality.Basic or VideoRenderQuality.Performance => LibplaceboQuality.Fast,
+                VideoRenderQuality.Balanced => LibplaceboQuality.Balanced,
+                _ => LibplaceboQuality.HighQuality
+            };
         nint input = 0;
         nint inputChroma = 0;
         nint output = 0;
@@ -103,7 +190,7 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
                 var chromaWidth = (int)(sharedPlanes ? (chromaDescription.Width + 1) / 2 : chromaDescription.Width);
                 var chromaHeight = (int)(sharedPlanes ? (chromaDescription.Height + 1) / 2 : chromaDescription.Height);
                 inputChroma = LibplaceboNative.Wrap(_gpu, chroma, pixelFormat == VideoPixelFormat.Nv12 ? Format.R8G8_UNorm : Format.R16G16_UNorm,
-                    chromaWidth, chromaHeight, chromaSubresource);
+                    chromaWidth, chromaHeight, sharedPlanes ? sourceSubresource : chromaSubresource);
                 if (inputChroma == 0)
                     return false;
             }
@@ -139,11 +226,27 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
             outputFrame.Color.Primaries = hdrOutput ? 6 : 3;
             outputFrame.Color.Transfer = hdrOutput ? 11 : 2;
             outputFrame.Crop = Rect(
-                (geometry.Left + 1) * 0.5f * targetWidth * compositionScaleX,
-                (1 - geometry.Top) * 0.5f * targetHeight * compositionScaleY,
-                (geometry.Right + 1) * 0.5f * targetWidth * compositionScaleX,
-                (1 - geometry.Bottom) * 0.5f * targetHeight * compositionScaleY);
-            return LibplaceboNative.Render(_renderer, image, outputFrame, quality);
+                (geometry.Left + 1) * 0.5f * targetWidth,
+                (1 - geometry.Top) * 0.5f * targetHeight,
+                (geometry.Right + 1) * 0.5f * targetWidth,
+                (1 - geometry.Bottom) * 0.5f * targetHeight);
+            ReadGpuTiming();
+            var sampleGpu = BeginGpuSample();
+            LibplaceboNative.ResetRendererErrors(_renderer);
+            var rendered = LibplaceboNative.Render(_renderer, image, outputFrame, quality,
+                hooks?.Pointer ?? 0, hooks?.Count ?? 0);
+            if (sampleGpu)
+            {
+                _context.End(_timestampEnd!);
+                _gpuTimingPending = true;
+            }
+            var errors = LibplaceboNative.GetRendererErrors(_renderer);
+            if ((errors.Errors & HookError) != 0)
+                return RejectHooks(hooks == _pendingHooks, quality,
+                    $"libplacebo 禁用了 {errors.NumDisabledHooks} 个自定义 Shader。");
+            if (rendered && _pendingProfile != null)
+                CommitPending();
+            return rendered;
         }
         finally
         {
@@ -157,6 +260,95 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
             defaultSource?.Dispose();
         }
     }
+
+    private bool BeginGpuSample()
+    {
+        if (_gpuTimingPending || _timestampDisjoint == null || ++_gpuFrame % 30 != 0)
+            return false;
+        _context.End(_timestampDisjoint);
+        _context.End(_timestampStart!);
+        return true;
+    }
+
+    private void ReadGpuTiming()
+    {
+        if (!_gpuTimingPending)
+            return;
+        try
+        {
+            var disjoint = _context.GetData<QueryDataTimestampDisjoint>(_timestampDisjoint!, AsyncGetDataFlags.DoNotFlush);
+            var start = _context.GetData<ulong>(_timestampStart!, AsyncGetDataFlags.DoNotFlush);
+            var end = _context.GetData<ulong>(_timestampEnd!, AsyncGetDataFlags.DoNotFlush);
+            _gpuTimingPending = false;
+            if (disjoint.Disjoint || disjoint.Frequency == 0)
+                return;
+            var milliseconds = (end - start) * 1000.0 / disjoint.Frequency;
+            if (!double.IsFinite(milliseconds) || milliseconds < 0)
+                return;
+            _lastGpuMilliseconds = milliseconds;
+            _gpuSamples.Enqueue(milliseconds);
+            while (_gpuSamples.Count > 60)
+                _gpuSamples.Dequeue();
+        }
+        catch (Exception ex) when (ex.HResult == 1)
+        {
+        }
+    }
+
+    private double? GpuP95()
+    {
+        if (_gpuSamples.Count == 0)
+            return null;
+        var sorted = _gpuSamples.OrderBy(value => value).ToArray();
+        return sorted[(int)Math.Ceiling(sorted.Length * 0.95) - 1];
+    }
+
+    private bool RejectHooks(bool candidate, LibplaceboQuality quality, string reason)
+    {
+        LastFailureWasShader = true;
+        _warning = reason;
+        if (candidate)
+        {
+            _quarantined.Add(_pendingKey);
+            _pendingHooks?.Dispose();
+            _pendingHooks = null;
+            _pendingProfile = null;
+            _pendingKey = "";
+        }
+        else
+        {
+            _activeHooks?.Dispose();
+            _activeHooks = null;
+            _activeProfile = ResolvedRenderProfile.Fallback(quality switch
+            {
+                LibplaceboQuality.Fast => VideoRenderQuality.Performance,
+                LibplaceboQuality.Balanced => VideoRenderQuality.Balanced,
+                _ => VideoRenderQuality.HighQuality
+            });
+            _activeKey = "";
+        }
+        LibplaceboNative.ResetRendererErrors(_renderer);
+        LibplaceboNative.FlushRenderer(_renderer);
+        return false;
+    }
+
+    private void CommitPending()
+    {
+        _activeHooks?.Dispose();
+        _activeHooks = _pendingHooks;
+        _activeProfile = _pendingProfile;
+        _activeKey = _pendingKey;
+        _pendingHooks = null;
+        _pendingProfile = null;
+        _pendingKey = "";
+        LibplaceboNative.FlushRenderer(_renderer);
+    }
+
+    private static string ProfileKey(ResolvedRenderProfile profile) =>
+        $"{profile.Revision}|{profile.ProfileId}|{profile.RuleName}|{profile.Quality}|"
+        + string.Join(";", profile.Shaders.Select(shader => shader.File + ":"
+            + string.Join(",", shader.Parameters.OrderBy(parameter => parameter.Key)
+                .Select(parameter => $"{parameter.Key}={parameter.Value:R}"))));
 
     private ID3D11Texture2D? DefaultInput(ID3D11Texture2D source)
     {
@@ -173,6 +365,16 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
 
     public void Dispose()
     {
+        _pendingHooks?.Dispose();
+        _pendingHooks = null;
+        _activeHooks?.Dispose();
+        _activeHooks = null;
+        _timestampEnd?.Dispose();
+        _timestampEnd = null;
+        _timestampStart?.Dispose();
+        _timestampStart = null;
+        _timestampDisjoint?.Dispose();
+        _timestampDisjoint = null;
         if (_renderer != 0)
             LibplaceboNative.DestroyRenderer(ref _renderer);
         if (_device != 0)
@@ -210,7 +412,7 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
                 VideoColorMatrix.Bt601 => 1,
                 VideoColorMatrix.Bt709 => 2,
                 VideoColorMatrix.Bt2020 => 4,
-                _ => 0
+                _ => 1
             },
             Levels = color.Range switch
             {

@@ -92,14 +92,15 @@ public sealed partial class PlayerPage : Page
         DirectShowProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
         _presenter.RenderQuality = App.Host.Settings.RenderQuality;
         _presenter.OutputRange = App.Host.Settings.RgbOutputRange;
+        InitializeRenderRules();
         App.Host.SettingsChanged += () =>
         {
-            _presenter.RenderQuality = App.Host.Settings.RenderQuality;
             _presenter.OutputRange = App.Host.Settings.RgbOutputRange;
-            _presenter.Refresh();
+            ApplyRenderProfile(true);
         };
         VideoHost.SizeChanged += (_, _) =>
         {
+            ApplyRenderProfile();
             _presenter.Refresh();
             LayoutSubtitle();
         };
@@ -128,6 +129,7 @@ public sealed partial class PlayerPage : Page
         {
             if (!active)
                 DispatcherQueue.TryEnqueue(StopLiveSubtitlesOnMediaChange);
+            DispatcherQueue.TryEnqueue(() => ApplyRenderProfile(true));
         };
         PlaylistView.ItemsSource = playback.Playlist.Items;
         UpdateRepeatButton();
@@ -164,7 +166,10 @@ public sealed partial class PlayerPage : Page
             if (_statusHold != null)
                 ApplyStatusText();
             if (++_pipelineTicks % 10 == 0)
+            {
+                ApplyRenderProfile();
                 _presenter.Refresh();
+            }
             if (_pipelineTicks % 50 == 0 && PipelinePanel.Visibility == Visibility.Visible)
                 _ = RefreshPipelineAsync();
             AdjustTimerInterval();
@@ -471,6 +476,7 @@ public sealed partial class PlayerPage : Page
 
     private void OnVideoFrame(FrameLease frame)
     {
+        ObserveRenderFrame(frame);
         _presenter.Submit(frame);
         if (!_presenter.HasLastFrame || Interlocked.Exchange(ref _snapshotArmed, 1) == 1)
             return;
@@ -1832,6 +1838,7 @@ public sealed partial class PlayerPage : Page
             text += $"\n\n显示输出\n显示器：{(string.IsNullOrWhiteSpace(output.DeviceName) ? "未知" : output.DeviceName)}\n模式：{output.Mode}\n交换链：{output.SwapChainFormat} / {output.SwapChainColorSpace}\n显示代际：{output.DisplayGeneration}";
             if (!string.IsNullOrWhiteSpace(output.Reason))
                 text += $"\n说明：{output.Reason}";
+            text += RenderDiagnostics();
             if (!App.Host.Exiting)
                 PipelineText.Text = text;
         }

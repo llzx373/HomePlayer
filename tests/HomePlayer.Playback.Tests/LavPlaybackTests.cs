@@ -138,6 +138,38 @@ public sealed class LavPlaybackTests
                     ViewDimension = ShaderResourceViewDimension.Texture2D,
                     Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
                 });
+
+            using var renderer = new LibplaceboRenderer(outputDevice, outputContext);
+            var preset = BuiltInRenderPresets.Profiles.Single(profile => profile.Id == BuiltInRenderPresets.LiveActionId);
+            renderer.UpdateProfile(new ResolvedRenderProfile(preset.Id, null, VideoRenderQuality.HighQuality,
+                preset.Shaders.Select(shader => new ResolvedRenderShader(shader.File, shader.Parameters)).ToArray(), "lav-e2e"),
+                ReadBuiltInShader);
+            var targetWidth = gpu.Width * 2;
+            var targetHeight = gpu.Height * 2;
+            using var target = outputDevice.CreateTexture2D(new Texture2DDescription
+            {
+                Width = (uint)targetWidth,
+                Height = (uint)targetHeight,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = Format.B8G8R8A8_UNorm,
+                SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.RenderTarget
+            });
+            var geometry = VideoAspect.Quad(targetWidth, targetHeight, gpu.Width, gpu.Height, AspectMode.Stretch, false);
+            var rendered = renderer.Render(texture, texture, gpu.Resource.Subresource, gpu.Resource.Subresource,
+                gpu.PixelFormat, false, gpu.Color, target, gpu.Width, gpu.Height, targetWidth, targetHeight,
+                geometry, 1, 1, false, LibplaceboQuality.HighQuality);
+            Assert.True(rendered, renderer.Status.Warning);
+            var captured = D3D11FrameCapture.CopyBgra(outputDevice, outputContext, target, false);
+            Assert.True(captured.Data.Chunk(4).Any(pixel => pixel[0] > 0 || pixel[1] > 0 || pixel[2] > 0),
+                "The LAV frame became black after shared-plane rendering");
+            if (Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_EXPECT_RED") == "1")
+                Assert.All(captured.Data.Chunk(4), pixel =>
+                    Assert.True(pixel[2] > 180 && pixel[1] < 80 && pixel[0] < 80,
+                        $"Expected red, got B={pixel[0]} G={pixel[1]} R={pixel[2]}"));
+
             var received = 1;
             var continuous = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             void Continuous(FrameLease next)
@@ -328,5 +360,11 @@ public sealed class LavPlaybackTests
         Assert.False(engine.IsPlaying);
         Assert.Null(engine.ExternalAudioPath);
         engine.Stop();
+    }
+
+    private static string ReadBuiltInShader(string file)
+    {
+        var relative = BuiltInRenderPresets.ShaderPath(file).Replace('/', Path.DirectorySeparatorChar);
+        return File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "render", relative));
     }
 }

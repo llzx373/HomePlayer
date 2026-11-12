@@ -38,6 +38,7 @@
     <Content Include="..\..\NOTICE.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\sbom.json" Link="sbom.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\libplacebo\**\*.*" Link="libplacebo\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\third_party\shaders\**\*.*" Link="render\shaders\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper\**\*.*" Link="ai\whisper\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\ai\whisper-cuda\**\*.*" Link="ai\whisper-cuda\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

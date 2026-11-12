@@ -74,12 +74,66 @@ public sealed class D3D11PlaybackTests
                     ViewDimension = ShaderResourceViewDimension.Texture2D,
                     Texture2D = new Texture2DShaderResourceView { MostDetailedMip = 0, MipLevels = 1 }
                 });
+
+            using var renderer = new LibplaceboRenderer(device, context);
+            var preset = BuiltInRenderPresets.Profiles.Single(profile => profile.Id == BuiltInRenderPresets.LiveActionId);
+            var targetWidth = gpu.Width * 2;
+            var targetHeight = gpu.Height * 2;
+            using var target = device.CreateTexture2D(new Texture2DDescription
+            {
+                Width = (uint)targetWidth,
+                Height = (uint)targetHeight,
+                MipLevels = 1,
+                ArraySize = 1,
+                Format = Format.B8G8R8A8_UNorm,
+                SampleDescription = new SampleDescription(1, 0),
+                Usage = ResourceUsage.Default,
+                BindFlags = BindFlags.RenderTarget
+            });
+            var geometry = VideoAspect.Quad(targetWidth, targetHeight, gpu.Width, gpu.Height, AspectMode.Stretch, false);
+            var rendered = renderer.Render(texture, texture, gpu.Resource.Subresource, gpu.Resource.Subresource,
+                gpu.PixelFormat, false, gpu.Color, target, gpu.Width, gpu.Height, targetWidth, targetHeight,
+                geometry, 1, 1, false, LibplaceboQuality.HighQuality);
+            Assert.True(rendered, renderer.Status.Warning);
+            var captured = D3D11FrameCapture.CopyBgra(device, context, target, false);
+            AssertRedIfRequested(captured, "without shaders");
+
+            renderer.UpdateProfile(new ResolvedRenderProfile(preset.Id, null, VideoRenderQuality.HighQuality,
+                preset.Shaders.Select(shader => new ResolvedRenderShader(shader.File, shader.Parameters)).ToArray(), "e2e"),
+                ReadBuiltInShader);
+            rendered = renderer.Render(texture, texture, gpu.Resource.Subresource, gpu.Resource.Subresource,
+                gpu.PixelFormat, false, gpu.Color, target, gpu.Width, gpu.Height, targetWidth, targetHeight,
+                geometry, 1, 1, false, LibplaceboQuality.HighQuality);
+
+            Assert.True(rendered, renderer.Status.Warning);
+            Assert.Equal(preset.Id, renderer.Status.ProfileId);
+            Assert.Equal(preset.Shaders.Count, renderer.Status.Shaders.Count);
+            captured = D3D11FrameCapture.CopyBgra(device, context, target, false);
+            Assert.True(captured.Data.Chunk(4).Any(pixel => pixel[0] > 0 || pixel[1] > 0 || pixel[2] > 0),
+                "The decoded frame became black after shared-plane rendering");
+            AssertRedIfRequested(captured, "with the live-action preset");
         }
         finally
         {
             frame.ReturnBuffer();
             player.Pause();
         }
+    }
+
+    private static void AssertRedIfRequested(D3D11CapturedFrame captured, string stage)
+    {
+        if (Environment.GetEnvironmentVariable("HOMEPLAYER_TEST_EXPECT_RED") != "1")
+            return;
+        var invalid = captured.Data.Chunk(4).FirstOrDefault(pixel =>
+            pixel[2] <= 180 || pixel[1] >= 80 || pixel[0] >= 80);
+        Assert.True(invalid == null, invalid == null ? "" :
+            $"Expected red {stage}, got B={invalid[0]} G={invalid[1]} R={invalid[2]}");
+    }
+
+    private static string ReadBuiltInShader(string file)
+    {
+        var relative = BuiltInRenderPresets.ShaderPath(file).Replace('/', Path.DirectorySeparatorChar);
+        return File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "render", relative));
     }
 
     private static long ToInt64(Vortice.Luid value) => (uint)value.LowPart | ((long)value.HighPart << 32);

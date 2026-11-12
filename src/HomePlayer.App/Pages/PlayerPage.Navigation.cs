@@ -37,6 +37,7 @@ public sealed partial class PlayerPage
     {
         ChaptersMenu_Opening(sender, e);
         BookmarksMenu_Opening(sender, e);
+        RenderProfileMenu_Opening();
     }
 
     private void ChaptersMenu_Opening(object sender, object e)

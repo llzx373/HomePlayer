@@ -13,7 +13,7 @@ public enum LibplaceboQuality
     HighQuality
 }
 
-public static unsafe class LibplaceboNative
+public static unsafe partial class LibplaceboNative
 {
     private static readonly object Gate = new();
     private static readonly string[] RequiredFiles =
@@ -92,7 +92,8 @@ public static unsafe class LibplaceboNative
         return wrap(gpu, &parameters);
     }
 
-    public static bool Render(nint renderer, PlFrame image, PlFrame target, LibplaceboQuality quality)
+    public static bool Render(nint renderer, PlFrame image, PlFrame target, LibplaceboQuality quality,
+        nint hooks = 0, int hookCount = 0)
     {
         var preset = quality switch
         {
@@ -100,7 +101,11 @@ public static unsafe class LibplaceboNative
             LibplaceboQuality.Balanced => GetExport("pl_render_default_params"),
             _ => GetExport("pl_render_high_quality_params")
         };
-        return pl_render_image(renderer, image, target, preset);
+        byte* parameters = stackalloc byte[PlRenderParams.Size360];
+        Buffer.MemoryCopy((void*)preset, parameters, PlRenderParams.Size360, PlRenderParams.Size360);
+        *(nint*)(parameters + PlRenderParams.HooksOffset360) = hooks;
+        *(int*)(parameters + PlRenderParams.NumHooksOffset360) = hookCount;
+        return pl_render_image(renderer, image, target, (nint)parameters);
     }
 
     public static void DestroyTexture(nint gpu, ref nint texture)

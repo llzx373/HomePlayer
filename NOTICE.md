@@ -40,6 +40,12 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 同目录还包含其 Little CMS、libdovi、shaderc、SPIRV-Cross、Vulkan Loader 和 MinGW 运行时依赖，各自许可证一并保留，不取代 HomePlayer 的 MIT 许可。
 
+## 内置视频 Shader
+
+快速画质方案和高级自定义规则可使用随包的 mpv 兼容 Shader，包括 Anime4K、ArtCNN、CuNNy、FSRCNNX、RAVU、NNEDI3、SSimSuperRes/SSimDownscaler、CfL Prediction、KrigBilateral、adaptive-sharpen、NLMeans、guided 和 hdeband。这些文件保持上游源码与版权声明，不使用 HomePlayer 的 MIT 许可替代其原协议。
+
+各文件的固定上游版本、来源链接和协议见 `third_party/shaders/README.md`，完整许可文本见 `third_party/shaders/licenses`；安装后位于程序目录的 `render\shaders`。其中包含 MIT、BSD-2-Clause、LGPL-2.1-or-later 和 LGPL-3.0-or-later 许可的组件。
+
 ## 本地 AI 运行时与模型
 
 本地语音识别和字幕翻译使用独立进程运行，不包含在 HomePlayer 主程序中：

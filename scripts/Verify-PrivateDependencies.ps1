@@ -50,7 +50,18 @@ foreach ($relative in $expected.Keys | Sort-Object) {
         checksums = @(@{ algorithm = "SHA256"; checksumValue = $actual })
     }
 }
-foreach ($license in @("ffmpeg/LICENSE.txt", "libplacebo/licenses/libplacebo/LICENSE", "ai/whisper/LICENSE.txt", "ai/whisper-cuda/LICENSE.txt", "ai/cuda-runtime/NOTICE.txt", "ai/sherpa-cuda/LICENSE.txt", "ai/cuda12.8-cudart/NOTICE.txt")) {
+$shaderRoot = Join-Path $root "third_party/shaders"
+foreach ($shader in Get-ChildItem -Path $shaderRoot -Recurse -File | Where-Object { $_.Extension -in @(".glsl", ".hook") } | Sort-Object FullName) {
+    $relative = $shader.FullName.Substring($root.Length + 1).Replace('\', '/')
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $shader.FullName).Hash.ToLowerInvariant()
+    $id = ($relative -replace "[^A-Za-z0-9.-]", "-")
+    $files += [ordered]@{
+        fileName = $relative
+        SPDXID = "SPDXRef-File-$id"
+        checksums = @(@{ algorithm = "SHA256"; checksumValue = $actual })
+    }
+}
+foreach ($license in @("ffmpeg/LICENSE.txt", "libplacebo/licenses/libplacebo/LICENSE", "ai/whisper/LICENSE.txt", "ai/whisper-cuda/LICENSE.txt", "ai/cuda-runtime/NOTICE.txt", "ai/sherpa-cuda/LICENSE.txt", "ai/cuda12.8-cudart/NOTICE.txt", "shaders/README.md", "shaders/licenses/AN3223.txt", "shaders/licenses/Anime4K.txt", "shaders/licenses/ArtCNN.txt", "shaders/licenses/CfL-Prediction.txt", "shaders/licenses/CuNNy.txt", "shaders/licenses/igv.txt", "shaders/licenses/mpv-prescalers.txt")) {
     if (-not (Test-Path (Join-Path $root "third_party/$license") -PathType Leaf)) {
         throw "Missing license: $license"
     }
@@ -90,6 +101,16 @@ function Add-Package($name, $version, $license, $download, $packageFiles) {
 }
 Add-Package "FFmpeg" "n9.0.2-45-g1e65c6cd5d" "LGPL-3.0-or-later" "https://github.com/BtbN/FFmpeg-Builds" @($files | Where-Object { $_.fileName.StartsWith("third_party/ffmpeg/") })
 Add-Package "libplacebo" "7.360.1" "LGPL-2.1-or-later" "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libplacebo-7.360.1-1-any.pkg.tar.zst" @($files | Where-Object { $_.fileName.StartsWith("third_party/libplacebo/") })
+Add-Package "Anime4K" "7684e9586f8dcc738af08a1cdceb024cc184f426" "MIT" "https://github.com/bloc97/Anime4K" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/anime4k/") })
+Add-Package "ArtCNN" "0837e5326e710f49e2ab0a8d995da0708047442e" "MIT" "https://github.com/Artoriuz/ArtCNN" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/artcnn/") })
+Add-Package "CuNNy" "906031bb00c15dd6a6bbbaa21c0eb0b724ca8437" "LGPL-3.0-or-later" "https://github.com/funnyplanter/CuNNy" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/cunny/") })
+Add-Package "FSRCNNX" "1.1" "LGPL-3.0-or-later" "https://github.com/igv/FSRCNN-TensorFlow/releases/tag/1.1" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/fsrcnnx/") })
+Add-Package "mpv-prescalers" "b3f0a59d68f33b7162051ea5970a5169558f0ea2" "LGPL-3.0-or-later" "https://github.com/bjin/mpv-prescalers" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/ravu/") -or $_.fileName.StartsWith("third_party/shaders/nnedi3/") })
+Add-Package "SSim shaders" "gist-2364ffa6e81540f29cb7ab4c9bc05b6b-36508af3ffc84410fe39761d6969be10" "LGPL-3.0-or-later" "https://gist.github.com/igv" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/ssim/") })
+Add-Package "CfL Prediction" "066dff964b83aa34e893de25d590874bf8c8e94f" "MIT" "https://github.com/Artoriuz/glsl-chroma-from-luma-prediction" @($files | Where-Object { $_.fileName -eq "third_party/shaders/chroma/CfL_Prediction.glsl" })
+Add-Package "KrigBilateral" "gist-a015fc885d5c22e6891820ad89555637" "LGPL-3.0-or-later" "https://gist.github.com/igv/a015fc885d5c22e6891820ad89555637" @($files | Where-Object { $_.fileName -eq "third_party/shaders/chroma/KrigBilateral.glsl" })
+Add-Package "adaptive-sharpen" "gist-8a77e4eb8276753b54bb94c1c50c317e" "BSD-2-Clause" "https://gist.github.com/igv/8a77e4eb8276753b54bb94c1c50c317e" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/sharpening/") })
+Add-Package "AN3223 shaders" "4413db6c1b47aa70ffce40c5a91158e518881718" "LGPL-2.1-or-later" "https://github.com/AN3223/dotfiles" @($files | Where-Object { $_.fileName.StartsWith("third_party/shaders/restoration/") })
 Add-Package "whisper.cpp" "v1.8.3" "MIT" "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.8.3" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/whisper/") })
 Add-Package "NVIDIA CUDA Runtime" "12.4" "LicenseRef-NVIDIA-CUDA-EULA" "https://github.com/ggml-org/llama.cpp/releases/tag/b11960" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/cuda-runtime/") })
 Add-Package "sherpa-onnx" "2.0.1" "Apache-2.0" "https://github.com/k2-fsa/sherpa-onnx/releases/tag/v2.0.1" @($files | Where-Object { $_.fileName.StartsWith("third_party/ai/sherpa-cuda/") })

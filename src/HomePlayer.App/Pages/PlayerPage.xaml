@@ -331,7 +331,7 @@
                                 Click="Previous_Click">
                                 <FontIcon x:Name="PreviousIcon" Glyph="&#xE892;" FontSize="16" />
                             </Button>
-                            <Grid Width="124" VerticalAlignment="Center">
+                            <Grid Width="148" VerticalAlignment="Center">
                                 <Button
                                     x:Name="SeekBackButton"
                                     Style="{StaticResource PlayerSeekBackButton}"
@@ -359,6 +359,29 @@
                                     ToolTipService.ToolTip="播放/暂停"
                                     Click="Play_Click">
                                     <FontIcon x:Name="PlayIcon" Glyph="&#xE768;" FontSize="20" />
+                                </Button>
+                                <Button
+                                    x:Name="PlayMenuButton"
+                                    Width="18"
+                                    Height="36"
+                                    MinWidth="0"
+                                    Padding="0"
+                                    Margin="86,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    AutomationProperties.Name="快速画质方案"
+                                    ToolTipService.ToolTip="快速画质方案">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="10" />
+                                    <Button.Flyout>
+                                        <MenuFlyout x:Name="QuickRenderFlyout" Placement="Bottom" Opening="QuickRenderFlyout_Opening">
+                                            <RadioMenuFlyoutItem Text="自动（按规则）" GroupName="QuickRenderProfile" Tag="" Click="QuickRenderItem_Click" />
+                                            <RadioMenuFlyoutItem Text="动画增强" GroupName="QuickRenderProfile" Tag="builtin.anime" Click="QuickRenderItem_Click" />
+                                            <RadioMenuFlyoutItem Text="真人增强" GroupName="QuickRenderProfile" Tag="builtin.live-action" Click="QuickRenderItem_Click" />
+                                            <RadioMenuFlyoutItem Text="低码率修复" GroupName="QuickRenderProfile" Tag="builtin.low-bitrate" Click="QuickRenderItem_Click" />
+                                        </MenuFlyout>
+                                    </Button.Flyout>
                                 </Button>
                             </Grid>
                             <Button
@@ -599,6 +622,7 @@
                                 <MenuFlyoutItem Text="清除 A-B 循环" Click="ClearLoop_Click" />
                                 <MenuFlyoutSubItem x:Name="ChaptersMenu" Text="章节" />
                                 <MenuFlyoutSubItem x:Name="BookmarksMenu" Text="书签" />
+                                <MenuFlyoutSubItem x:Name="RenderProfileMenu" Text="渲染配置" />
                                 <MenuFlyoutSeparator />
                                 <ToggleMenuFlyoutItem
                                     x:Name="FitWindowMenuItem"

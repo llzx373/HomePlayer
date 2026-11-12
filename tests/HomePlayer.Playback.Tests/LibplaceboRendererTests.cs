@@ -20,6 +20,14 @@ public sealed unsafe class LibplaceboRendererTests
         Assert.Equal(728, Marshal.SizeOf<LibplaceboNative.PlFrame>());
         Assert.Equal(8, Marshal.OffsetOf<LibplaceboNative.PlFrame>(nameof(LibplaceboNative.PlFrame.Planes)).ToInt32());
         Assert.Equal(512, Marshal.OffsetOf<LibplaceboNative.PlFrame>(nameof(LibplaceboNative.PlFrame.FilmGrain)).ToInt32());
+        Assert.Equal(288, Marshal.SizeOf<LibplaceboNative.PlRenderParams>());
+        Assert.Equal(136, Marshal.OffsetOf<LibplaceboNative.PlRenderParams>(nameof(LibplaceboNative.PlRenderParams.Hooks)).ToInt32());
+        Assert.Equal(144, Marshal.OffsetOf<LibplaceboNative.PlRenderParams>(nameof(LibplaceboNative.PlRenderParams.NumHooks)).ToInt32());
+        Assert.Equal(240, Marshal.OffsetOf<LibplaceboNative.PlRenderParams>(nameof(LibplaceboNative.PlRenderParams.InfoCallback)).ToInt32());
+        Assert.Equal(56, Marshal.SizeOf<LibplaceboNative.PlHook>());
+        Assert.Equal(56, Marshal.SizeOf<LibplaceboNative.PlHookPar>());
+        Assert.Equal(4, Marshal.SizeOf<LibplaceboNative.PlVarData>());
+        Assert.Equal(24, Marshal.SizeOf<LibplaceboNative.PlRenderErrors>());
     }
 
     [Theory]
@@ -40,13 +48,13 @@ public sealed unsafe class LibplaceboRendererTests
     }
 
     [Theory]
-    [InlineData(VideoPixelFormat.Nv12, true, false)]
-    [InlineData(VideoPixelFormat.P010, true, false)]
-    [InlineData(VideoPixelFormat.Bgra32, true, true)]
-    [InlineData(VideoPixelFormat.Nv12, false, true)]
-    public void Shared_planar_input_has_an_explicit_basic_fallback(VideoPixelFormat format, bool shared, bool supported)
+    [InlineData(VideoPixelFormat.Nv12, true)]
+    [InlineData(VideoPixelFormat.P010, true)]
+    [InlineData(VideoPixelFormat.Bgra32, true)]
+    [InlineData(VideoPixelFormat.Nv12, false)]
+    public void Known_inputs_support_separate_and_shared_planes(VideoPixelFormat format, bool shared)
     {
-        Assert.Equal(supported, LibplaceboRenderer.SupportsInput(format, shared));
+        Assert.True(LibplaceboRenderer.SupportsInput(format, shared));
     }
 
     [Fact]
@@ -61,8 +69,19 @@ public sealed unsafe class LibplaceboRendererTests
         AssertSolidRed(VideoPixelFormat.Bgra32, LibplaceboQuality.Fast, ResourceUsage.Dynamic, hdrOutput: false, VideoOutputRange.Limited);
     }
 
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(1.25f)]
+    [InlineData(1.5f)]
+    [InlineData(2f)]
+    public void Output_crop_is_independent_of_composition_scale(float compositionScale)
+    {
+        AssertSolidRed(VideoPixelFormat.Bgra32, LibplaceboQuality.HighQuality, ResourceUsage.Dynamic,
+            hdrOutput: false, compositionScale: compositionScale);
+    }
+
     private static void AssertSolidRed(VideoPixelFormat format, LibplaceboQuality quality, ResourceUsage usage, bool hdrOutput,
-        VideoOutputRange outputRange = VideoOutputRange.Full)
+        VideoOutputRange outputRange = VideoOutputRange.Full, float compositionScale = 1)
     {
         if (!LibplaceboRenderer.IsAvailable)
             Assert.Fail(LibplaceboRenderer.Version);
@@ -111,7 +130,7 @@ public sealed unsafe class LibplaceboRendererTests
         var geometry = VideoAspect.Quad(4, 4, 2, 2, AspectMode.Stretch, bottomUp: false);
 
         var rendered = renderer.Render(luma, chroma, 0, 0, format, false, color, target,
-            2, 2, 4, 4, geometry, 1, 1, hdrOutput, quality, outputRange);
+            2, 2, 4, 4, geometry, compositionScale, compositionScale, hdrOutput, quality, outputRange);
 
         Assert.True(rendered);
         var captured = D3D11FrameCapture.CopyBgra(device, context, target, hdrOutput);

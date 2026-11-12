@@ -229,7 +229,10 @@ public sealed class VideoPresenter : IDisposable
 
     public Func<bool>? CanRender { get; set; }
     public VideoRenderQuality RenderQuality { get; set; } = VideoRenderQuality.Basic;
+    public ResolvedRenderProfile RenderProfile { get; set; } = ResolvedRenderProfile.Fallback(VideoRenderQuality.Basic);
+    public Func<string, string>? ShaderReader { get; set; }
     public VideoOutputRange OutputRange { get; set; } = VideoOutputRange.Full;
+    public event Action<LibplaceboRenderStatus?>? RenderStatusChanged;
 
     public DisplayOutputInfo CurrentDisplayOutput
     {
@@ -237,6 +240,15 @@ public sealed class VideoPresenter : IDisposable
         {
             lock (_gate)
                 return _displayInfo;
+        }
+    }
+
+    public (int Width, int Height, bool Hdr, long Generation) CurrentRenderTarget
+    {
+        get
+        {
+            lock (_gate)
+                return (_width, _height, _hdrOutput, _displayGeneration);
         }
     }
 
@@ -811,6 +823,8 @@ public sealed class VideoPresenter : IDisposable
             if (!LibplaceboRenderer.SupportsInput(_framePixelFormat, chroma != null && ReferenceEquals(source, chroma)))
                 return false;
             _libplacebo ??= new LibplaceboRenderer(_device, _context!);
+            if (ShaderReader != null)
+                _libplacebo.UpdateProfile(RenderProfile, ShaderReader);
             using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
             var quality = RenderQuality switch
             {
@@ -839,14 +853,30 @@ public sealed class VideoPresenter : IDisposable
                 _hdrOutput,
                 quality,
                 OutputRange);
+            RenderStatusChanged?.Invoke(_libplacebo.Status);
             if (!rendered)
+            {
+                if (_libplacebo.LastFailureWasShader)
+                {
+                    Trace("custom shader rejected; previous render profile preserved: " + _libplacebo.Status.Warning);
+                    return false;
+                }
                 throw new InvalidOperationException("libplacebo 渲染调用失败。");
+            }
             return true;
+        }
+        catch (LibplaceboShaderException ex)
+        {
+            Trace(ex.Message);
+            if (_libplacebo != null)
+                RenderStatusChanged?.Invoke(_libplacebo.Status);
+            return false;
         }
         catch (Exception ex)
         {
             _libplaceboFailed = true;
-            Trace("libplacebo failed, fallback to Basic: " + ex.Message);
+            Trace("libplacebo failed, fallback to Basic: " + ex);
+            RenderStatusChanged?.Invoke(null);
             return false;
         }
     }
@@ -1306,8 +1336,8 @@ public sealed class VideoPresenter : IDisposable
         if (chromaFormat != Format.Unknown)
             _chromaView = CreateGpuView(texture, resource.Subresource, description.ArraySize, chromaFormat);
         _gpuTexture = resource.Texture;
-        _gpuTextureResource = texture;
-        texture.AddRef();
+        _gpuTextureResource = new ID3D11Texture2D(texture.NativePointer);
+        _gpuTextureResource.AddRef();
         _gpuSubresource = resource.Subresource;
         _frameWidth = frame.Width;
         _frameHeight = frame.Height;
