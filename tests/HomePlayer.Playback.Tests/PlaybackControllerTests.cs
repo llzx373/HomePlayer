@@ -89,6 +89,43 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public async Task Pause_does_not_raise_playback_active_changed()
+    {
+        var engine = new FakeEngine();
+        using var controller = Create(engine);
+        var states = new List<bool>();
+        controller.PlaybackActiveChanged += states.Add;
+        await controller.PlayPathsAsync(["video.mkv"], 0);
+        states.Clear();
+
+        controller.Pause();
+
+        Assert.Empty(states);
+        Assert.False(engine.IsPlaying);
+    }
+
+    [Fact]
+    public async Task Switching_paths_raises_playback_active_false_then_true()
+    {
+        var first = new FakeEngine();
+        var second = new FakeEngine();
+        var engines = new Queue<IPlaybackEngine>([first, second]);
+        using var controller = new PlaybackController(
+            action => action(),
+            () => throw new InvalidOperationException("测试不应读取编解码器"),
+            () => null,
+            openEngine: (_, _) => (engines.Dequeue(), "测试引擎"),
+            probeNext: (_, _) => Task.FromResult(new MediaProbe(100, 0, 0, null, null, null)));
+        var states = new List<bool>();
+        controller.PlaybackActiveChanged += states.Add;
+
+        await controller.PlayPathsAsync(["one.mkv"], 0);
+        await controller.PlayPathsAsync(["two.mkv"], 0);
+
+        Assert.Equal([true, false, true], states);
+    }
+
+    [Fact]
     public async Task Fault_reopens_current_item_without_advancing()
     {
         var first = new FakeEngine();

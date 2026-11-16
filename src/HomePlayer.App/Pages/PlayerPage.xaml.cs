@@ -8,10 +8,12 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
+using Windows.UI.ViewManagement;
 using VirtualKey = Windows.System.VirtualKey;
 using WinRT.Interop;
 
@@ -41,6 +43,12 @@ public sealed partial class PlayerPage : Page
     private readonly AssSubtitlePresenter _assPresenter = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherQueueTimer _saveSettingsTimer;
+    private readonly DispatcherQueueTimer _switchTimer;
+    private Storyboard? _switchOverlayFade;
+    private string? _activeSessionPath;
+    private Guid _presentedSession;
+    private bool _mediaSwitching;
+    private Guid _switchingFromSession;
     private int _pipelineTicks;
     private bool _scrubbing;
     private bool _pointerDown;
@@ -79,6 +87,14 @@ public sealed partial class PlayerPage : Page
         _seekPreviewTimer.Interval = TimeSpan.FromMilliseconds(80);
         _seekPreviewTimer.IsRepeating = false;
         _seekPreviewTimer.Tick += SeekPreviewTimer_Tick;
+        _switchTimer = DispatcherQueue.CreateTimer();
+        _switchTimer.Interval = TimeSpan.FromSeconds(10);
+        _switchTimer.IsRepeating = false;
+        _switchTimer.Tick += (_, _) =>
+        {
+            if (_mediaSwitching)
+                EndMediaSwitch(immediate: true);
+        };
         _controlsFade = new OverlayFade(ControlsBar);
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
@@ -86,6 +102,7 @@ public sealed partial class PlayerPage : Page
         {
             CanRender = () => App.Window.IsInteractive && !Playback.UsesExternalVideoOutput
         };
+        _presenter.FramePresented += OnFramePresented;
         NativeFfmpegProvider.DeviceProvider = _presenter.GetSharedDevice;
         DirectShowProvider.DeviceProvider = _presenter.GetSharedDevice;
         NativeFfmpegProvider.HardwareAccelerationEnabled = () => App.Host.Settings.HardwareAcceleration;
@@ -113,7 +130,12 @@ public sealed partial class PlayerPage : Page
             DispatcherQueue.TryEnqueue(_assPresenter.Reset);
             RestartLiveAfterSeek();
         };
-        playback.Changed += () => DispatcherQueue.TryEnqueue(UpdateChrome);
+        playback.Changed += () => DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateChrome();
+            if (_mediaSwitching && Playback.Playlist.Current?.Error != null)
+                EndMediaSwitch(immediate: true);
+        });
         playback.VideoSizeChanged += () => DispatcherQueue.TryEnqueue(() => FitWindow(false));
         playback.Stopped += () => DispatcherQueue.TryEnqueue(() =>
         {
@@ -122,14 +144,18 @@ public sealed partial class PlayerPage : Page
             _assPresenter.Reset();
             StopLiveSubtitles();
             SyncSnapshotButton();
+            _presentedSession = Guid.Empty;
+            _activeSessionPath = null;
+            EndMediaSwitch(immediate: true);
         });
         // 换集/换片走 PlayCurrentAsync，不会触发 Stopped；这里在旧引擎释放前收掉实时字幕，
         // 避免旧视频的 ffmpeg/Sherpa/翻译进程继续占着 CPU、GPU 和文件句柄。
         playback.PlaybackActiveChanged += active =>
         {
-            if (!active)
-                DispatcherQueue.TryEnqueue(StopLiveSubtitlesOnMediaChange);
-            DispatcherQueue.TryEnqueue(() => ApplyRenderProfile(true));
+            if (DispatcherQueue.HasThreadAccess)
+                OnPlaybackActiveChanged(active);
+            else
+                DispatcherQueue.TryEnqueue(() => OnPlaybackActiveChanged(active));
         };
         PlaylistView.ItemsSource = playback.Playlist.Items;
         UpdateRepeatButton();
@@ -193,6 +219,7 @@ public sealed partial class PlayerPage : Page
             CompositionTarget.Rendering -= Progress_Rendering;
             CompositionTarget.Rendering += Progress_Rendering;
             _presenter.Resume();
+            SyncSwitchOverlay();
             FitWindow(false);
             if (!_timer.IsEnabled)
                 _timer.Start();
@@ -222,6 +249,7 @@ public sealed partial class PlayerPage : Page
         base.OnNavigatedTo(e);
         AttachWindowEvents();
         _presenter.Resume();
+        SyncSwitchOverlay();
     }
 
     private void AttachWindowEvents()
@@ -260,6 +288,114 @@ public sealed partial class PlayerPage : Page
     {
         if (IsLoaded)
             _presenter.Resume();
+    }
+
+    private void OnPlaybackActiveChanged(bool active)
+    {
+        if (active)
+        {
+            _activeSessionPath = Playback.CurrentPath;
+            if (Playback.UsesExternalVideoOutput)
+                EndMediaSwitch(immediate: true);
+        }
+        else
+        {
+            StopLiveSubtitlesOnMediaChange();
+            var next = Playback.Playlist.Current?.Path;
+            if (_presentedSession != Guid.Empty
+                && next != null
+                && !string.Equals(next, _activeSessionPath, StringComparison.OrdinalIgnoreCase))
+                BeginMediaSwitch();
+        }
+        ApplyRenderProfile(true);
+    }
+
+    private void BeginMediaSwitch()
+    {
+        if (Playback.UsesExternalVideoOutput)
+            return;
+        if (!_mediaSwitching)
+            _switchingFromSession = _presentedSession;
+        _mediaSwitching = true;
+        _presentedSession = Guid.Empty;
+        _activeSessionPath = null;
+        HideSeekPreview();
+        _assPresenter.Reset();
+        _presenter.Clear();
+        ShowSwitchOverlay();
+        _switchTimer.Stop();
+        _switchTimer.Start();
+    }
+
+    private void OnFramePresented(Guid sessionId)
+    {
+        if (!_mediaSwitching || sessionId == Guid.Empty || sessionId == _switchingFromSession)
+            return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_mediaSwitching && sessionId != _switchingFromSession)
+                EndMediaSwitch();
+        });
+    }
+
+    private void EndMediaSwitch(bool immediate = false)
+    {
+        var wasSwitching = _mediaSwitching;
+        _mediaSwitching = false;
+        _switchingFromSession = Guid.Empty;
+        _switchTimer.Stop();
+        HideSwitchOverlay(immediate || !wasSwitching);
+    }
+
+    private void SyncSwitchOverlay()
+    {
+        if (_mediaSwitching)
+            ShowSwitchOverlay();
+        else
+            HideSwitchOverlay(immediate: true);
+    }
+
+    private void ShowSwitchOverlay()
+    {
+        _switchOverlayFade?.Stop();
+        _switchOverlayFade = null;
+        SwitchOverlay.Opacity = 1;
+        SwitchOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideSwitchOverlay(bool immediate)
+    {
+        if (immediate || !SwitchOverlay.IsLoaded || !new UISettings().AnimationsEnabled)
+        {
+            _switchOverlayFade?.Stop();
+            _switchOverlayFade = null;
+            SwitchOverlay.Opacity = 0;
+            SwitchOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _switchOverlayFade?.Stop();
+        var animation = new DoubleAnimation
+        {
+            From = SwitchOverlay.Opacity,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(150),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(animation, SwitchOverlay);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Completed += (_, _) =>
+        {
+            if (!ReferenceEquals(_switchOverlayFade, storyboard))
+                return;
+            _switchOverlayFade = null;
+            SwitchOverlay.Opacity = 0;
+            SwitchOverlay.Visibility = Visibility.Collapsed;
+        };
+        _switchOverlayFade = storyboard;
+        storyboard.Begin();
     }
 
     private PlaybackController Playback => App.Host.Playback;
@@ -476,6 +612,9 @@ public sealed partial class PlayerPage : Page
 
     private void OnVideoFrame(FrameLease frame)
     {
+        if (!_mediaSwitching)
+            Interlocked.CompareExchange(ref _activeSessionPath, Playback.CurrentPath, null);
+        _presentedSession = frame.SessionId;
         ObserveRenderFrame(frame);
         _presenter.Submit(frame);
         if (!_presenter.HasLastFrame || Interlocked.Exchange(ref _snapshotArmed, 1) == 1)

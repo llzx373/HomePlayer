@@ -94,6 +94,18 @@
                         <TextBlock x:Name="PipelineText" FontFamily="Consolas" TextWrapping="Wrap" />
                     </ScrollViewer>
                 </Border>
+                <Border
+                    x:Name="SwitchOverlay"
+                    Background="Black"
+                    Opacity="0"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    AutomationProperties.Name="正在打开视频">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                        <ProgressRing Width="36" Height="36" IsActive="True" Foreground="#CCFFFFFF" />
+                        <TextBlock Text="正在打开…" Foreground="#CCFFFFFF" FontSize="14" />
+                    </StackPanel>
+                </Border>
             </Grid>
             <Border
                 x:Name="PlaylistPane"

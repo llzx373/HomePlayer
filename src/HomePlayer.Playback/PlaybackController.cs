@@ -483,6 +483,7 @@ public sealed partial class PlaybackController : IDisposable
         while (token == _token && Playlist.Current != null && failures < Playlist.Items.Count)
         {
             var item = Playlist.Current;
+            item.Error = null;
             Status = "正在打开";
             Notify();
             try
@@ -510,7 +511,6 @@ public sealed partial class PlaybackController : IDisposable
                     PlaybackActiveChanged?.Invoke(true);
                     try
                     {
-                        item.Error = null;
                         engine.SetVolume(_volume);
                         engine.SetMuted(_muted);
                         engine.SetRate(_rate);
@@ -542,6 +542,7 @@ public sealed partial class PlaybackController : IDisposable
                     catch (Exception ex)
                     {
                         DisposeEngine();
+                        item.Error = ex.Message;
                         Status = ex.Message;
                         EngineLabel = "未播放";
                         Notify();

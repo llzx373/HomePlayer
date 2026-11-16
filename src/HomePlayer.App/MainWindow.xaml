@@ -217,7 +217,9 @@
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem Content="设置" Tag="settings" Icon="Setting" />
             </NavigationView.FooterMenuItems>
-            <Frame x:Name="RootFrame" />
+            <Grid Background="Black">
+                <Frame x:Name="RootFrame" />
+            </Grid>
         </NavigationView>
         <Grid
             x:Name="OverlayTitleBar"

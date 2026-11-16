@@ -194,6 +194,8 @@ public sealed class VideoPresenter : IDisposable
     private int _frameHeight;
     private VideoPixelFormat _framePixelFormat;
     private bool _frameBottomUp;
+    private Guid _lastPresentedSession;
+    private bool _needsInitialPresent;
     private float _frameUvScaleX = 1;
     private float _frameUvScaleY = 1;
     private float _scaleX = 1;
@@ -233,6 +235,11 @@ public sealed class VideoPresenter : IDisposable
     public Func<string, string>? ShaderReader { get; set; }
     public VideoOutputRange OutputRange { get; set; } = VideoOutputRange.Full;
     public event Action<LibplaceboRenderStatus?>? RenderStatusChanged;
+
+    /// <summary>
+    /// 新会话的第一帧真正提交到交换链后触发，参数是 frame.SessionId。在渲染线程上调用。
+    /// </summary>
+    public event Action<Guid>? FramePresented;
 
     public DisplayOutputInfo CurrentDisplayOutput
     {
@@ -463,6 +470,14 @@ public sealed class VideoPresenter : IDisposable
     public void Clear()
     {
         TraceState("FramesClearRequested");
+        if (_render.IsCurrentThread)
+            ClearCore();
+        else
+            _render.Post(ClearCore);
+    }
+
+    private void ClearCore()
+    {
         FrameLease? pending;
         FrameLease? last;
         lock (_gate)
@@ -476,12 +491,12 @@ public sealed class VideoPresenter : IDisposable
         pending?.ReturnBuffer();
         if (last is D3D11FrameLease gpu && gpu.Resource.Fence != 0)
         {
-            _render.Post(() => ClearFrameAfterGpu(gpu));
+            ClearFrameAfterGpu(gpu);
             return;
         }
 
         last?.ReturnBuffer();
-        _render.Post(ClearFrame);
+        ClearFrame();
     }
 
     private void ClearFrame()
@@ -513,6 +528,26 @@ public sealed class VideoPresenter : IDisposable
             _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
             _context.OMSetRenderTargets(NoTargets, null);
             _swapChain.Present(0, PresentFlags.None);
+            _needsInitialPresent = false;
+        }
+        catch (Exception ex)
+        {
+            if (IsRecoverableDeviceError(ex) || DeviceIsLost())
+                RecoverDevice();
+        }
+    }
+
+    private void PresentBlack()
+    {
+        if (_context == null || _target == null || _swapChain == null)
+            return;
+        try
+        {
+            _context.OMSetRenderTargets(_target, null);
+            _context.ClearRenderTargetView(_target, new Color4(0, 0, 0, 1));
+            _context.OMSetRenderTargets(NoTargets, null);
+            _swapChain.Present(0, PresentFlags.None);
+            _needsInitialPresent = false;
         }
         catch (Exception ex)
         {
@@ -714,7 +749,11 @@ public sealed class VideoPresenter : IDisposable
         }
 
         if (!upload && (_frameView == null || _frameWidth < 1 || _frameHeight < 1))
+        {
+            if (_needsInitialPresent)
+                PresentBlack();
             return;
+        }
 
         var outputTransform = EnsureDisplayOutput(frame?.Color.Transfer ?? _lastFrame?.Color.Transfer ?? VideoTransferFunction.Unknown);
         try
@@ -737,7 +776,11 @@ public sealed class VideoPresenter : IDisposable
 
             var frameView = _frameView;
             if (frameView == null)
+            {
+                if (_needsInitialPresent)
+                    PresentBlack();
                 return;
+            }
 
             var yuv = _framePixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010;
             if (!TryRenderLibplacebo(frame))
@@ -767,11 +810,18 @@ public sealed class VideoPresenter : IDisposable
                 PlaybackTelemetry.Observe(frame, PresentationObservation.Submitted);
             WaitForFrameLatency();
             _swapChain.Present(0, PresentFlags.None);
+            _needsInitialPresent = false;
             if (frame != null)
             {
                 PlaybackTelemetry.Observe(frame, PresentationObservation.PresentReturned);
                 if (frame.FrameSequence % PlaybackTelemetry.FrameSampling == 0)
                     TracePresentStatistics(frame);
+                var presented = FramePresented;
+                if (presented != null && frame.SessionId != Guid.Empty && frame.SessionId != _lastPresentedSession)
+                {
+                    _lastPresentedSession = frame.SessionId;
+                    presented(frame.SessionId);
+                }
             }
         }
         catch (Exception ex)
@@ -994,6 +1044,7 @@ public sealed class VideoPresenter : IDisposable
         ApplyPanelTransform();
         using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
         _target = _device.CreateRenderTargetView(back);
+        _needsInitialPresent = true;
         ConfigureSwapChainColorSpace();
         UpdateDisplayCapabilities(true);
         try
