@@ -324,6 +324,8 @@ public sealed partial class MainWindow : Window
 
     private void HideToTray()
     {
+        // 关闭播放器即停止并关闭视频，释放解码器与滤镜图，而不是停在暂停状态。
+        App.Host.Playback.Stop();
         try
         {
             AppWindow.Hide();
@@ -332,7 +334,6 @@ public sealed partial class MainWindow : Window
         {
         }
 
-        App.Host.Playback.Pause();
         try
         {
             SuspendRendering?.Invoke();
@@ -622,7 +623,7 @@ public sealed partial class MainWindow : Window
         if (App.Host.Exiting)
             return;
         App.Host.Exiting = true;
-        _exitTrace.Run("PersistProgress", App.Host.Playback.PersistProgress);
+        _exitTrace.Run("StopPlayback", App.Host.Playback.Stop);
         _ = Task.Run(() =>
         {
             _exitTrace.Run("SaveSettings", App.Host.SaveSettings);
