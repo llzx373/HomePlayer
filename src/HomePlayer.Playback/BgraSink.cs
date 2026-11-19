@@ -24,6 +24,8 @@ public class BgraSinkFilter : IBaseFilterSink
     private long _pausedFrameTicks = -1;
     private long _pausedFrameStamp;
     private readonly ManualResetEventSlim _pausedFrameShown = new(false);
+    private readonly ManualResetEventSlim _prerollDone = new(true);
+    private int _prerollWaiting = RendererGate.PrerollReady;
 
     public BgraSinkFilter() => _pin = new BgraSinkPin(this);
 
@@ -48,17 +50,20 @@ public class BgraSinkFilter : IBaseFilterSink
 
     public int Stop()
     {
-        _state = 0;
+        _state = RendererGate.Stopped;
         _completed = false;
         _playClock.Reset();
         ReplaceClock(0);
         Interlocked.Exchange(ref _pausedFrameTicks, -1);
+        ReleasePreroll();
         return Hr.Ok;
     }
 
     public int Pause()
     {
-        _state = 1;
+        if (RendererGate.NeedsPreroll(_state, RendererGate.Paused))
+            BeginPreroll();
+        _state = RendererGate.Paused;
         if (_playClock.IsRunning)
             _playClock.Stop();
         return Hr.Ok;
@@ -75,6 +80,15 @@ public class BgraSinkFilter : IBaseFilterSink
 
     public int GetState(int timeoutMs, out int state)
     {
+        state = _state;
+        if (Volatile.Read(ref _prerollWaiting) != RendererGate.PrerollWaiting)
+            return Hr.Ok;
+        // 轮询不等待。无限等待最多 2 秒后放行：和 Native seek 预滚动同一上限，
+        // 避免解码器不出帧时把滤镜图永久卡在 Run。迟到丢帧逻辑保持不变。
+        if (timeoutMs == 0)
+            return Hr.StateIntermediate;
+        var budget = timeoutMs < 0 ? 2000 : Math.Min(timeoutMs, 2000);
+        _prerollDone.Wait(TimeSpan.FromMilliseconds(budget));
         state = _state;
         return Hr.Ok;
     }
@@ -215,11 +229,35 @@ public class BgraSinkFilter : IBaseFilterSink
         return true;
     }
 
+    internal void ReleasePreroll()
+    {
+        Volatile.Write(ref _prerollWaiting, RendererGate.PrerollReady);
+        _prerollDone.Set();
+    }
+
+    private void BeginPreroll()
+    {
+        _prerollDone.Reset();
+        Volatile.Write(ref _prerollWaiting, RendererGate.PrerollWaiting);
+    }
+
+    private bool TryTakePreroll()
+    {
+        if (!RendererGate.ConsumePreroll(ref _prerollWaiting))
+            return false;
+        _prerollDone.Set();
+        return true;
+    }
+
     internal bool WaitUntil(long streamTime, long mediaTime, long duration)
     {
         while (true)
         {
-            var decision = RendererGate.Decide(_state, _pin.Flushing, streamTime);
+            if (_pin.Flushing)
+                return false;
+            if (TryTakePreroll())
+                return true;
+            var decision = RendererGate.Decide(_state, false, streamTime);
             if (decision == true)
                 return true;
             if (decision == false)
@@ -239,6 +277,7 @@ public class BgraSinkFilter : IBaseFilterSink
             if (delay <= TimeSpan.FromMilliseconds(2))
             {
                 var now = Environment.TickCount64;
+                // 成批迟到的帧直接丢掉，避免一次性补画造成快放。这个判断不能拿掉。
                 if (delay < TimeSpan.FromMilliseconds(-80) && now - _lastPresentMs < 40)
                     return false;
                 _lastPresentMs = now;
@@ -471,6 +510,7 @@ public class BgraSinkPin : IPinSink, IMemInputPinSink
 
     public int EndOfStream()
     {
+        _filter.ReleasePreroll();
         _filter.NotifyEnd();
         return Hr.Ok;
     }

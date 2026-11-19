@@ -35,6 +35,7 @@ internal static class Hr
     public const int TypeNotAccepted = unchecked((int)0x8004022A);
     public const int SampleTimeNotSet = unchecked((int)0x80040249);
     public const int EcComplete = 0x01;
+    public const int StateIntermediate = 0x00040237;
 
     public static bool Failed(int code) => code < 0;
 

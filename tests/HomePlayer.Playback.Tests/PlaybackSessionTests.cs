@@ -61,6 +61,38 @@ public sealed class PlaybackSessionTests
     }
 
     [Fact]
+    public void Newer_engine_epoch_is_adopted_and_older_frames_stay_discarded()
+    {
+        using var session = new PlaybackSession(new FakeEngine(), "media");
+        var delivered = 0;
+        var discarded = 0;
+        session.FrameArrived += frame =>
+        {
+            delivered++;
+            frame.ReturnBuffer();
+        };
+        ((FakeEngine)session.InnerEngine).Emit(Frame(2, () => { }));
+
+        Assert.Equal(1, delivered);
+        Assert.Equal(2, session.Epoch);
+
+        ((FakeEngine)session.InnerEngine).Emit(Frame(1, () => discarded++));
+        Assert.Equal(1, delivered);
+        Assert.Equal(1, discarded);
+    }
+
+    private static VideoFrame Frame(long epoch, Action returned) => new()
+    {
+        Width = 1,
+        Height = 1,
+        Stride = 4,
+        Data = new byte[4],
+        SessionId = Guid.NewGuid(),
+        Epoch = epoch,
+        ReleaseBuffer = returned
+    };
+
+    [Fact]
     public void Close_is_idempotent()
     {
         var engine = new FakeEngine();

@@ -155,8 +155,10 @@ public sealed class FfmpegPlaybackEngine : IPlaybackEngine, IPlaybackFaultSource
     public void Play()
     {
         ResetAudioClockAnchor();
-        _output?.Play();
+        var defer = _player?.DeferAudioOutput == true;
         _player?.Play();
+        if (!defer)
+            _output?.Play();
     }
 
     public void Pause()

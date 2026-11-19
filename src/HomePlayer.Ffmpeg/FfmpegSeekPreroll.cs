@@ -9,8 +9,23 @@ public sealed unsafe partial class FfmpegPlayer
     private long _prerollAudioReadyEpoch = -1;
     private long _prerollResumingEpoch = -1;
     private long _prerollReleasedEpoch = -1;
+    private long _audioReadyEpoch = -1;
+    private int _clockArmed;
 
     public event Action<long>? SeekPrerollReady;
+
+    /// <summary>
+    /// 时钟还没对齐过当前时间线时，WASAPI 先播会把设备时钟跑在画面前面。
+    /// 暂停后恢复时时钟已经对齐，不能再推迟。
+    /// </summary>
+    public bool DeferAudioOutput
+    {
+        get
+        {
+            lock (_gate)
+                return _clockArmed == 0;
+        }
+    }
 
     private void ResetSeekPrerollLocked()
     {
@@ -18,6 +33,8 @@ public sealed unsafe partial class FfmpegPlayer
         _prerollAudioReadyEpoch = -1;
         _prerollResumingEpoch = -1;
         _prerollReleasedEpoch = -1;
+        _audioReadyEpoch = -1;
+        _clockArmed = 0;
     }
 
     private bool WaitForSeekPreroll(FrameLease frame, bool targetFrame)
@@ -39,6 +56,7 @@ public sealed unsafe partial class FfmpegPlayer
                 if (!_playIntent)
                 {
                     _prerollReleasedEpoch = epoch;
+                    _clockArmed = 1;
                     return true;
                 }
                 _prerollVideoReadyEpoch = epoch;
@@ -59,6 +77,8 @@ public sealed unsafe partial class FfmpegPlayer
         var release = false;
         lock (_gate)
         {
+            if (epoch == Epoch)
+                _audioReadyEpoch = epoch;
             if (_activeSeek?.Epoch == epoch && _playIntent)
             {
                 _prerollAudioReadyEpoch = epoch;
@@ -111,7 +131,62 @@ public sealed unsafe partial class FfmpegPlayer
                 return;
             _clockOriginTicks = seek.Position.Ticks;
             _clock.Restart();
+            _clockArmed = 1;
             _prerollReleasedEpoch = epoch;
         }
+    }
+
+    /// <summary>
+    /// 从头播放没有 seek 目标帧。按住第一帧，直到音频写出或超过 2 秒，再启动时钟。
+    /// 2 秒是 seek 预滚动同一上限：调度线程拿着帧等待时，视频队列会堵住 demux，不能无限等。
+    /// </summary>
+    private bool WaitForStartupClock(FrameLease frame, bool targetFrame, out bool armedThisFrame)
+    {
+        armedThisFrame = false;
+        if (targetFrame || Volatile.Read(ref _clockArmed) == 1)
+            return true;
+        var started = Stopwatch.GetTimestamp();
+        var timing = false;
+        while (_cancel is { IsCancellationRequested: false })
+        {
+            if (frame.Epoch != Epoch)
+                return false;
+            lock (_gate)
+            {
+                if (frame.Epoch != Epoch)
+                    return false;
+                if (_clockArmed == 1 || _step)
+                    return true;
+                if (_isPlaying)
+                {
+                    if (!timing)
+                    {
+                        started = Stopwatch.GetTimestamp();
+                        timing = true;
+                    }
+                    var audioReady = !HasAudio || _audioReadyEpoch == frame.Epoch || Volatile.Read(ref _audioDone) == 1;
+                    if (audioReady || Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(2))
+                    {
+                        var ticks = Math.Max(0, frame.TimeBase.ToTimeSpanTicks(frame.PresentationTimestamp));
+                        _clockOriginTicks = ticks;
+                        Volatile.Write(ref _positionTicks, ticks);
+                        _clock.Restart();
+                        _clockArmed = 1;
+                        armedThisFrame = true;
+                    }
+                }
+                else
+                {
+                    timing = false;
+                }
+            }
+            if (armedThisFrame)
+            {
+                SeekPrerollReady?.Invoke(frame.Epoch);
+                return true;
+            }
+            Thread.Sleep(2);
+        }
+        return false;
     }
 }

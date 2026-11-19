@@ -202,6 +202,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             _videoIndex = ffmpeg.av_find_best_stream(_format, AVMediaType.AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
             if (_videoIndex < 0)
                 throw new InvalidOperationException("文件里没有可解码的视频流。");
+            // 首帧保持单线程。frame threading 会按线程数推迟首帧，这是性能基线里留下的取舍。
+            // 第一次 seek 才升到自动线程数；中途重开解码器会丢掉参考帧。起播时钟等到首帧再走。
             OpenVideoDecoder(videoDecoder, 1, strictErrors: true);
             _videoTimeBase = _format->streams[_videoIndex]->time_base;
             _width = _videoCodec->width;
@@ -249,7 +251,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         {
             _playIntent = true;
             _step = false;
-            if (!_isPlaying)
+            if (!_isPlaying && _clockArmed == 1)
             {
                 _clockOriginTicks = Position.Ticks;
                 _clock.Restart();
@@ -263,15 +265,21 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     {
         if (!IsOpen)
             return;
-        var current = MediaSeconds();
+        var armed = false;
+        lock (_gate)
+            armed = _clockArmed == 1;
+        var current = armed ? MediaSeconds() : 0;
         _playIntent = false;
         _isPlaying = false;
         _step = false;
         lock (_gate)
         {
-            _clockOriginTicks = TimeSpan.FromSeconds(Math.Max(0, current)).Ticks;
+            if (armed)
+            {
+                _clockOriginTicks = TimeSpan.FromSeconds(Math.Max(0, current)).Ticks;
+                Volatile.Write(ref _positionTicks, _clockOriginTicks);
+            }
             _clock.Stop();
-            Volatile.Write(ref _positionTicks, _clockOriginTicks);
         }
     }
 
@@ -370,10 +378,11 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         rate = PlaybackRates.Clamp(rate);
         lock (_gate)
         {
-            var current = MediaSeconds();
+            var current = _clockArmed == 1 ? MediaSeconds() : Position.TotalSeconds;
             Volatile.Write(ref _rate, rate);
             _clockOriginTicks = TimeSpan.FromSeconds(Math.Max(0, current)).Ticks;
-            if (_isPlaying)
+            _audioReadyEpoch = -1;
+            if (_isPlaying && _clockArmed == 1)
                 _clock.Restart();
             else
                 _clock.Reset();
@@ -677,6 +686,7 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
         _videoFrames!.Clear(ReleaseVideoItem);
         lock (_videoCodecGate)
         {
+            // 只在 seek 已经清空解码器的边界升级。播放中重开会花屏，打开时升级又会推迟首帧。
             if (_videoDecoderThreads == 1)
             {
                 var decoder = ffmpeg.avcodec_find_decoder(_format->streams[_videoIndex]->codecpar->codec_id);
@@ -945,6 +955,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
     {
         if (!WaitForSeekPreroll(frame, targetFrame))
             return false;
+        if (!WaitForStartupClock(frame, targetFrame, out var armedThisFrame))
+            return false;
         while (_cancel is { IsCancellationRequested: false })
         {
             if (frame.Epoch != Epoch)
@@ -961,7 +973,8 @@ public sealed unsafe partial class FfmpegPlayer : IDisposable
             if (wait <= 0.005)
             {
                 var frameDuration = Math.Max(0.001, frame.TimeBase.ToTimeSpanTicks(frame.Duration) / (double)TimeSpan.TicksPerSecond);
-                if (!targetFrame && wait < -Math.Max(0.08, frameDuration * 2))
+                // 稳态仍然丢掉成批迟到帧，避免补画快放。刚对齐时钟的那一帧不算迟到。
+                if (!targetFrame && !armedThisFrame && wait < -Math.Max(0.08, frameDuration * 2))
                 {
                     Interlocked.Increment(ref _droppedFrames);
                     return false;

@@ -26,4 +26,23 @@ public class RendererGateTests
     {
         Assert.Null(RendererGate.Decide(RendererGate.Running, false, 40_000));
     }
+
+    [Theory]
+    [InlineData(RendererGate.Stopped, RendererGate.Paused, true)]
+    [InlineData(RendererGate.Running, RendererGate.Paused, false)]
+    [InlineData(RendererGate.Paused, RendererGate.Paused, false)]
+    [InlineData(RendererGate.Stopped, RendererGate.Running, false)]
+    public void Preroll_is_only_required_when_leaving_stopped(int previous, int next, bool expected)
+    {
+        Assert.Equal(expected, RendererGate.NeedsPreroll(previous, next));
+    }
+
+    [Fact]
+    public void Only_the_first_sample_consumes_preroll()
+    {
+        var waiting = RendererGate.PrerollWaiting;
+        Assert.True(RendererGate.ConsumePreroll(ref waiting));
+        Assert.Equal(RendererGate.PrerollReady, waiting);
+        Assert.False(RendererGate.ConsumePreroll(ref waiting));
+    }
 }

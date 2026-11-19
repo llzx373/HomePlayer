@@ -219,6 +219,7 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
         {
             frame.SessionId = SessionId;
             frame.TimelineId = TimelineId;
+            AdoptEngineEpoch(frame.Epoch);
         }
         if (frame.Epoch != Epoch)
         {
@@ -226,6 +227,18 @@ public sealed class PlaybackSession : IPlaybackSession, IPlaybackFaultSource, IP
             return;
         }
         FrameArrived?.Invoke(frame);
+    }
+
+    private void AdoptEngineEpoch(long epoch)
+    {
+        while (true)
+        {
+            var current = Epoch;
+            if (epoch <= current)
+                return;
+            if (Interlocked.CompareExchange(ref _epoch, epoch, current) == current)
+                return;
+        }
     }
 
     private void OnEnded()
