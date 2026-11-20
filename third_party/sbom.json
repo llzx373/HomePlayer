@@ -5,7 +5,7 @@
   "name": "HomePlayer-0.3.0-21",
   "documentNamespace": "https://github.com/llzx373/HomePlayer/sbom/0.3.0-21",
   "creationInfo": {
-    "created": "2026-11-19T23:56:52Z",
+    "created": "2026-11-20T00:22:14Z",
     "creators": [
       "Tool: HomePlayer Verify-PrivateDependencies"
     ]
@@ -36,8 +36,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020"
+              "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -46,8 +46,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a"
+              "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -56,8 +56,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf"
+              "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -66,8 +66,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c"
+              "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -76,8 +76,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b"
+              "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -86,8 +86,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-ffmpeg.exe",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946"
+              "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -96,8 +96,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382"
+              "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -106,8 +106,8 @@
           "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789"
+              "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -128,8 +128,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libdovi.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c"
+              "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -138,8 +138,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libgcc-s-seh-1.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980"
+              "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -148,8 +148,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-liblcms2-fast-float-2.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4"
+              "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -158,8 +158,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-liblcms2-2.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba"
+              "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -168,8 +168,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libplacebo-360.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66"
+              "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -178,8 +178,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libshaderc-shared.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94"
+              "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -188,8 +188,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libspirv-cross-c-shared.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29"
+              "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -198,8 +198,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libstdc---6.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f"
+              "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -208,8 +208,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-libwinpthread-1.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb"
+              "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -218,8 +218,8 @@
           "SPDXID": "SPDXRef-File-libplacebo-vulkan-1.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
+              "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -240,8 +240,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Clamp-Highlights.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a"
+              "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -250,8 +250,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Restore-CNN-M.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41"
+              "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -260,8 +260,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Upscale-CNN-x2-M.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e"
+              "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -282,8 +282,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16-DS.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a"
+              "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -292,8 +292,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e"
+              "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -314,8 +314,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-cunny-CuNNy-fast-DS.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0"
+              "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -336,8 +336,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-fsrcnnx-FSRCNNX-x2-8-0-4-1.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae"
+              "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -358,8 +358,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-nnedi3-nnedi3-nns32-win8x4.hook",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50"
+              "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -368,8 +368,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-ravu-ravu-lite-ar-r3.hook",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d"
+              "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -390,8 +390,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimDownscaler.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804"
+              "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -400,8 +400,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimSuperRes.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f"
+              "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -422,8 +422,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-chroma-CfL-Prediction.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716"
+              "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -444,8 +444,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-chroma-KrigBilateral.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0"
+              "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -466,8 +466,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-sharpening-adaptive-sharpen.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4"
+              "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -488,8 +488,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-restoration-guided-fast.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b"
+              "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -498,8 +498,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-restoration-hdeband.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d"
+              "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -508,8 +508,8 @@
           "SPDXID": "SPDXRef-File-third-party-shaders-restoration-nlmeans.glsl",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21"
+              "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -530,8 +530,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-ggml-base.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193"
+              "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -540,8 +540,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-ggml-cpu.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56"
+              "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -550,8 +550,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-ggml.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d"
+              "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -560,8 +560,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-SDL2.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677"
+              "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -570,8 +570,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-whisper-cli.exe",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311"
+              "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -580,8 +580,8 @@
           "SPDXID": "SPDXRef-File-ai-whisper-whisper.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e"
+              "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -602,8 +602,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublas64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c"
+              "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -612,8 +612,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublasLt64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f"
+              "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -622,8 +622,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda-runtime-cudart64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc"
+              "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -644,8 +644,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-cuda.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "0204055e745b092b0d946558b914b61aa395a9fa41fc6e082904c1441de3ef4d"
+              "checksumValue": "0204055e745b092b0d946558b914b61aa395a9fa41fc6e082904c1441de3ef4d",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -654,8 +654,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-shared.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "f55a8a6216a63c5678f0ccca531403fd34e7325e0b43c771e134a3898c3e5120"
+              "checksumValue": "f55a8a6216a63c5678f0ccca531403fd34e7325e0b43c771e134a3898c3e5120",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -664,8 +664,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-tensorrt.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "13666b140316520c054c8c8ac07fe480e95950f9f758f00225817c4157100b22"
+              "checksumValue": "13666b140316520c054c8c8ac07fe480e95950f9f758f00225817c4157100b22",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -674,8 +674,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "f202b5c9b0025993996d60f5b528cdb92ad12aa9b709b12a8089bb3403da30bd"
+              "checksumValue": "f202b5c9b0025993996d60f5b528cdb92ad12aa9b709b12a8089bb3403da30bd",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -684,8 +684,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-sherpa-onnx-c-api.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "593f97eecd06dabb7edc4598c0484cc4f996c385ec285a70a72511814776929a"
+              "checksumValue": "593f97eecd06dabb7edc4598c0484cc4f996c385ec285a70a72511814776929a",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -694,8 +694,8 @@
           "SPDXID": "SPDXRef-File-ai-sherpa-cuda-sherpa-onnx-cxx-api.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "c0efe1d4316a45a6220d24784528934b1f4c941ea377f21b099683d1b76ac7cf"
+              "checksumValue": "c0efe1d4316a45a6220d24784528934b1f4c941ea377f21b099683d1b76ac7cf",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -716,8 +716,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-cublas64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "9513540e4ec4c51ee9e7304138c2cc255c29a8c181f9e80c38efa25738becd99"
+              "checksumValue": "9513540e4ec4c51ee9e7304138c2cc255c29a8c181f9e80c38efa25738becd99",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -726,8 +726,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-cublasLt64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "b199d1ff892a81b7fd3d57ba1781549609b41500b36008fef326038393ad46c7"
+              "checksumValue": "b199d1ff892a81b7fd3d57ba1781549609b41500b36008fef326038393ad46c7",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -736,8 +736,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-nvblas64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "99f3fae7b729417a3d2778e746f51258cd179c8df0c654d68fcafdad23d34779"
+              "checksumValue": "99f3fae7b729417a3d2778e746f51258cd179c8df0c654d68fcafdad23d34779",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -746,8 +746,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudart-cudart64-12.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344"
+              "checksumValue": "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -756,8 +756,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-adv64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "631af1130b27b4d14683c7da690dddec8e25ffe3097d498fbba7129faba1601c"
+              "checksumValue": "631af1130b27b4d14683c7da690dddec8e25ffe3097d498fbba7129faba1601c",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -766,8 +766,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-cnn64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "68c9f6bf98a5620a0bb0519c3997800ef2c7cb8979f17a60afcf82d341629c73"
+              "checksumValue": "68c9f6bf98a5620a0bb0519c3997800ef2c7cb8979f17a60afcf82d341629c73",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -776,8 +776,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-engines-precompiled64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "59e71b3adae62186d3336ccbda6d0c8b14a3a0ef21694757e2b32e84fa840152"
+              "checksumValue": "59e71b3adae62186d3336ccbda6d0c8b14a3a0ef21694757e2b32e84fa840152",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -786,8 +786,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-engines-runtime-compiled64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "8671c24fc0debbd99c3dca57bfdf657f4c9490e2a009f641cfc2fcf7a1256180"
+              "checksumValue": "8671c24fc0debbd99c3dca57bfdf657f4c9490e2a009f641cfc2fcf7a1256180",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -796,8 +796,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-graph64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "22c21907fb2108259cb25738156f4459c12c0a001715bbb6d5aafac150060e85"
+              "checksumValue": "22c21907fb2108259cb25738156f4459c12c0a001715bbb6d5aafac150060e85",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -806,8 +806,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-heuristic64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "5378e50729665245fa5abe89c729b782de686675e9bd6319cda1a3165d9492e6"
+              "checksumValue": "5378e50729665245fa5abe89c729b782de686675e9bd6319cda1a3165d9492e6",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -816,8 +816,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-ops64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "080c2bb37e9d1fdd585cdd53fdbb23c0478b99610a19f8bba512b596b1e302fe"
+              "checksumValue": "080c2bb37e9d1fdd585cdd53fdbb23c0478b99610a19f8bba512b596b1e302fe",
+              "algorithm": "SHA256"
             }
           ]
         },
@@ -826,8 +826,8 @@
           "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn64-9.dll",
           "checksums": [
             {
-              "algorithm": "SHA256",
-              "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db"
+              "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db",
+              "algorithm": "SHA256"
             }
           ]
         }
@@ -1522,8 +1522,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublas64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c"
+          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1532,8 +1532,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda-runtime-cublasLt64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f"
+          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1542,8 +1542,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda-runtime-cudart64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc"
+          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1552,8 +1552,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-cublas64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "9513540e4ec4c51ee9e7304138c2cc255c29a8c181f9e80c38efa25738becd99"
+          "checksumValue": "9513540e4ec4c51ee9e7304138c2cc255c29a8c181f9e80c38efa25738becd99",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1562,8 +1562,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-cublasLt64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "b199d1ff892a81b7fd3d57ba1781549609b41500b36008fef326038393ad46c7"
+          "checksumValue": "b199d1ff892a81b7fd3d57ba1781549609b41500b36008fef326038393ad46c7",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1572,8 +1572,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cublas-nvblas64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "99f3fae7b729417a3d2778e746f51258cd179c8df0c654d68fcafdad23d34779"
+          "checksumValue": "99f3fae7b729417a3d2778e746f51258cd179c8df0c654d68fcafdad23d34779",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1582,8 +1582,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudart-cudart64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344"
+          "checksumValue": "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1592,8 +1592,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-adv64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "631af1130b27b4d14683c7da690dddec8e25ffe3097d498fbba7129faba1601c"
+          "checksumValue": "631af1130b27b4d14683c7da690dddec8e25ffe3097d498fbba7129faba1601c",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1602,8 +1602,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-cnn64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "68c9f6bf98a5620a0bb0519c3997800ef2c7cb8979f17a60afcf82d341629c73"
+          "checksumValue": "68c9f6bf98a5620a0bb0519c3997800ef2c7cb8979f17a60afcf82d341629c73",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1612,8 +1612,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-engines-precompiled64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "59e71b3adae62186d3336ccbda6d0c8b14a3a0ef21694757e2b32e84fa840152"
+          "checksumValue": "59e71b3adae62186d3336ccbda6d0c8b14a3a0ef21694757e2b32e84fa840152",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1622,8 +1622,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-engines-runtime-compiled64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "8671c24fc0debbd99c3dca57bfdf657f4c9490e2a009f641cfc2fcf7a1256180"
+          "checksumValue": "8671c24fc0debbd99c3dca57bfdf657f4c9490e2a009f641cfc2fcf7a1256180",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1632,8 +1632,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-graph64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "22c21907fb2108259cb25738156f4459c12c0a001715bbb6d5aafac150060e85"
+          "checksumValue": "22c21907fb2108259cb25738156f4459c12c0a001715bbb6d5aafac150060e85",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1642,8 +1642,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-heuristic64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "5378e50729665245fa5abe89c729b782de686675e9bd6319cda1a3165d9492e6"
+          "checksumValue": "5378e50729665245fa5abe89c729b782de686675e9bd6319cda1a3165d9492e6",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1652,8 +1652,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn-ops64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "080c2bb37e9d1fdd585cdd53fdbb23c0478b99610a19f8bba512b596b1e302fe"
+          "checksumValue": "080c2bb37e9d1fdd585cdd53fdbb23c0478b99610a19f8bba512b596b1e302fe",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1662,8 +1662,8 @@
       "SPDXID": "SPDXRef-File-ai-cuda12.8-cudnn-cudnn64-9.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db"
+          "checksumValue": "0edb24306db36121137a3150ac55015aee174d4582d5b807bd3220180a7a57db",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1672,8 +1672,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-cuda.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "0204055e745b092b0d946558b914b61aa395a9fa41fc6e082904c1441de3ef4d"
+          "checksumValue": "0204055e745b092b0d946558b914b61aa395a9fa41fc6e082904c1441de3ef4d",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1682,8 +1682,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-shared.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "f55a8a6216a63c5678f0ccca531403fd34e7325e0b43c771e134a3898c3e5120"
+          "checksumValue": "f55a8a6216a63c5678f0ccca531403fd34e7325e0b43c771e134a3898c3e5120",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1692,8 +1692,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime-providers-tensorrt.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "13666b140316520c054c8c8ac07fe480e95950f9f758f00225817c4157100b22"
+          "checksumValue": "13666b140316520c054c8c8ac07fe480e95950f9f758f00225817c4157100b22",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1702,8 +1702,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-onnxruntime.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "f202b5c9b0025993996d60f5b528cdb92ad12aa9b709b12a8089bb3403da30bd"
+          "checksumValue": "f202b5c9b0025993996d60f5b528cdb92ad12aa9b709b12a8089bb3403da30bd",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1712,8 +1712,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-sherpa-onnx-c-api.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "593f97eecd06dabb7edc4598c0484cc4f996c385ec285a70a72511814776929a"
+          "checksumValue": "593f97eecd06dabb7edc4598c0484cc4f996c385ec285a70a72511814776929a",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1722,8 +1722,8 @@
       "SPDXID": "SPDXRef-File-ai-sherpa-cuda-sherpa-onnx-cxx-api.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "c0efe1d4316a45a6220d24784528934b1f4c941ea377f21b099683d1b76ac7cf"
+          "checksumValue": "c0efe1d4316a45a6220d24784528934b1f4c941ea377f21b099683d1b76ac7cf",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1732,8 +1732,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-cublas64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c"
+          "checksumValue": "e40202fe4223c1cd2d2dce7beec59e1ed61c7801bd827309183be9b50e358f4c",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1742,8 +1742,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-cublasLt64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f"
+          "checksumValue": "2a896460bef60ed57ef32b0875812f355a6984e671d638bb632f5e8c1d7a831f",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1752,8 +1752,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-cudart64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc"
+          "checksumValue": "d28e42265da7462162a54da6b7a99ea4fa2caf8139d862bb500db875d0b32dfc",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1762,8 +1762,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-base.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "fb3a4f12f90a3b44503914f2f8f1b0d89658a7b165dfbc424e157200ec4c6dd8"
+          "checksumValue": "fb3a4f12f90a3b44503914f2f8f1b0d89658a7b165dfbc424e157200ec4c6dd8",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1772,8 +1772,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-cpu.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "087e9eb9d29245efd61a69190f0f56992a6b75337d837238b09ec4d84a77c29d"
+          "checksumValue": "087e9eb9d29245efd61a69190f0f56992a6b75337d837238b09ec4d84a77c29d",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1782,8 +1782,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml-cuda.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "214eecd0080f1db0d73ad0e750aa81de5c4eb22b191372bef6f3934decda5587"
+          "checksumValue": "214eecd0080f1db0d73ad0e750aa81de5c4eb22b191372bef6f3934decda5587",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1792,8 +1792,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-ggml.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "9679b00183036f667fdc097f7b5834852a11c654cef545c70f238285b1eca2e1"
+          "checksumValue": "9679b00183036f667fdc097f7b5834852a11c654cef545c70f238285b1eca2e1",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1802,8 +1802,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvblas64-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e42a77405e6e4b1cc661dcfcddead35ec62dcf59c6f9be1a3b5fab73d1f4c616"
+          "checksumValue": "e42a77405e6e4b1cc661dcfcddead35ec62dcf59c6f9be1a3b5fab73d1f4c616",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1812,8 +1812,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvrtc-builtins64-124.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "79888dba26c51475ea21fc7b47d2b9dd5b1ffaecc8e5ea22a49fa5f5a722eb43"
+          "checksumValue": "79888dba26c51475ea21fc7b47d2b9dd5b1ffaecc8e5ea22a49fa5f5a722eb43",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1822,8 +1822,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-nvrtc64-120-0.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "3aa3cd8aa10437e212760c0e1ed730807811ec3bc330216dbfde4b26211d2243"
+          "checksumValue": "3aa3cd8aa10437e212760c0e1ed730807811ec3bc330216dbfde4b26211d2243",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1832,8 +1832,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-SDL2.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677"
+          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1842,8 +1842,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-whisper-cli.exe",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "bf826f8fe6f3586721952abc88ed58513feb0572544e39aeb6a303718500ba6a"
+          "checksumValue": "bf826f8fe6f3586721952abc88ed58513feb0572544e39aeb6a303718500ba6a",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1852,8 +1852,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-cuda-whisper.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "532a900e74ebcc2fbc3a8bc986bd1052e7c5310e19338e6fa91d2f4c5023241e"
+          "checksumValue": "532a900e74ebcc2fbc3a8bc986bd1052e7c5310e19338e6fa91d2f4c5023241e",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1862,8 +1862,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-ggml-base.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193"
+          "checksumValue": "61c9c57f49f380896ed54ed3f71735e10a2d986f482c2b0a55e72b47f731b193",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1872,8 +1872,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-ggml-cpu.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56"
+          "checksumValue": "eb2f1d023e51c40b27463b5ab165600eb48cb60323740f400b1b62e1c8706c56",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1882,8 +1882,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-ggml.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d"
+          "checksumValue": "bcfeaf6e5b59c315fc36e290715aa7a84b22461e968543c13dfcf57df7b1b81d",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1892,8 +1892,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-SDL2.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677"
+          "checksumValue": "de23db1694a3c7a4a735e7ecd3d214b2023cc2267922c6c35d30c7fc7370d677",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1902,8 +1902,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-whisper-cli.exe",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311"
+          "checksumValue": "0ff971e410240a0b97117432d771245698f376e06105c011959d2bfc4bb23311",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1912,8 +1912,8 @@
       "SPDXID": "SPDXRef-File-ai-whisper-whisper.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e"
+          "checksumValue": "4037a6567fbb08fc7efda18e4d128a95df9c31ba171af20439d1a93b785d007e",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1922,8 +1922,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avcodec-63.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020"
+          "checksumValue": "8f48ec7587a6905699d441b66f42c838a0e29b00347742330cbc12745b35d020",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1932,8 +1932,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avdevice-63.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a"
+          "checksumValue": "e4ad2fe72df12b29029dc6e13d3174d1c0d291842c2bf20b2dadddf4861ce94a",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1942,8 +1942,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avfilter-12.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf"
+          "checksumValue": "ff8c43ea64c2e2e07a3db53eaeb8b47ea1b51e8aca3a5370ea9ec6ddfc4953cf",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1952,8 +1952,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avformat-63.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c"
+          "checksumValue": "4b26a56f85ca7b0387cff5b789d43f20d3e51a733c04809da68709437353fb8c",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1962,8 +1962,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-avutil-61.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b"
+          "checksumValue": "9fd7cde4ca3d1d817311c35447b4fe2d1551f924966b5b58645bcbc161ac003b",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1972,8 +1972,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-ffmpeg.exe",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946"
+          "checksumValue": "27219c276fee25da1d3156011289689f0b1559584be73f5ea28947d5cf80f946",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1982,8 +1982,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-swresample-7.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382"
+          "checksumValue": "e385fff12f82d405e3696ca6b20a452b81a7fc7bccbe0114575192ced6ce5382",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -1992,8 +1992,8 @@
       "SPDXID": "SPDXRef-File-ffmpeg-swscale-10.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789"
+          "checksumValue": "779e062ae3771ba5a4b6822f77c8659c3f7d89233b7997f42f71d467e4b62789",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2002,8 +2002,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libdovi.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c"
+          "checksumValue": "d0ebc0d98ac67dc28b176f77af125f2066dcb6cf6283f71c102d67f0eeb1df7c",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2012,8 +2012,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libgcc-s-seh-1.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980"
+          "checksumValue": "661f70dc19fde8c25bb56387b807b7a9ab7e532cf58fa8aeee078256c19d8980",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2022,8 +2022,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-liblcms2-fast-float-2.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4"
+          "checksumValue": "7a5412aa4333c0ccfc440e61de38da85a03bfaa6039383a0700b78e501cf93a4",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2032,8 +2032,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-liblcms2-2.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba"
+          "checksumValue": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2042,8 +2042,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libplacebo-360.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66"
+          "checksumValue": "46b31fc5429f0b348d7c7183a805ba68d80170843eee2f35e8ac5962d6992e66",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2052,8 +2052,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libshaderc-shared.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94"
+          "checksumValue": "803dd276af99afa40e96836484fea513852fba773fc45690c5eef5a5ebc3ae94",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2062,8 +2062,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libspirv-cross-c-shared.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29"
+          "checksumValue": "b769dd849d7dcbf7668ddbb55f66acbd0e26152da1112d796fbd0635c3aacd29",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2072,8 +2072,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libstdc---6.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f"
+          "checksumValue": "b720a96289bcd6d9ec6f5f1f5612f1b1a523ce15d3ada20fe119791274cb512f",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2082,8 +2082,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-libwinpthread-1.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb"
+          "checksumValue": "69d7bb54bfa7502501b8cda3e09ae9d0a7ae3325d7419aeaeb55c13f4ae8dddb",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2092,8 +2092,8 @@
       "SPDXID": "SPDXRef-File-libplacebo-vulkan-1.dll",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016"
+          "checksumValue": "1d848aabe2673d89ccbced220cbc0b98793b49aa38e3b2d7b5a71e28f4875016",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2102,8 +2102,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Clamp-Highlights.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a"
+          "checksumValue": "a2a9bf7fbc1d75d09660ca2e701e4d7fb0cf5457b94da47e1825032fa2b3671a",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2112,8 +2112,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Restore-CNN-M.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41"
+          "checksumValue": "67ea3ed26539e8de3b7d307688535d2ff17e8d147e11dda0247da7770dbecf41",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2122,8 +2122,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-anime4k-Anime4K-Upscale-CNN-x2-M.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e"
+          "checksumValue": "716e02098a68f0d648761f2b96b4dd139e1cb09b174bb369fca3aa34328fff7e",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2132,8 +2132,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16-DS.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a"
+          "checksumValue": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2142,8 +2142,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-artcnn-ArtCNN-C4F16.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e"
+          "checksumValue": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2152,8 +2152,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-chroma-CfL-Prediction.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716"
+          "checksumValue": "f9d12d38d4bab4d9db266b5982c81fadca907396212e22fd8b2c1ca2f317b716",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2162,8 +2162,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-chroma-KrigBilateral.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0"
+          "checksumValue": "8a4798abb77b83646fce0d71985ddfd14c9806e3be486e8fc7f5a5a8bd940cb0",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2172,8 +2172,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-cunny-CuNNy-fast-DS.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0"
+          "checksumValue": "86681e39ef4a2f22ad5622be88c2bff179007f4f9b898e05638d6ab1239e03c0",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2182,8 +2182,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-fsrcnnx-FSRCNNX-x2-8-0-4-1.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae"
+          "checksumValue": "e800dbc5c1c95185cc82216c597724533ff5f2880179f256eef600f03e8dc2ae",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2192,8 +2192,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-nnedi3-nnedi3-nns32-win8x4.hook",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50"
+          "checksumValue": "2646da3cf79ff289f5dc60edd7dfd88f0b5eccb4f7ff11a5dfb7531f49336e50",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2202,8 +2202,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-ravu-ravu-lite-ar-r3.hook",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d"
+          "checksumValue": "59c7a71f24f1dc666f5a3865f180616fac564cc20f2223b0fb74db98bab0136d",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2212,8 +2212,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-restoration-guided-fast.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b"
+          "checksumValue": "eea9c8e604cfb8460a48f59855de683744fb66fd1e55262a6dcd6ffa46f4b59b",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2222,8 +2222,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-restoration-hdeband.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d"
+          "checksumValue": "bcca060b5bf46caf7dac7b74392bc2817b9cc3d4fc5fcade49af35e2b0432b3d",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2232,8 +2232,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-restoration-nlmeans.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21"
+          "checksumValue": "25eafbf1d743342fd8c531ed27cb0b8d23cd4bba2f244c6a0afd3c4931e91e21",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2242,8 +2242,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-sharpening-adaptive-sharpen.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4"
+          "checksumValue": "827fb3d662ac9a91b4075e9117fe6e1dbc1c06d85959ba719cdb954dfb7fb8e4",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2252,8 +2252,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimDownscaler.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804"
+          "checksumValue": "f46f4710a162d17058b9d82ed8610588b0c04d7be07cef6bf2a8c4077828f804",
+          "algorithm": "SHA256"
         }
       ]
     },
@@ -2262,8 +2262,8 @@
       "SPDXID": "SPDXRef-File-third-party-shaders-ssim-SSimSuperRes.glsl",
       "checksums": [
         {
-          "algorithm": "SHA256",
-          "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f"
+          "checksumValue": "a8b27115840c60045250411b375e0188000217258ad776eeb51724c97815460f",
+          "algorithm": "SHA256"
         }
       ]
     }
