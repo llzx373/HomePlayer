@@ -222,6 +222,7 @@ public sealed class VideoPresenter : IDisposable
     private nint _gpuDecodeFenceHandle;
     private LibplaceboRenderer? _libplacebo;
     private bool _libplaceboFailed;
+    private int _libplaceboWarmup;
     private readonly uint[] _vertexStrides = [16];
     private readonly uint[] _vertexOffsets = [0];
     private readonly ID3D11Buffer[] _vertexBuffers = new ID3D11Buffer[1];
@@ -867,12 +868,16 @@ public sealed class VideoPresenter : IDisposable
         var source = _gpuTextureResource ?? _frameTexture;
         if (source == null)
             return false;
+        if (_libplacebo == null)
+        {
+            RequestLibplaceboWarmup();
+            return false;
+        }
         try
         {
             var chroma = _chromaTexture ?? (_framePixelFormat is VideoPixelFormat.Nv12 or VideoPixelFormat.P010 ? source : null);
             if (!LibplaceboRenderer.SupportsInput(_framePixelFormat, chroma != null && ReferenceEquals(source, chroma)))
                 return false;
-            _libplacebo ??= new LibplaceboRenderer(_device, _context!);
             if (ShaderReader != null)
                 _libplacebo.UpdateProfile(RenderProfile, ShaderReader);
             using var back = _swapChain.GetBuffer<ID3D11Texture2D>(0);
@@ -929,6 +934,76 @@ public sealed class VideoPresenter : IDisposable
             RenderStatusChanged?.Invoke(null);
             return false;
         }
+    }
+
+    /// <summary>
+    /// 页面显示后在渲染线程上预建 libplacebo，避免第一帧承担设备/shader 初始化。
+    /// </summary>
+    public void Prewarm()
+    {
+        if (RenderQuality == VideoRenderQuality.Basic || Volatile.Read(ref _disposed) != 0)
+            return;
+        _render.Post(() =>
+        {
+            PrewarmCore();
+            PostDraw();
+        });
+    }
+
+    private void RequestLibplaceboWarmup()
+    {
+        if (Interlocked.Exchange(ref _libplaceboWarmup, 1) == 1)
+            return;
+        _render.Post(() =>
+        {
+            try
+            {
+                PrewarmCore();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _libplaceboWarmup, 0);
+            }
+
+            PostDraw();
+        });
+    }
+
+    private void PrewarmCore()
+    {
+        lock (_deviceSync)
+        {
+            if (_libplacebo != null || _libplaceboFailed || RenderQuality == VideoRenderQuality.Basic)
+                return;
+            try
+            {
+                EnsureDevice();
+                if (_device == null || _context == null)
+                    return;
+                EnsureLibplacebo();
+            }
+            catch (LibplaceboShaderException ex)
+            {
+                Trace(ex.Message);
+                RenderStatusChanged?.Invoke(_libplacebo?.Status);
+            }
+            catch (Exception ex)
+            {
+                _libplaceboFailed = true;
+                Trace("libplacebo prewarm failed, fallback to Basic: " + ex);
+                RenderStatusChanged?.Invoke(null);
+            }
+        }
+    }
+
+    private void EnsureLibplacebo()
+    {
+        if (_libplacebo != null || _device == null || _context == null
+            || RenderQuality == VideoRenderQuality.Basic)
+            return;
+        _libplacebo = new LibplaceboRenderer(_device, _context);
+        if (ShaderReader != null)
+            _libplacebo.UpdateProfile(RenderProfile, ShaderReader);
     }
 
     private void SwapLastFrame(FrameLease frame)
@@ -1002,8 +1077,6 @@ public sealed class VideoPresenter : IDisposable
         EnsureDevice();
         if (_device == null || _context == null)
             return;
-        _libplacebo?.Dispose();
-        _libplacebo = null;
         UnbindTarget();
         var swapChainFormat = _hdrOutput ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
         if (_swapChain == null)
@@ -1046,7 +1119,7 @@ public sealed class VideoPresenter : IDisposable
         _target = _device.CreateRenderTargetView(back);
         _needsInitialPresent = true;
         ConfigureSwapChainColorSpace();
-        UpdateDisplayCapabilities(true);
+        UpdateDisplayCapabilities();
         try
         {
             EnsurePipeline();
@@ -1070,6 +1143,7 @@ public sealed class VideoPresenter : IDisposable
         if (selection.HdrOutput != _hdrOutput)
         {
             _hdrOutput = selection.HdrOutput;
+            _libplacebo?.Flush();
             ReleaseSwapChain();
             Interlocked.Exchange(ref _resizeRequested, 1);
             TryResize();

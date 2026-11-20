@@ -146,6 +146,7 @@ public sealed partial class PlayerPage : Page
             SyncSnapshotButton();
             _presentedSession = Guid.Empty;
             _activeSessionPath = null;
+            ClearPipelineCache();
             EndMediaSwitch(immediate: true);
         });
         // 换集/换片走 PlayCurrentAsync，不会触发 Stopped；这里在旧引擎释放前收掉实时字幕，
@@ -192,10 +193,7 @@ public sealed partial class PlayerPage : Page
             if (_statusHold != null)
                 ApplyStatusText();
             if (++_pipelineTicks % 10 == 0)
-            {
                 ApplyRenderProfile();
-                _presenter.Refresh();
-            }
             if (_pipelineTicks % 50 == 0 && PipelinePanel.Visibility == Visibility.Visible)
                 _ = RefreshPipelineAsync();
             AdjustTimerInterval();
@@ -219,6 +217,7 @@ public sealed partial class PlayerPage : Page
             CompositionTarget.Rendering -= Progress_Rendering;
             CompositionTarget.Rendering += Progress_Rendering;
             _presenter.Resume();
+            _presenter.Prewarm();
             SyncSwitchOverlay();
             FitWindow(false);
             if (!_timer.IsEnabled)
@@ -249,6 +248,7 @@ public sealed partial class PlayerPage : Page
         base.OnNavigatedTo(e);
         AttachWindowEvents();
         _presenter.Resume();
+        _presenter.Prewarm();
         SyncSwitchOverlay();
     }
 
@@ -295,11 +295,13 @@ public sealed partial class PlayerPage : Page
         if (active)
         {
             _activeSessionPath = Playback.CurrentPath;
+            RefreshPipelineCache();
             if (Playback.UsesExternalVideoOutput)
                 EndMediaSwitch(immediate: true);
         }
         else
         {
+            ClearPipelineCache();
             StopLiveSubtitlesOnMediaChange();
             var next = Playback.Playlist.Current?.Path;
             if (_presentedSession != Guid.Empty

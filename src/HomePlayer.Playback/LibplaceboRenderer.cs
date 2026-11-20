@@ -83,6 +83,15 @@ public sealed unsafe class LibplaceboRenderer : IDisposable
 
     public static bool IsAvailable => LibplaceboNative.IsAvailable;
 
+    /// <summary>
+    /// 输出格式或尺寸语义变化后清理内部缓存，保留 GPU/渲染器实例。
+    /// </summary>
+    public void Flush()
+    {
+        if (_renderer != 0)
+            LibplaceboNative.FlushRenderer(_renderer);
+    }
+
     public static string Version => LibplaceboNative.Version;
 
     public static bool SupportsInput(VideoPixelFormat pixelFormat, bool sharedPlanes) =>

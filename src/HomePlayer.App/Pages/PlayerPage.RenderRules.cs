@@ -14,6 +14,9 @@ public sealed partial class PlayerPage
     private int _renderSourceHeight;
     private string _renderContextKey = "";
     private ResolvedRenderProfile _requestedRenderProfile = ResolvedRenderProfile.Fallback(VideoRenderQuality.Basic);
+    private PipelineInfo? _pipelineCache;
+    private string? _pipelinePath;
+    private int _pipelineRefresh;
 
     private void InitializeRenderRules()
     {
@@ -40,7 +43,7 @@ public sealed partial class PlayerPage
             sourceHeight = _renderSourceHeight;
         }
         var path = Playback.CurrentPath ?? "";
-        var pipeline = Playback.Pipeline();
+        var pipeline = CachedPipeline(path);
         sourceWidth = sourceWidth > 0 ? sourceWidth : pipeline?.Width ?? 0;
         sourceHeight = sourceHeight > 0 ? sourceHeight : pipeline?.Height ?? 0;
         var key = string.Join("|", path, pipeline?.VideoCodec, pipeline?.FrameRate,
@@ -70,6 +73,55 @@ public sealed partial class PlayerPage
         _presenter.RenderQuality = _requestedRenderProfile.Quality;
         App.Host.RenderRules.ActiveStatus = null;
         _presenter.Refresh();
+        if (force)
+            _presenter.Prewarm();
+    }
+
+    private PipelineInfo? CachedPipeline(string path)
+    {
+        if (string.IsNullOrEmpty(path)
+            || !string.Equals(_pipelinePath, path, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return _pipelineCache;
+    }
+
+    private void RefreshPipelineCache()
+    {
+        var path = Playback.CurrentPath;
+        if (string.IsNullOrEmpty(path) || Interlocked.Exchange(ref _pipelineRefresh, 1) == 1)
+            return;
+        _ = Task.Run(() =>
+        {
+            PipelineInfo? pipeline = null;
+            try
+            {
+                pipeline = Playback.Pipeline();
+            }
+            catch
+            {
+            }
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                Interlocked.Exchange(ref _pipelineRefresh, 0);
+                if (!string.Equals(path, Playback.CurrentPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    RefreshPipelineCache();
+                    return;
+                }
+
+                _pipelinePath = path;
+                _pipelineCache = pipeline;
+                ApplyRenderProfile(true);
+            });
+        });
+    }
+
+    private void ClearPipelineCache()
+    {
+        _pipelinePath = null;
+        _pipelineCache = null;
+        Interlocked.Exchange(ref _pipelineRefresh, 0);
     }
 
     private void ObserveRenderFrame(FrameLease frame)
